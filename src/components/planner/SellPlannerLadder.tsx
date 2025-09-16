@@ -8,12 +8,13 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import ProgressBar from '@/components/common/ProgressBar'
 import { fmtCurrency } from '@/lib/format'
 import { useLivePrice } from '@/lib/useLivePrice'
-import { isLevelTouched } from '@/lib/priceTouch'
 import {
   buildBuyLevels,
   computeBuyFills,
+  computeSellFills,
   type BuyLevel,
   type BuyTrade as BuyTradeType,
+  type SellTrade as SellTradeType,
 } from '@/lib/planner'
 
 type SellPlanner = {
@@ -34,12 +35,6 @@ type SellLevel = {
   sell_pct_of_remaining?: number | null
 }
 
-type SellTrade = {
-  price: number
-  quantity: number
-  trade_time: string
-}
-
 type ActiveBuyPlanner = {
   id: string
   top_price: number | null
@@ -50,6 +45,9 @@ type ActiveBuyPlanner = {
   started_at: string | null
   is_active: boolean | null
 }
+
+// Mirror buy “near target counts” behavior
+const SELL_TOLERANCE = 0.03 // 3%
 
 export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
@@ -98,7 +96,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
   )
 
   // Sell trades (for progress)
-  const { data: sells, mutate: mutateSells } = useSWR<SellTrade[]>(
+  const { data: sells, mutate: mutateSells } = useSWR<SellTradeType[]>(
     user && planner ? ['/sell-planner/sells', planner.id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -181,7 +179,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     const blvls: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     if (!blvls.length || !buys.length) return 0
 
-    const fills = computeBuyFills(blvls, buys, 0) // strict
+    const fills = computeBuyFills(blvls, buys, 0)
 
     const sumUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
     const sumTokens = blvls.reduce((acc, lv, i) => {
@@ -214,22 +212,35 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     })
   }, [levels, baseline, planner?.is_active, planner?.avg_lock_price])
 
-  // Token progress per row (unchanged); keep missingTokens for display.
-  const view = useMemo(() => {
-    const totalSoldTokens = (sells ?? []).reduce((a, s) => a + s.quantity, 0)
-    let remaining = totalSoldTokens
+  // Waterfall allocation for SELL progress with 3% tolerance
+  const sellFill = useMemo(() => {
+    if (!rows.length || !(sells?.length)) {
+      return {
+        allocatedTokens: rows.map(() => 0),
+        fillPct: rows.map(() => 0),
+        allocatedUsd: rows.map(() => 0),
+        offPlanTokens: 0,
+        offPlanUsd: 0,
+      }
+    }
+    const lvls = rows.map(r => ({
+      target_price: r.targetPrice,
+      planned_tokens: r.plannedTokens,
+    }))
+    return computeSellFills(lvls, sells, SELL_TOLERANCE)
+  }, [rows, sells])
 
-    return rows.map(row => {
-      const fillTokens = Math.max(0, Math.min(row.plannedTokens, remaining))
-      remaining -= fillTokens
-      const pct = row.plannedTokens > 0 ? (fillTokens / row.plannedTokens) : 0
+  // Build view for UI (unchanged layout)
+  const view = useMemo(() => {
+    return rows.map((row, i) => {
+      const fillTokens = Number(sellFill.allocatedTokens[i] ?? 0)
+      const pct = row.plannedTokens > 0 ? Math.min(1, fillTokens / row.plannedTokens) : 0
       const plannedUsd = row.plannedTokens * row.targetPrice
       const fillUsd = fillTokens * row.targetPrice
-      const missingUsd = Math.max(0, plannedUsd - fillUsd)
       const missingTokens = Math.max(0, row.plannedTokens - fillTokens)
-      return { ...row, fillTokens, pct, plannedUsd, fillUsd, missingUsd, missingTokens }
+      return { ...row, fillTokens, pct, plannedUsd, fillUsd, missingTokens }
     })
-  }, [rows, sells])
+  }, [rows, sellFill])
 
   // Realtime (unchanged)
   useEffect(() => {
@@ -275,7 +286,6 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     [view]
   )
 
-  // ===== UI (match Buy ladder spacing & % label) =====
   if (!planner) {
     return (
       <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
@@ -313,8 +323,6 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
           </thead>
           <tbody>
             {view.map(row => {
-              // keep touch calc (no functional change)
-              const _hot = isLevelTouched('sell', row.targetPrice, lastPrice ?? null, livePrice ?? null)
               const pct = row.pct
               return (
                 <tr key={row.level} className="border-t border-slate-800/40 align-middle">

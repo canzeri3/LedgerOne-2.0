@@ -1,178 +1,227 @@
+// src/components/planner/SellPlannerHistory.tsx
 'use client'
 
-import { useEffect } from 'react'
+import { useMemo } from 'react'
 import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import { useLivePrice } from '@/lib/useLivePrice'
-import { isLevelTouched } from '@/lib/priceTouch'
 import ProgressBar from '@/components/common/ProgressBar'
+import {
+  computeSellFills,
+  type SellTrade as SellTradeType,
+} from '@/lib/planner'
 
-type Planner = {
+type FrozenSellPlanner = {
   id: string
+  user_id: string
+  coingecko_id: string
+  is_active: boolean
+  avg_lock_price: number | null
   created_at: string
   frozen_at: string | null
-  avg_lock_price: number | null
 }
 
-type Level = { level: number; price: number; sell_tokens: number | null }
-type SellTrade = { quantity: number }
+type SellLevelRow = {
+  level: number
+  price: number
+  sell_tokens: number | null
+}
+
+const SELL_TOLERANCE = 0.03 // 3%
 
 export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
-  const { price: livePrice, lastPrice } = useLivePrice(coingeckoId, 15000)
 
-  const {
-    data: planners,
-    mutate: mutatePlanners
-  } = useSWR<Planner[]>(
-    user ? ['/sell-planners/frozen', user.id, coingeckoId] : null,
+  const { data: planners } = useSWR<FrozenSellPlanner[]>(
+    user ? ['/sell-history/planners', user.id, coingeckoId] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('sell_planners')
-        .select('id,created_at,frozen_at,avg_lock_price,user_id,coingecko_id,is_active')
+        .select('id,user_id,coingecko_id,is_active,avg_lock_price,created_at,frozen_at')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
-        .eq('is_active', false)
+        .neq('is_active', true)
         .order('created_at', { ascending: false })
       if (error) throw error
       return data ?? []
     },
-    { revalidateOnFocus: false, dedupingInterval: 15000 }
+    { revalidateOnFocus: false, dedupingInterval: 20000 }
   )
 
-  // 🔄 Realtime update when new planner is frozen/created
-  useEffect(() => {
-    if (!user) return
-    const ch = supabaseBrowser
-      .channel(`sell_planner_hist_${user.id}_${coingeckoId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_planners' }, (payload) => {
-        const row = (payload.new ?? payload.old) as any
-        if (row?.user_id === user.id && row?.coingecko_id === coingeckoId) {
-          mutatePlanners()
-        }
-      })
-      .subscribe()
-    return () => { supabaseBrowser.removeChannel(ch) }
-  }, [user?.id, coingeckoId, mutatePlanners])
+  const plannerIds = useMemo(() => (planners ?? []).map(p => p.id), [planners])
 
-  if (!planners || planners.length === 0) return null
-
-  return (
-    <div className="space-y-4">
-      {planners.map(p => <HistoryCard key={p.id} coingeckoId={coingeckoId} planner={p} livePrice={livePrice} lastPrice={lastPrice} />)}
-    </div>
-  )
-}
-
-function HistoryCard({ coingeckoId, planner, livePrice, lastPrice }:{
-  coingeckoId: string, planner: Planner, livePrice: number | null, lastPrice: number | null
-}) {
-  const { user } = useUser()
-
-  const {
-    data: levels,
-    mutate: mutateLevels
-  } = useSWR<Level[]>(
-    user ? ['/sell-levels/frozen', planner.id] : null,
+  const { data: allLevels } = useSWR<SellLevelRow[]>(
+    user && plannerIds.length ? ['/sell-history/levels', ...plannerIds] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('sell_levels')
-        .select('level,price,sell_tokens,user_id,coingecko_id,sell_planner_id')
+        .select('level,price,sell_tokens,sell_planner_id,user_id,coingecko_id')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
-        .eq('sell_planner_id', planner.id)
+        .in('sell_planner_id', plannerIds)
         .order('level', { ascending: true })
       if (error) throw error
-      return (data ?? []).map(l => ({ level: (l as any).level, price: Number((l as any).price), sell_tokens: (l as any).sell_tokens ?? null }))
+      return (data ?? []).map(r => ({
+        level: (r as any).level,
+        price: Number((r as any).price),
+        sell_tokens: (r as any).sell_tokens ?? null,
+        sell_planner_id: (r as any).sell_planner_id,
+      })) as any
     },
-    { revalidateOnFocus: false, dedupingInterval: 15000 }
+    { revalidateOnFocus: false, dedupingInterval: 20000 }
   )
 
-  const {
-    data: sells,
-    mutate: mutateSells
-  } = useSWR<SellTrade[]>(
-    user ? ['/sell-levels/frozen-sells', planner.id] : null,
+  const { data: allSells } = useSWR<SellTradeType[] & { sell_planner_id?: string }[]>(
+    user && plannerIds.length ? ['/sell-history/sells', ...plannerIds] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('trades')
-        .select('quantity,user_id,coingecko_id,sell_planner_id,side')
+        .select('price,quantity,trade_time,side,sell_planner_id,user_id,coingecko_id')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
         .eq('side', 'sell')
-        .eq('sell_planner_id', planner.id)
+        .in('sell_planner_id', plannerIds)
+        .order('trade_time', { ascending: true })
       if (error) throw error
-      return (data ?? []).map(r => ({ quantity: Number((r as any).quantity) }))
+      return (data ?? []).map(t => ({
+        price: Number((t as any).price),
+        quantity: Number((t as any).quantity),
+        trade_time: (t as any).trade_time,
+        sell_planner_id: (t as any).sell_planner_id,
+      }))
     },
-    { revalidateOnFocus: false, dedupingInterval: 15000 }
+    { revalidateOnFocus: false, dedupingInterval: 20000 }
   )
 
-  // 🔄 Realtime for levels/sells of this frozen planner
-  useEffect(() => {
-    if (!user) return
-    const ch = supabaseBrowser
-      .channel(`sell_hist_levels_${planner.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_levels' }, (payload) => {
-        const row = (payload.new ?? payload.old) as any
-        if (row?.user_id === user.id && row?.coingecko_id === coingeckoId && row?.sell_planner_id === planner.id) {
-          mutateLevels()
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trades' }, (payload) => {
-        const row = (payload.new ?? payload.old) as any
-        if (row?.user_id === user.id && row?.coingecko_id === coingeckoId && row?.sell_planner_id === planner.id && row?.side === 'sell') {
-          mutateSells()
-        }
-      })
-      .subscribe()
-    return () => { supabaseBrowser.removeChannel(ch) }
-  }, [user?.id, coingeckoId, planner.id, mutateLevels, mutateSells])
+  const cards = useMemo(() => {
+    if (!planners?.length) return []
+    const levelsByPlanner = new Map<string, SellLevelRow[]>()
+    const sellsByPlanner = new Map<string, SellTradeType[]>()
 
-  // Waterfall view
-  const view = (() => {
-    const planned = (levels ?? []).map(l => ({ level: l.level, price: l.price, plannedTokens: Math.max(0, Number(l.sell_tokens ?? 0)) }))
-    const totalSoldTokens = (sells ?? []).reduce((a, s) => a + s.quantity, 0)
-    let remaining = totalSoldTokens
-    return planned.map(row => {
-      const fill = Math.max(0, Math.min(row.plannedTokens, remaining))
-      remaining -= fill
-      const pct = row.plannedTokens > 0 ? (fill / row.plannedTokens) : 0
-      return { ...row, fillTokens: fill, pct, plannedUsd: row.plannedTokens * row.price, fillUsd: fill * row.price }
+    ;(allLevels ?? []).forEach((r: any) => {
+      const pid = r.sell_planner_id as string
+      if (!levelsByPlanner.has(pid)) levelsByPlanner.set(pid, [])
+      levelsByPlanner.get(pid)!.push({
+        level: r.level,
+        price: r.price,
+        sell_tokens: r.sell_tokens,
+      })
     })
-  })()
+
+    ;(allSells ?? []).forEach((t: any) => {
+      const pid = t.sell_planner_id as string
+      if (!sellsByPlanner.has(pid)) sellsByPlanner.set(pid, [])
+      sellsByPlanner.get(pid)!.push({
+        price: t.price,
+        quantity: t.quantity,
+        trade_time: t.trade_time,
+      })
+    })
+
+    return planners.map(p => {
+      const rows = (levelsByPlanner.get(p.id) ?? []).sort((a, b) => a.level - b.level)
+      const sells = (sellsByPlanner.get(p.id) ?? [])
+      const lvlsForFill = rows.map(r => ({
+        target_price: Number(r.price), // frozen ladder uses stored price
+        planned_tokens: Math.max(0, Number(r.sell_tokens ?? 0)),
+      }))
+
+      const fill = computeSellFills(lvlsForFill, sells, SELL_TOLERANCE)
+
+      const view = rows.map((r, i) => {
+        const plannedTokens = Math.max(0, Number(r.sell_tokens ?? 0))
+        const targetPrice = Number(r.price)
+        const fillTokens = Number(fill.allocatedTokens[i] ?? 0)
+        const pct = plannedTokens > 0 ? Math.min(1, fillTokens / plannedTokens) : 0
+        const plannedUsd = plannedTokens * targetPrice
+        const fillUsd = fillTokens * targetPrice
+        const missingTokens = Math.max(0, plannedTokens - fillTokens)
+        return {
+          level: r.level,
+          targetPrice,
+          plannedTokens,
+          plannedUsd,
+          fillTokens,
+          fillUsd,
+          missingTokens,
+          pct,
+        }
+      })
+
+      const totals = {
+        plannedTokens: view.reduce((s, r) => s + r.plannedTokens, 0),
+        plannedUsd: view.reduce((s, r) => s + r.plannedUsd, 0),
+        missingTokens: view.reduce((s, r) => s + r.missingTokens, 0),
+      }
+
+      return { planner: p, view, totals }
+    })
+  }, [planners, allLevels, allSells])
+
+  if (!planners?.length) {
+    return (
+      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+        <div className="text-base text-slate-300 mb-1">Sell Planner History</div>
+        <div className="text-sm text-slate-500">No frozen planners yet.</div>
+      </div>
+    )
+  }
 
   return (
-    <div className="rounded-2xl border border-[#081427] p-4">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="text-sm text-slate-300">Frozen Sell Planner</div>
-        <div className="text-xs text-slate-400">
-          {(planner.avg_lock_price != null) ? `Avg lock: ${fmtCurrency(Number(planner.avg_lock_price))}` : 'Avg lock: —'} ·
-          {' '}Frozen at: {planner.frozen_at ? new Date(planner.frozen_at).toLocaleString() : '—'}
+    <div className="space-y-6">
+      {cards.map(({ planner, view, totals }) => (
+        <div key={planner.id} className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-base text-slate-300">Sell Planner (Frozen)</div>
+            <div className="text-sm text-slate-400">
+              Avg lock: {planner.avg_lock_price ? fmtCurrency(Number(planner.avg_lock_price)) : '—'}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full table-fixed text-left text-sm text-slate-300">
+              <thead className="text-slate-400">
+                <tr>
+                  <th className="w-1/6 px-3 py-2">Lvl</th>
+                  <th className="w-1/6 px-3 py-2">Target Price</th>
+                  <th className="w-1/6 px-3 py-2">Planned Tokens</th>
+                  <th className="w-1/6 px-3 py-2">Planned USD</th>
+                  <th className="w-1/6 px-3 py-2">Missing Tokens</th>
+                  <th className="w-1/6 px-3 py-2 text-right">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.map(row => (
+                  <tr key={row.level} className="border-t border-slate-800/40 align-middle">
+                    <td className="px-3 py-2">{row.level}</td>
+                    <td className="px-3 py-2">{fmtCurrency(row.targetPrice)}</td>
+                    <td className="px-3 py-2">{row.plannedTokens.toFixed(6)}</td>
+                    <td className="px-3 py-2">{fmtCurrency(row.plannedUsd)}</td>
+                    <td className="px-3 py-2">{(row.plannedTokens - row.fillTokens).toFixed(6)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end items-center gap-2">
+                        <div className="w-40"><ProgressBar pct={row.pct} /></div>
+                        <span className="w-10 text-right tabular-nums">{Math.round(row.pct * 100)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-800/40">
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 font-medium">Totals</td>
+                  <td className="px-3 py-2">{totals.plannedTokens.toFixed(6)}</td>
+                  <td className="px-3 py-2">{fmtCurrency(totals.plannedUsd)}</td>
+                  <td className="px-3 py-2">{(totals.plannedTokens - view.reduce((s,r)=>s+r.fillTokens,0)).toFixed(6)}</td>
+                  <td className="px-3 py-2 text-right text-slate-400">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
-      {(levels?.length ?? 0) === 0 ? (
-        <div className="text-xs text-slate-500">No ladder levels saved for this planner.</div>
-      ) : (
-        <div className="space-y-3">
-          {view.map(row => {
-            const hot = isLevelTouched('sell', row.price, lastPrice ?? null, livePrice ?? null)
-            return (
-              <div key={row.level} className="rounded-lg border border-[#0b1830] p-3">
-                <div className={`flex items-center justify-between text-xs mb-1 ${hot ? 'text-yellow-300' : 'text-slate-300'}`}>
-                  <div>L{row.level} · target {fmtCurrency(row.price)}</div>
-                  <div>{row.fillTokens.toFixed(6)} / {row.plannedTokens.toFixed(6)} tokens</div>
-                </div>
-                <ProgressBar pct={row.pct} text={`${(row.pct*100).toFixed(1)}% filled`} />
-                <div className="mt-1 text-[10px] text-slate-400">
-                  ${fmtCurrency(row.fillUsd)} / ${fmtCurrency(row.plannedUsd)} at target price
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      ))}
     </div>
   )
 }
