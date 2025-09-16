@@ -8,6 +8,7 @@ import SellPlannerInputs from '@/components/planner/SellPlannerInputs'
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
 import SellPlannerLadder from '@/components/planner/SellPlannerLadder'
 import SellPlannerHistory from '@/components/planner/SellPlannerHistory'
+import SellPlannerCombinedCard from '@/components/planner/SellPlannerCombinedCard'
 
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
@@ -84,13 +85,13 @@ export default function PlannerPage() {
             <SellPlannerInputs coingeckoId={coingeckoId} />
           </Card>
 
-          <Card title="Sell Planner — Ladder">
-            <SellPlannerLadder coingeckoId={coingeckoId} />
-          </Card>
-
-          <Card title="Sell Planner History (Frozen)">
-            <SellPlannerHistory coingeckoId={coingeckoId} />
-          </Card>
+          {/* COMBINED: Active Sell Ladder + History with version selector */}
+          <SellPlannerCombinedCard
+            title="Sell Planner"
+            ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
+            HistoryView={<SellPlannerHistory coingeckoId={coingeckoId} />}
+            newestFirst={true}  // SellPlannerHistory sorts by created_at DESC (newest first)
+          />
         </>
       )}
     </div>
