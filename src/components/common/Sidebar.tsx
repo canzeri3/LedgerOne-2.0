@@ -1,10 +1,20 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import useSWR from 'swr'
-import { ChevronRight, Search, Star } from 'lucide-react'
+import {
+  ChevronRight,
+  Search,
+  Star,
+  LayoutDashboard,
+  Target,
+  Wallet,
+  ScrollText,
+  FileSpreadsheet,
+  Coins as CoinsIcon,
+} from 'lucide-react'
 import { useFavorites } from '@/lib/useFavorites'
 
 type Coin = {
@@ -14,32 +24,45 @@ type Coin = {
   market_cap_rank?: number | null
 }
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({
+  href,
+  label,
+  icon,
+}: {
+  href: string
+  label: string
+  icon: ReactNode
+}) {
   const pathname = usePathname()
   const active = pathname === href
   return (
     <Link
       href={href}
       className={[
-        'block rounded-lg px-3 py-2 hover:bg-[#0a162c]',
-        active ? 'bg-[#0a162c] text-white' : 'text-slate-200'
+        'flex items-center gap-2 rounded-lg px-3 py-2 transition-colors',
+        'hover:bg-white/10',               // stronger hover contrast
+        active ? 'bg-white/15 text-white' : 'text-slate-200',
       ].join(' ')}
     >
-      {label}
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
     </Link>
   )
 }
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const [coinsOpen, setCoinsOpen] = useState<boolean>(pathname?.startsWith('/coins') ?? false)
+  const [coinsOpen, setCoinsOpen] = useState<boolean>(
+    pathname?.startsWith('/coins') ?? false
+  )
   const [query, setQuery] = useState('')
 
   const { data: coins } = useSWR<Coin[]>('/api/coins', fetcher)
   const { set: favSet } = useFavorites()
 
+  // Keep existing market-cap sort logic (top 50)
   const topCoins: Coin[] = useMemo(() => {
     const list = Array.isArray(coins) ? coins.slice() : []
     list.sort((a, b) => {
@@ -50,115 +73,153 @@ export default function Sidebar() {
     return list.slice(0, 50)
   }, [coins])
 
-  const favorites: Coin[] = useMemo(() => {
-    if (!coins) return []
-    return coins.filter(c => favSet.has(c.coingecko_id))
-      .sort((a, b) => (a.symbol ?? '').localeCompare(b.symbol ?? ''))
-  }, [coins, favSet])
-
+  // Search filter
   const filteredCoins = useMemo(() => {
     const q = query.trim().toLowerCase()
     const src = topCoins
     if (!q) return src
-    return src.filter(c =>
-      c.symbol?.toLowerCase().includes(q) ||
-      c.name?.toLowerCase().includes(q) ||
-      c.coingecko_id?.toLowerCase().includes(q)
+    return src.filter(
+      (c) =>
+        c.symbol?.toLowerCase().includes(q) ||
+        c.name?.toLowerCase().includes(q) ||
+        c.coingecko_id?.toLowerCase().includes(q)
     )
   }, [query, topCoins])
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Brand — pinned to the top-left of the sidebar */}
-      <div className="sticky top-0 z-10 bg-[#0f1b34] px-3 py-3 border-b border-[#0b1830]">
-        <div className="text-lg font-semibold tracking-wide text-slate-100">LedgerOne 2.0</div>
-        <div className="text-[10px] uppercase tracking-wider text-slate-400">portfolio & planner</div>
+    // Sidebar scrolls independently if content exceeds viewport
+    <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto">
+      {/* Title (less bold + smaller subtitle, updated dot) */}
+      <div className="px-3 pt-4 pb-3 border-b" style={{ borderColor: '#0b1830' }}>
+        <div className="leading-tight text-left">
+          <div className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-100">
+            LedgerOne
+          </div>
+          <div className="text-xs md:text-sm text-slate-300 -mt-0.5">
+            portfolio · planner
+          </div>
+        </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-3">
+      <nav className="px-2 py-3">
+        {/* Primary nav with icons on the left */}
         <ul className="space-y-1">
-          <li><NavLink href="/" label="Dashboard" /></li>
-          <li><NavLink href="/planner" label="Buy/Sell Planner" /></li>
-          <li><NavLink href="/portfolio" label="Portfolio" /></li>
-          <li><NavLink href="/audit" label="Audit Log" /></li>
-          <li><NavLink href="/csv" label="CSV Export / Import" /></li>
+          <li>
+            <NavLink
+              href="/"
+              label="Dashboard"
+              icon={<LayoutDashboard className="h-4 w-4 opacity-80" />}
+            />
+          </li>
+          <li>
+            <NavLink
+              href="/planner"
+              label="Buy/Sell Planner"
+              icon={<Target className="h-4 w-4 opacity-80" />}
+            />
+          </li>
+          <li>
+            <NavLink
+              href="/portfolio"
+              label="Portfolio"
+              icon={<Wallet className="h-4 w-4 opacity-80" />}
+            />
+          </li>
+          <li>
+            <NavLink
+              href="/audit"
+              label="Audit Log"
+              icon={<ScrollText className="h-4 w-4 opacity-80" />}
+            />
+          </li>
+          <li>
+            <NavLink
+              href="/csv"
+              label="CSV Export / Import"
+              icon={<FileSpreadsheet className="h-4 w-4 opacity-80" />}
+            />
+          </li>
         </ul>
-
-        {/* Favorites quick links */}
-        <div className="mt-5">
-          <div className="flex items-center gap-2 text-slate-300 px-3 mb-2">
-            <Star className="h-4 w-4 text-amber-300" />
-            <span className="text-sm font-medium">Favorites</span>
-          </div>
-          {favorites.length === 0 ? (
-            <div className="px-3 text-xs text-slate-500">Star a coin on its page to pin it here.</div>
-          ) : (
-            <ul className="space-y-1 px-1">
-              {favorites.map(c => (
-                <li key={c.coingecko_id}>
-                  <Link
-                    href={`/coins/${c.coingecko_id}`}
-                    className={[
-                      'block rounded-md px-2 py-1.5 text-sm hover:bg-[#0a162c]',
-                      pathname === `/coins/${c.coingecko_id}` ? 'bg-[#0a162c] text-white' : 'text-slate-200'
-                    ].join(' ')}
-                  >
-                    <span className="font-medium">{c.symbol?.toUpperCase() ?? c.coingecko_id}</span>
-                    <span className="ml-2 text-slate-400">{c.name}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
 
         {/* Coins dropdown */}
         <div className="mt-6">
           <button
             type="button"
-            onClick={() => setCoinsOpen(v => !v)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-200 hover:bg-[#0a162c]"
+            onClick={() => setCoinsOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-200 transition-colors hover:bg-white/10"
             aria-expanded={coinsOpen}
             aria-controls="coins-panel"
           >
-            <span className="font-medium">Coins</span>
-            <ChevronRight className={`h-4 w-4 transition-transform ${coinsOpen ? 'rotate-90' : ''}`} />
+            <span className="flex items-center gap-2">
+              <CoinsIcon className="h-4 w-4 opacity-80" />
+              <span className="font-medium">Coins</span>
+            </span>
+            <ChevronRight
+              className={`h-4 w-4 transition-transform ${coinsOpen ? 'rotate-90' : ''}`}
+            />
           </button>
 
           {coinsOpen && (
             <div id="coins-panel" className="mt-2 px-2">
               {/* Search input */}
               <div className="relative mb-2">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-300" />
                 <input
                   value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  placeholder="Search coin…"
-                  className="w-full rounded-md bg-[#0a162c] pl-8 pr-3 py-2 text-sm text-slate-200 placeholder:text-slate-400 border border-[#0b1830] focus:outline-none focus:ring-1 focus:ring-[#18305f]"
+                  onChange={(e) => setQuery(e.target.value)}
+                  className={[
+                    'w-full rounded-md pl-8 pr-2 py-2 text-sm text-slate-100 placeholder:text-slate-400',
+                    'bg-[#0a162c]/60',                      // keep subtle field bg
+                    'border border-blue-500',               // always-visible blue border
+                    'focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400',
+                    'transition-colors',
+                  ].join(' ')}
+                  placeholder="Search coins..."
                 />
               </div>
 
-              {/* Coin list */}
-              <ul className="space-y-1 max-h-72 overflow-auto pr-1">
-                {filteredCoins.map(c => (
-                  <li key={c.coingecko_id}>
-                    <Link
-                      href={`/coins/${c.coingecko_id}`}
-                      className={[
-                        'block rounded-md px-2 py-1.5 text-sm hover:bg-[#0a162c]',
-                        pathname === `/coins/${c.coingecko_id}` ? 'bg-[#0a162c] text-white' : 'text-slate-200'
-                      ].join(' ')}
-                    >
-                      <span className="font-medium">{c.symbol?.toUpperCase() ?? c.coingecko_id}</span>
-                      <span className="ml-2 text-slate-400">{c.name}</span>
-                      {typeof c.market_cap_rank === 'number' && (
-                        <span className="ml-2 rounded-full border border-[#0b1830] px-1.5 py-0.5 text-[10px] text-slate-400 align-middle">
-                          #{c.market_cap_rank}
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                ))}
+              {/* Unified coins list (UI-only reordering: favourites float to the top) */}
+              <ul className="flex flex-col gap-1 max-h-72 overflow-auto pr-1">
+                {filteredCoins.map((c) => {
+                  const isFav = favSet?.has?.(c.coingecko_id)
+                  return (
+                    <li key={c.coingecko_id} style={{ order: isFav ? -1 : 0 }}>
+                      <Link
+                        href={`/coins/${c.coingecko_id}`}
+                        className={[
+                          'flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors',
+                          'hover:bg-white/10', // stronger hover
+                          pathname === `/coins/${c.coingecko_id}`
+                            ? 'bg-white/15 text-white'
+                            : 'text-slate-200',
+                        ].join(' ')}
+                      >
+                        <div className="min-w-0">
+                          <span className="font-medium">
+                            {c.symbol?.toUpperCase() ?? c.coingecko_id}
+                          </span>
+                          <span className="ml-2 text-slate-400 truncate">{c.name}</span>
+                          {typeof c.market_cap_rank === 'number' && (
+                            <span className="ml-2 rounded-full border border-[#0b1830] px-1.5 py-0.5 text-[10px] text-slate-400 align-middle">
+                              #{c.market_cap_rank}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Star only on favourited coins (no empty star for others) */}
+                        {isFav && (
+                          <span className="shrink-0 pl-2">
+                            <Star
+                              className="h-4 w-4 text-yellow-400"
+                              fill="currentColor"
+                              strokeWidth={0}
+                            />
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
                 {filteredCoins.length === 0 && (
                   <li className="text-xs text-slate-400 px-2 py-1.5">No matches.</li>
                 )}
@@ -168,7 +229,10 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      <div className="px-3 py-3 text-[10px] text-slate-500 border-t border-[#0b1830]">
+      <div
+        className="mt-auto px-3 py-3 text-[10px] text-slate-500 border-t"
+        style={{ borderColor: '#0b1830' }}
+      >
         v1.0 • deep blue theme
       </div>
     </div>
