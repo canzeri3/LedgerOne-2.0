@@ -1,3 +1,4 @@
+// src/components/planner/SellPlannerLadder.tsx
 'use client'
 
 import { useEffect, useMemo } from 'react'
@@ -54,7 +55,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
   const { user } = useUser()
   const { price: livePrice, lastPrice } = useLivePrice(coingeckoId, 15000)
 
-  // ── Active Sell Planner
+  // Active Sell Planner
   const { data: planner, mutate: mutatePlanner } = useSWR<SellPlanner | null>(
     user ? ['/sell-planner/active', user.id, coingeckoId] : null,
     async () => {
@@ -73,7 +74,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // ── Sell Levels (we’ll reuse rise_pct & sizing; price may be overridden dynamically)
+  // Sell Levels
   const { data: levels, mutate: mutateLevels } = useSWR<SellLevel[]>(
     user && planner ? ['/sell-levels', planner.id] : null,
     async () => {
@@ -96,7 +97,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: true, dedupingInterval: 8000 }
   )
 
-  // ── Sell trades (for the token-progress bars you already show)
+  // Sell trades (for progress)
   const { data: sells, mutate: mutateSells } = useSWR<SellTrade[]>(
     user && planner ? ['/sell-planner/sells', planner.id] : null,
     async () => {
@@ -118,7 +119,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // ── Active Buy Planner (to compute live baseline from ON-PLAN buys)
+  // Active Buy Planner (for live baseline)
   const { data: buyPlanner } = useSWR<ActiveBuyPlanner | null>(
     user ? ['/buy-planner/for-sell', user.id, coingeckoId] : null,
     async () => {
@@ -139,7 +140,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // ── Buy trades for the active Buy Planner (to keep baseline live)
+  // Buy trades (for live baseline)
   const { data: buysRaw, mutate: mutateBuys } = useSWR<any[] | null>(
     user && buyPlanner?.id
       ? ['/trades/buys/by-planner-for-sell', user.id, coingeckoId, buyPlanner.id]
@@ -170,7 +171,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     [buysRaw]
   )
 
-  // ── Live baseline (strict on-plan only). If locked, we'll ignore this later.
+  // Live baseline (strict on-plan avg). Logic unchanged.
   const liveBaseline = useMemo(() => {
     if (!buyPlanner) return 0
     const top = Number(buyPlanner.top_price || 0)
@@ -180,8 +181,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     const blvls: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     if (!blvls.length || !buys.length) return 0
 
-    // STRICT: tolerance=0 → buying above a level never counts as on-plan
-    const fills = computeBuyFills(blvls, buys, 0)
+    const fills = computeBuyFills(blvls, buys, 0) // strict
 
     const sumUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
     const sumTokens = blvls.reduce((acc, lv, i) => {
@@ -192,13 +192,13 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return sumTokens > 0 ? (sumUsd / sumTokens) : 0
   }, [buyPlanner?.id, buys])
 
-  // ── Choose baseline: locked avg if present, else live baseline
+  // Choose baseline: locked avg if present, else live baseline (unchanged)
   const baseline = useMemo(() => {
     const locked = Number(planner?.avg_lock_price ?? 0)
     return locked > 0 ? locked : Number(liveBaseline || 0)
   }, [planner?.avg_lock_price, liveBaseline])
 
-  // ── Build the rendered ladder rows (dynamic target price if active & unlocked)
+  // Rows with target price (dynamic when active & unlocked). Logic unchanged.
   const rows = useMemo(() => {
     const lvl = levels ?? []
     const activeUnlocked = !!planner?.is_active && !planner?.avg_lock_price
@@ -214,7 +214,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     })
   }, [levels, baseline, planner?.is_active, planner?.avg_lock_price])
 
-  // ── Token-based “fill” progress (unchanged logic; USD is just for display)
+  // Token progress per row (unchanged); keep missingTokens for display.
   const view = useMemo(() => {
     const totalSoldTokens = (sells ?? []).reduce((a, s) => a + s.quantity, 0)
     let remaining = totalSoldTokens
@@ -225,11 +225,13 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       const pct = row.plannedTokens > 0 ? (fillTokens / row.plannedTokens) : 0
       const plannedUsd = row.plannedTokens * row.targetPrice
       const fillUsd = fillTokens * row.targetPrice
-      return { ...row, fillTokens, pct, plannedUsd, fillUsd }
+      const missingUsd = Math.max(0, plannedUsd - fillUsd)
+      const missingTokens = Math.max(0, row.plannedTokens - fillTokens)
+      return { ...row, fillTokens, pct, plannedUsd, fillUsd, missingUsd, missingTokens }
     })
   }, [rows, sells])
 
-  // ── Realtime subscriptions (add BUY trades so baseline updates live)
+  // Realtime (unchanged)
   useEffect(() => {
     if (!user) return
     const ch = supabaseBrowser
@@ -259,55 +261,94 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return () => { supabaseBrowser.removeChannel(ch) }
   }, [user?.id, coingeckoId, mutatePlanner, mutateLevels, mutateSells, mutateBuys])
 
-  // ── Render
+  // Totals for footer (UI only)
+  const totalPlannedTokens = useMemo(
+    () => view.reduce((s, r) => s + r.plannedTokens, 0),
+    [view]
+  )
+  const totalPlannedUsd = useMemo(
+    () => view.reduce((s, r) => s + r.plannedUsd, 0),
+    [view]
+  )
+  const totalMissingTokens = useMemo(
+    () => view.reduce((s, r) => s + r.missingTokens, 0),
+    [view]
+  )
+
+  // ===== UI (match Buy ladder spacing & % label) =====
   if (!planner) {
     return (
-      <div className="rounded-2xl border border-[#081427] p-4">
-        <div className="text-sm text-slate-300 mb-1">Sell Planner</div>
-        <div className="text-xs text-slate-500">No active Sell Planner for this coin.</div>
+      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+        <div className="text-base text-slate-300 mb-1">Sell Planner</div>
+        <div className="text-sm text-slate-500">No active Sell Planner for this coin.</div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-[#081427] p-4">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="text-sm text-slate-300">Sell Planner Ladder</div>
-        <div className="text-xs text-slate-400">
-          {planner.avg_lock_price != null && planner.avg_lock_price > 0
-            ? `Avg lock: ${fmtCurrency(Number(planner.avg_lock_price))}`
-            : baseline > 0
-              ? <>Avg (live): {fmtCurrency(baseline)}</>
-              : 'Avg lock: —'}
+    <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+      <div className="flex items-baseline justify-between">
+        <div className="text-base text-slate-300">Sell Planner Levels</div>
+        <div className="text-sm text-slate-400">
+          Baseline: {baseline > 0 ? fmtCurrency(baseline) : '—'}
+          {planner.avg_lock_price ? (
+            <span className="ml-1 text-amber-300/80 text-[11px]">(locked)</span>
+          ) : baseline > 0 ? (
+            <span className="ml-1 text-green-300/80 text-[11px]">(live)</span>
+          ) : null}
         </div>
       </div>
 
-      {(rows.length === 0) ? (
-        <div className="text-xs text-slate-500">No ladder levels saved for this planner.</div>
-      ) : (
-        <div className="space-y-3">
-          {view.map(row => {
-            const hot = isLevelTouched('sell', row.targetPrice, lastPrice ?? null, livePrice ?? null)
-            return (
-              <div key={row.level} className="rounded-lg border border-[#0b1830] p-3">
-                <div className={`flex items-center justify-between text-xs mb-1 ${hot ? 'text-yellow-300' : 'text-slate-300'}`}>
-                  <div>
-                    L{row.level} · target {fmtCurrency(row.targetPrice)}
-                    {!planner.avg_lock_price && baseline > 0 && (
-                      <span className="ml-1 text-[10px] text-slate-500">(dynamic)</span>
-                    )}
-                  </div>
-                  <div>{row.fillTokens.toFixed(6)} / {row.plannedTokens.toFixed(6)} tokens</div>
-                </div>
-                <ProgressBar pct={row.pct} text={`${(row.pct*100).toFixed(1)}% filled`} />
-                <div className="mt-1 text-[10px] text-slate-400">
-                  ${fmtCurrency(row.fillUsd)} / ${fmtCurrency(row.plannedUsd)} at target price
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="mt-3 overflow-x-auto">
+        <table className="min-w-full table-fixed text-left text-sm text-slate-300">
+          <thead className="text-slate-400">
+            <tr>
+              <th className="w-1/6 px-3 py-2">Lvl</th>
+              <th className="w-1/6 px-3 py-2">Target Price</th>
+              <th className="w-1/6 px-3 py-2">Planned Tokens</th>
+              <th className="w-1/6 px-3 py-2">Planned USD</th>
+              <th className="w-1/6 px-3 py-2">Missing Tokens</th>
+              <th className="w-1/6 px-3 py-2 text-right">Progress</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.map(row => {
+              // keep touch calc (no functional change)
+              const _hot = isLevelTouched('sell', row.targetPrice, lastPrice ?? null, livePrice ?? null)
+              const pct = row.pct
+              return (
+                <tr key={row.level} className="border-t border-slate-800/40 align-middle">
+                  <td className="px-3 py-2">{row.level}</td>
+                  <td className="px-3 py-2">{fmtCurrency(row.targetPrice)}</td>
+                  <td className="px-3 py-2">{row.plannedTokens.toFixed(6)}</td>
+                  <td className="px-3 py-2">{fmtCurrency(row.plannedUsd)}</td>
+                  <td className="px-3 py-2">{row.missingTokens.toFixed(6)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end items-center gap-2">
+                      <div className="w-40">
+                        <ProgressBar pct={pct} />
+                      </div>
+                      <span className="w-10 text-right tabular-nums">
+                        {Math.round(pct * 100)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-slate-800/40">
+              <td className="px-3 py-2" />
+              <td className="px-3 py-2 font-medium">Totals</td>
+              <td className="px-3 py-2">{totalPlannedTokens.toFixed(6)}</td>
+              <td className="px-3 py-2">{fmtCurrency(totalPlannedUsd)}</td>
+              <td className="px-3 py-2">{totalMissingTokens.toFixed(6)}</td>
+              <td className="px-3 py-2 text-right text-slate-400">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   )
 }

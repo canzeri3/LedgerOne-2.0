@@ -1,3 +1,4 @@
+// src/components/planner/BuyPlannerLadder.tsx
 'use client'
 
 import { useMemo } from 'react'
@@ -11,6 +12,7 @@ import {
   type BuyTrade,
 } from '@/lib/planner'
 import { fmtCurrency } from '@/lib/format'
+import ProgressBar from '@/components/common/ProgressBar'
 
 type ActiveBuyPlanner = {
   id: string
@@ -26,7 +28,7 @@ type ActiveBuyPlanner = {
 export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
 
-  // Always call hooks; useSWR can take a null key safely.
+  // Active Buy planner for this coin
   const { data: planner } = useSWR<ActiveBuyPlanner | null>(
     user && coingeckoId ? ['/buy-planner/active-ladder', user.id, coingeckoId] : null,
     async () => {
@@ -47,7 +49,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // Planned levels from planner config (do not use legacy makeLevels)
+  // Build planned levels from planner settings
   const plan: BuyLevel[] = useMemo(() => {
     if (!planner) return []
     const top = Number(planner.top_price || 0)
@@ -91,57 +93,98 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
   // STRICT waterfall: tolerance = 0 → “above a level never counts”
   const fills = useMemo(() => computeBuyFills(plan, buys, 0), [plan, buys])
 
-  // Compute totals BEFORE any return so hooks order is stable.
-  const plannedTotal = useMemo(
+  // Totals (keep hooks before any return)
+  const plannedTotalUsd = useMemo(
     () => plan.reduce((s, lv) => s + (lv.allocation || 0), 0),
     [plan]
   )
 
-  // Render
+  const plannedTotalTokens = useMemo(
+    () => plan.reduce((s, lv) => s + (lv.est_tokens || 0), 0),
+    [plan]
+  )
+
+  // Avg (live): on-plan average buy price = ΣallocatedUSD / ΣtokensFromAllocatedUSD
+  const liveAvgPrice = useMemo(() => {
+    if (!plan.length) return 0
+    const sumUsd = (fills.allocatedUsd ?? []).reduce((s, v) => s + (v || 0), 0)
+    if (sumUsd <= 0) return 0
+    const sumTokens = plan.reduce((acc, lv, i) => {
+      const usd = fills.allocatedUsd[i] ?? 0
+      return acc + (usd > 0 ? usd / lv.price : 0)
+    }, 0)
+    return sumTokens > 0 ? sumUsd / sumTokens : 0
+  }, [plan, fills])
+
   if (!planner) {
     return (
-      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-4">
-        <div className="text-sm text-slate-300 mb-1">Buy Planner</div>
-        <div className="text-xs text-slate-500">No active Buy Planner for this coin.</div>
+      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+        <div className="text-base text-slate-300 mb-1">Buy Planner</div>
+        <div className="text-sm text-slate-500">No active Buy Planner for this coin.</div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-4">
-      <div className="text-sm text-slate-300">Buy Planner Levels</div>
+    <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+      <div className="flex items-baseline justify-between">
+        <div className="text-base text-slate-300">Buy Planner Levels</div>
+        <div className="text-sm text-slate-400">
+          Avg (live): {liveAvgPrice > 0 ? fmtCurrency(liveAvgPrice) : '—'}
+        </div>
+      </div>
 
-      <div className="mt-2 overflow-x-auto">
-        <table className="min-w-full text-left text-xs text-slate-300">
+      <div className="mt-3 overflow-x-auto">
+        <table className="min-w-full table-fixed text-left text-sm text-slate-300">
           <thead className="text-slate-400">
             <tr>
-              <th className="px-2 py-1">Lvl</th>
-              <th className="px-2 py-1">Target Price</th>
-              <th className="px-2 py-1">Planned USD</th>
-              <th className="px-2 py-1">Filled USD</th>
-              <th className="px-2 py-1">Fill %</th>
+              <th className="w-1/6 px-3 py-2">Lvl</th>
+              <th className="w-1/6 px-3 py-2">Target Price</th>
+              <th className="w-1/6 px-3 py-2">Planned Tokens</th>
+              <th className="w-1/6 px-3 py-2">Planned USD</th>
+              <th className="w-1/6 px-3 py-2">Missing USD</th>
+              <th className="w-1/6 px-3 py-2 text-right">Progress</th>
             </tr>
           </thead>
           <tbody>
-            {plan.map((lv, i) => (
-              <tr key={lv.level} className="border-t border-slate-800/40">
-                <td className="px-2 py-1">{lv.level}</td>
-                <td className="px-2 py-1">{fmtCurrency(lv.price)}</td>
-                <td className="px-2 py-1">{fmtCurrency(lv.allocation)}</td>
-                <td className="px-2 py-1">{fmtCurrency(fills.allocatedUsd[i] ?? 0)}</td>
-                <td className="px-2 py-1">
-                  {Math.round((fills.fillPct[i] ?? 0) * 100)}%
-                </td>
-              </tr>
-            ))}
+            {plan.map((lv, i) => {
+              const plannedUsd = lv.allocation ?? 0
+              const filledUsd  = fills.allocatedUsd[i] ?? 0
+              const missingUsd = Math.max(0, plannedUsd - filledUsd)
+              const plannedTokens = lv.est_tokens ?? (lv.price > 0 ? plannedUsd / lv.price : 0)
+              const pct = plannedUsd > 0 ? Math.min(1, filledUsd / plannedUsd) : 0
+
+              return (
+                <tr key={lv.level} className="border-t border-slate-800/40 align-middle">
+                  <td className="px-3 py-2">{lv.level}</td>
+                  <td className="px-3 py-2">{fmtCurrency(lv.price)}</td>
+                  <td className="px-3 py-2">{Number(plannedTokens).toFixed(6)}</td>
+                  <td className="px-3 py-2">{fmtCurrency(plannedUsd)}</td>
+                  <td className="px-3 py-2">{fmtCurrency(missingUsd)}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end items-center gap-3">
+                      <div className="w-48">
+                        <ProgressBar pct={pct} />
+                      </div>
+                      <span className="w-12 text-right tabular-nums">
+                        {Math.round(pct * 100)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t border-slate-800/40">
-              <td className="px-2 py-1" />
-              <td className="px-2 py-1 font-medium">Totals</td>
-              <td className="px-2 py-1">{fmtCurrency(plannedTotal)}</td>
-              <td className="px-2 py-1">{fmtCurrency(fills.allocatedTotal)}</td>
-              <td className="px-2 py-1 text-slate-400">
+              <td className="px-3 py-2" />
+              <td className="px-3 py-2 font-medium">Totals</td>
+              <td className="px-3 py-2">{Number(plannedTotalTokens).toFixed(6)}</td>
+              <td className="px-3 py-2">{fmtCurrency(plannedTotalUsd)}</td>
+              <td className="px-3 py-2">
+                {fmtCurrency(Math.max(0, plannedTotalUsd - (fills.allocatedTotal ?? 0)))}
+              </td>
+              <td className="px-3 py-2 text-right text-slate-400">
                 Off-plan: {fmtCurrency(fills.offPlanUsd)}
               </td>
             </tr>
