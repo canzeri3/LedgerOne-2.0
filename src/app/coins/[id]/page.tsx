@@ -1,6 +1,7 @@
 import { use } from 'react'
 import { headers } from 'next/headers'
 import CoinOverview from '@/components/coins/CoinOverview'
+import CoinStatsGrid from '@/components/coins/CoinStatsGrid'
 import TradesPanel from '@/components/coins/TradesPanel'
 import TradesList from '@/components/coins/TradesList'
 import CoinValueChart from '@/components/coins/CoinValueChart'
@@ -34,7 +35,7 @@ export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
     <div className="space-y-6">
       {/* Header stat card with price + 24h change */}
       <CoinOverview id={id} name={name} symbol={symbol} />
-
+<CoinStatsGrid id={id} />
       {/* NEW: Full-width Value chart */}
       <CoinValueChart coingeckoId={id} />
 
