@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import { useRouter } from 'next/navigation'
+import AllocationDonut from '@/components/portfolio/AllocationDonut'
+import PortfolioGrowthChart from '@/components/portfolio/PortfolioGrowthChart'
 
 type TradeRow = {
   coingecko_id: string
@@ -66,8 +68,14 @@ export default function PortfolioPage() {
   }, [trades])
 
   const coinIds = useMemo(() => Array.from(tradesByCoin.keys()), [tradesByCoin])
+  const coinKey = useMemo(() => [...coinIds].sort().join(','), [coinIds])
 
   const [frozen, setFrozen] = useState<FrozenPlanner[]>([])
+  const frozenKey = useMemo(
+    () => [...frozen.map(f => f.id)].sort().join(','),
+    [frozen]
+  )
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -78,16 +86,15 @@ export default function PortfolioPage() {
         .eq('user_id', user.id)
         .in('coingecko_id', coinIds)
         .eq('is_active', false)
-      if (!cancelled) setFrozen(
-        (planners ?? []).map(p => ({
-          id: p.id,
-          coingecko_id: (p as any).coingecko_id,
-          avg_lock_price: p.avg_lock_price
-        }))
-      )
+      const x = (planners ?? []).map(p => ({
+        id: p.id,
+        coingecko_id: p.coingecko_id,
+        avg_lock_price: p.avg_lock_price,
+      }))
+      if (!cancelled) setFrozen(x)
     })()
     return () => { cancelled = true }
-  }, [user, coinIds.join(',')])
+  }, [user, coinKey])
 
   const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
   useEffect(() => {
@@ -113,14 +120,17 @@ export default function PortfolioPage() {
       if (!cancelled) setFrozenSells(rows)
     })()
     return () => { cancelled = true }
-  }, [user, frozen.map(f => f.id).join(',')])
+  }, [user, frozenKey])
 
+  // ========== Live price polling (UI only) ==========
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
+
   useEffect(() => {
+    if (coinIds.length === 0) { setPrices({}); setChg24hPctMap({}); return }
     let cancelled = false
-    ;(async () => {
-      if (coinIds.length === 0) { setPrices({}); setChg24hPctMap({}); return }
+
+    async function fetchAll() {
       const pairs = await Promise.all(coinIds.map(async (cid) => {
         try {
           const res = await fetch(`/api/price/${cid}`)
@@ -136,21 +146,28 @@ export default function PortfolioPage() {
           return [cid, null, null] as const
         }
       }))
-      if (!cancelled) {
-        const pm: Record<string, number> = {}
-        const cm: Record<string, number | null> = {}
-        pairs.forEach(([k, v, p]) => { if (v != null) pm[k] = v as number; cm[k] = p })
-        setPrices(pm)
-        setChg24hPctMap(cm)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [coinIds.sort().join(',')])
+
+      if (cancelled) return
+      const priceMap: Record<string, number> = {}
+      const pctMap: Record<string, number | null> = {}
+      pairs.forEach(([cid, price, pct]) => {
+        if (price != null) priceMap[cid] = price
+        pctMap[cid] = pct
+      })
+      setPrices(priceMap)
+      setChg24hPctMap(pctMap)
+    }
+
+    fetchAll()
+    const id = setInterval(fetchAll, 15_000) // adjust cadence if you want
+    return () => { cancelled = true; clearInterval(id) }
+  }, [coinKey])
 
   function coinMeta(cid: string): CoinMeta | undefined {
     return coins?.find(c => c.coingecko_id === cid)
   }
 
+  // Per-coin computed rows (unchanged business logic)
   const rows = useMemo(() => {
     return coinIds.map(cid => {
       const t = tradesByCoin.get(cid) ?? []
@@ -167,15 +184,18 @@ export default function PortfolioPage() {
       const frozenForCoin = frozen.filter(f => f.coingecko_id === cid)
       const realizedUsd = frozenForCoin.reduce((acc, fp) => {
         const sells = frozenSells.filter(s => s.sell_planner_id === fp.id)
-        const avgLock = Number(fp.avg_lock_price ?? 0)
-        const sum = sells.reduce((a, tr) => a + (tr.price - avgLock) * tr.quantity, 0)
-        return acc + sum
+        const locked = fp.avg_lock_price ?? 0
+        const got = sells.reduce((a, s) => a + (s.quantity * s.price - (s.fee ?? 0)), 0)
+        const spent = sells.reduce((a, s) => a + (s.quantity * locked), 0)
+        return acc + (got - spent)
       }, 0)
 
-      const pct24 = chg24hPctMap[cid] ?? null
-      let prevVal = 0, delta24Usd = 0, delta24Pct: number | null = null
-      if (pct24 != null && last != null && qty > 0) {
-        prevVal = qty * (last / (1 + pct24))
+      const chgPct = chg24hPctMap[cid] ?? null
+      let delta24Usd = 0
+      let delta24Pct: number | null = null
+      if (last != null && chgPct != null) {
+        const prev = last / (1 + chgPct)
+        const prevVal = prev * qty
         delta24Usd = value - prevVal
         delta24Pct = prevVal > 0 ? (delta24Usd / prevVal) : null
       }
@@ -212,6 +232,82 @@ export default function PortfolioPage() {
     return { value, invested, unreal, realized, total: unreal + realized, delta24Usd, delta24Pct }
   }, [rows])
 
+  // ===== Base series from earliest trade (mark-to-current at each trade) =====
+  const baseSeries = useMemo(() => {
+    if (!trades || Object.keys(prices).length === 0) return []
+    const sorted = [...trades].sort(
+      (a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime()
+    )
+    const qtyByCoin = new Map<string, number>()
+    const valByCoin = new Map<string, number>() // position value at current price
+    let total = 0
+    const pts: { t: number; v: number }[] = []
+
+    for (const tr of sorted) {
+      const sign = tr.side === 'buy' ? 1 : -1
+      const nextQty = (qtyByCoin.get(tr.coingecko_id) ?? 0) + sign * tr.quantity
+      qtyByCoin.set(tr.coingecko_id, nextQty)
+
+      const priceNow = prices[tr.coingecko_id] ?? 0
+      const prevVal = valByCoin.get(tr.coingecko_id) ?? 0
+      const newVal = nextQty * priceNow
+      total += newVal - prevVal
+      valByCoin.set(tr.coingecko_id, newVal)
+
+      pts.push({ t: new Date(tr.trade_time).getTime(), v: Math.max(0, total) })
+    }
+    return pts
+  }, [trades, prices])
+
+  // ===== Live series that starts at earliest trade and extends with live sampling =====
+  type Point = { t: number; v: number }
+  const [liveSeries, setLiveSeries] = useState<Point[]>([])
+  const lastAppendRef = useRef<number>(0)
+
+  // Merge baseSeries (earliest trade → last trade) with any live tail points (> last trade time).
+  useEffect(() => {
+    const lastBaseTs = baseSeries.length ? baseSeries[baseSeries.length - 1].t : 0
+    setLiveSeries(prev => {
+      const tail = prev.filter(p => p.t > lastBaseTs)
+      let merged = [...baseSeries, ...tail]
+      if (merged.length === 0 || merged[merged.length - 1].t <= lastBaseTs) {
+        merged.push({ t: Date.now(), v: Math.max(0, totals.value) })
+      }
+      return merged
+    })
+  }, [
+    baseSeries.length
+      ? `${baseSeries[0].t}-${baseSeries[baseSeries.length - 1].t}-${baseSeries.length}`
+      : 'empty',
+    totals.value,
+  ])
+
+  // Append a fresh live point periodically (reacts to price changes & time passing)
+  useEffect(() => {
+    const appendNow = () => {
+      const now = Date.now()
+      if (now - lastAppendRef.current < 5000) return
+      lastAppendRef.current = now
+      setLiveSeries(prev => {
+        if (prev.length && now - prev[prev.length - 1].t < 3000 && Math.abs(prev[prev.length - 1].v - totals.value) < 1e-6) {
+          return prev
+        }
+        const next = [...prev, { t: now, v: Math.max(0, totals.value) }]
+        return next.slice(-2000)
+      })
+    }
+
+    appendNow()
+    const id = setInterval(appendNow, 15_000)
+    return () => clearInterval(id)
+  }, [totals.value])
+
+  // Navigation helpers
+  function goToCoin(cid: string) { router.push(`/coins/${cid}`) }
+  function onRowKey(e: React.KeyboardEvent<HTMLTableRowElement>, cid: string) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/coins/${cid}`) }
+  }
+
   const StatCard = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
     <div className="rounded-2xl border border-[#081427] p-4">
       <div className="text-xs text-slate-400">{label}</div>
@@ -220,22 +316,24 @@ export default function PortfolioPage() {
     </div>
   )
 
-  function goToCoin(cid: string) {
-    router.push(`/coins/${cid}`)
-  }
-  function onRowKey(e: React.KeyboardEvent<HTMLTableRowElement>, cid: string) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      router.push(`/coins/${cid}`)
-    }
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Portfolio</h1>
+      {/* Title */}
+      <div className="rounded-2xl border border-[#081427] bg-white/5 backdrop-blur-md">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 py-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
+            <p className="text-xs text-slate-400 mt-1">Your full holdings, performance, and allocation — live.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="/audit" className="inline-flex items-center justify-center rounded-md border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
+              Audit Log
+            </a>
+          </div>
+        </div>
       </div>
 
+      {/* KPI Strip */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Portfolio Value" value={fmtCurrency(totals.value)} />
         <StatCard label="Money Invested" value={fmtCurrency(totals.invested)} sub="Cost basis of current holdings" />
@@ -253,62 +351,101 @@ export default function PortfolioPage() {
         />
       </div>
 
-      <div className="rounded-2xl border border-[#081427] p-4 overflow-x-auto">
-        <table className="w-full min-w-[1080px] text-sm">
-          <thead className="text-slate-300">
-            <tr className="text-left">
-              <th className="py-2 pr-2">Coin</th>
-              <th className="py-2 pr-2">Qty</th>
-              <th className="py-2 pr-2">Avg Cost</th>
-              <th className="py-2 pr-2">Value</th>
-              <th className="py-2 pr-2">Money Invested</th>
-              <th className="py-2 pr-2">Unrealized</th>
-              <th className="py-2 pr-2">Realized</th>
-              <th className="py-2 pr-2">24h Δ</th>
-              <th className="py-2 pr-2">Total P&L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => (
-              <tr
-                key={r.cid}
-                className="border-t border-[#081427] hover:bg-[#0a162c] cursor-pointer"
-                onClick={() => goToCoin(r.cid)}
-                tabIndex={0}
-                onKeyDown={(e) => onRowKey(e, r.cid)}
-                aria-label={`Open ${r.name} page`}
-                role="button"
-              >
-                <td className="py-2 pr-2">
-                  <div className="flex flex-col">
-                    <span className="font-medium">{r.symbol}</span>
-                    <span className="text-xs text-slate-400">{r.name}</span>
-                  </div>
-                </td>
-                <td className="py-2 pr-2">{r.qty.toFixed(8)}</td>
-                <td className="py-2 pr-2">{r.avg>0 ? fmtCurrency(r.avg) : '—'}</td>
-                <td className="py-2 pr-2">{fmtCurrency(r.value)}</td>
-                <td className="py-2 pr-2">{fmtCurrency(r.costBasisRemaining)}</td>
-                <td className={`${r.unrealUsd>=0?'text-emerald-400':'text-rose-400'} py-2 pr-2`}>{fmtCurrency(r.unrealUsd)}</td>
-                <td className={`${r.realizedUsd>=0?'text-emerald-400':'text-rose-400'} py-2 pr-2`}>{fmtCurrency(r.realizedUsd)}</td>
-                <td className="py-2 pr-2">
-                  {r.delta24Pct == null
-                    ? fmtCurrency(r.delta24Usd)
-                    : `${fmtCurrency(r.delta24Usd)} · ${fmtPct(r.delta24Pct)}`}
-                </td>
-                <td className={`${r.totalPnl>=0?'text-emerald-400':'text-rose-400'} py-2 pr-2`}>{fmtCurrency(r.totalPnl)}</td>
+      {/* Growth chart + Allocation donut */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Left: Portfolio Growth (earliest trade → now, live) */}
+        <div className="lg:col-span-2 rounded-2xl border border-[#081427] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Portfolio Growth (Live)</div>
+            <div className="text-xs text-slate-400">Starts at your earliest trade; updates with price moves</div>
+          </div>
+          <div className="h-64">
+            <PortfolioGrowthChart data={liveSeries} />
+          </div>
+        </div>
+
+        {/* Right: Allocation Donut */}
+        <div className="rounded-2xl border border-[#081427] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">Allocation by Asset</div>
+            <div className="text-xs text-slate-400">{rows.length} assets</div>
+          </div>
+          <div className="h-64">
+            <AllocationDonut data={rows.map(r => ({ name: r.symbol, value: r.value }))} />
+          </div>
+        </div>
+      </div>
+
+      {/* Holdings Table */}
+      <div className="rounded-2xl border border-[#081427] overflow-hidden">
+        <div className="px-4 py-3 border-b border-[#0b1830] bg-white/5 backdrop-blur-md flex items-center justify-between">
+          <div className="text-sm font-medium">Holdings</div>
+          <div className="text-xs text-slate-400">{rows.length} shown</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1080px] text-sm">
+            <thead className="text-slate-300 sticky top-0 bg-[#0a162c]/80 backdrop-blur">
+              <tr className="text-left">
+                <th className="py-2 pl-4 pr-2">Coin</th>
+                <th className="py-2 pr-2">Qty</th>
+                <th className="py-2 pr-2">Avg Cost</th>
+                <th className="py-2 pr-2">Value</th>
+                <th className="py-2 pr-2">Money Invested</th>
+                <th className="py-2 pr-2">Unrealized</th>
+                <th className="py-2 pr-2">Realized</th>
+                <th className="py-2 pr-2">24h Δ</th>
+                <th className="py-2 pr-4">Total P&L</th>
               </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td className="py-3 text-slate-400 text-sm" colSpan={9}>No positions yet. Add buys on a coin page to see your portfolio here.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr
+                  key={r.cid}
+                  onClick={() => goToCoin(r.cid)}
+                  onKeyDown={(e) => onRowKey(e, r.cid)}
+                  tabIndex={0}
+                  className="group cursor-pointer hover:bg-white/5 focus:bg-white/10 outline-none"
+                >
+                  <td className="py-2 pl-4 pr-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-full bg-white/10 grid place-items-center text-[11px] text-slate-200">
+                        {r.symbol.slice(0,3)}
+                      </div>
+                      <div>
+                        <div className="font-medium">{r.name}</div>
+                        <div className="text-[11px] text-slate-400 -mt-0.5">{r.symbol}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-2 pr-2 tabular-nums">{r.qty.toLocaleString()}</td>
+                  <td className="py-2 pr-2">{fmtCurrency(r.avg)}</td>
+                  <td className="py-2 pr-2">{fmtCurrency(r.value)}</td>
+                  <td className="py-2 pr-2">{fmtCurrency(r.costBasisRemaining)}</td>
+                  <td className={(r.unrealUsd>=0?'text-emerald-400':'text-rose-400') + ' py-2 pr-2'}>{fmtCurrency(r.unrealUsd)}</td>
+                  <td className={(r.realizedUsd>=0?'text-emerald-400':'text-rose-400') + ' py-2 pr-2'}>{fmtCurrency(r.realizedUsd)}</td>
+                  <td className="py-2 pr-2">
+                    {r.delta24Pct == null
+                      ? fmtCurrency(r.delta24Usd)
+                      : `${fmtCurrency(r.delta24Usd)} · ${fmtPct(r.delta24Pct)}`}
+                  </td>
+                  <td className={(r.totalPnl>=0?'text-emerald-400':'text-rose-400') + ' py-2 pr-4'}>{fmtCurrency(r.totalPnl)}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td className="py-3 px-4 text-slate-400 text-sm" colSpan={9}>
+                    No holdings yet. Add buys on a coin page to see your portfolio here.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <p className="text-xs text-slate-500">
-        Money Invested = cost basis of your current holdings (Σ qty × avg). 24h Change uses per-coin 24h % when available;
-        if the API doesn't provide it, the % will show as unavailable while the $ change uses 0.
+        The growth series is anchored at your earliest trade and extends with live, mark-to-market samples over time.
+        No backend changes; we value positions at current prices on each tick and on every new trade.
       </p>
     </div>
   )

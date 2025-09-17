@@ -1,258 +1,176 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
 import useSWR from 'swr'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
-import { fmtCurrency } from '@/lib/format'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Label
-} from 'recharts'
+import CoinHistoryChart from '@/components/charts/CoinHistoryChart'
 
-type Trade = {
-  price: number
-  quantity: number
-  fee: number | null
-  trade_time: string
-  side: 'buy' | 'sell'
+type Point = { t: number; v: number }
+type TradeLite = { side: 'buy' | 'sell'; trade_time: string }
+
+type Props = {
+  coingeckoId: string
+  /** Optional: pass coin trades if already loaded (we only read side & trade_time) */
+  trades?: TradeLite[]
+  className?: string
 }
 
-type HistoryResp = { points: { t: number; v: number }[] }
-type ValuePoint = { t: number; value: number; qty: number; price: number }
+// Strict fetcher: throw on !ok or bad payload so SWR treats as error
+const fetcher = async (url: string): Promise<Point[]> => {
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const j = await r.json()
+  if (!Array.isArray(j)) throw new Error('Bad payload')
+  return j
+    .filter((d: any) => d && typeof d.t === 'number' && typeof d.v === 'number')
+    .map((d: any) => ({ t: d.t, v: d.v }))
+}
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const RANGE_OPTS = [
+  { key: '1', label: '24h' },
+  { key: '7', label: '7d' },
+  { key: '30', label: '30d' },
+  { key: '90', label: '90d' },
+  { key: '365', label: '1y' },
+  { key: 'ytd', label: 'YTD' },
+  { key: 'max', label: 'Max' }, // NOTE: Max = since first BUY (if any)
+] as const
+type RangeKey = typeof RANGE_OPTS[number]['key']
 
-export default function CoinValueChart({ coingeckoId }: { coingeckoId: string }) {
+export default function CoinValueChart({ coingeckoId, trades = [], className }: Props) {
   const { user } = useUser()
 
-  // 1) Trades (ASC). If this fails, we show an instructive message instead of crashing.
-  const { data: trades } = useSWR<Trade[]>(
-    user ? ['/value/trades/range', user.id, coingeckoId] : null,
+  // If trades not provided, fetch the earliest BUY timestamp
+  const { data: fallbackEarliest } = useSWR<number | null>(
+    !trades.length && user && coingeckoId
+      ? [`/earliest-buy/${user.id}/${coingeckoId}`]
+      : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('trades')
-        .select('price,quantity,fee,trade_time,side')
+        .select('trade_time')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
+        .eq('side', 'buy')
         .order('trade_time', { ascending: true })
+        .limit(1)
       if (error) throw error
-      return (data ?? []).map(t => ({
-        price: Number(t.price),
-        quantity: Number(t.quantity),
-        fee: t.fee ?? 0,
-        trade_time: t.trade_time,
-        side: t.side as 'buy' | 'sell',
-      }))
+      if (!data || !data.length) return null
+      return new Date(data[0].trade_time).getTime()
     },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+
+  // Earliest BUY time (prefer prop, else fetched)
+  const earliestBuyTs = useMemo(() => {
+    const fromProp = trades
+      .filter(t => t.side === 'buy')
+      .map(t => new Date(t.trade_time).getTime())
+    if (fromProp.length) return Math.min(...fromProp)
+    return fallbackEarliest ?? null
+  }, [trades, fallbackEarliest])
+
+  // Days since earliest BUY used when range === 'max'
+  const maxDays = useMemo(() => {
+    if (!earliestBuyTs) return 'max' // if no buys yet, fallback to upstream 'max'
+    const ms = Date.now() - earliestBuyTs
+    const days = Math.max(1, Math.ceil(ms / 86_400_000))
+    return days > 3650 ? 'max' : String(days) // cap at ~10y, else exact day span
+  }, [earliestBuyTs])
+
+  // Derived YTD days
+  const ytdDays = useMemo(() => {
+    const now = new Date()
+    const ytdStart = new Date(now.getFullYear(), 0, 1).getTime()
+    const days = Math.max(1, Math.ceil((Date.now() - ytdStart) / 86_400_000))
+    return String(days)
+  }, [])
+
+  const [range, setRange] = useState<RangeKey>('90') // sensible default
+  const effectiveDays = useMemo(() => {
+    if (range === 'ytd') return ytdDays
+    if (range === 'max') return maxDays
+    return range // '1','7','30','90','365'
+  }, [range, ytdDays, maxDays])
+
+  // Keep the last good series while revalidating or on error
+  const lastGoodRef = useRef<Point[] | null>(null)
+
+  const {
+    data,
+    error,
+    isLoading,
+    isValidating,
+  } = useSWR<Point[]>(
+    coingeckoId ? `/api/coin-history?id=${encodeURIComponent(coingeckoId)}&days=${effectiveDays}` : null,
+    fetcher,
     {
+      refreshInterval: 120_000,
       revalidateOnFocus: false,
       dedupingInterval: 60_000,
-      errorRetryInterval: 10_000,
-      errorRetryCount: 5,
+      keepPreviousData: true,
+      errorRetryCount: 2,
+      errorRetryInterval: 5000,
     }
   )
 
-  // 2) First BUY anchor
-  const firstBuyMs = useMemo(() => {
-    if (!trades || trades.length === 0) return null
-    const fb = trades.find(t => t.side === 'buy')
-    return fb ? new Date(fb.trade_time).getTime() : null
-  }, [trades])
-
-  // 3) Stable history key (no Date.now() here to avoid loops)
-  const historyKey = useMemo(() => {
-    if (!firstBuyMs) return null
-    return `/api/coin-history?id=${encodeURIComponent(coingeckoId)}&from=${firstBuyMs}`
-  }, [coingeckoId, firstBuyMs])
-
-  // Keep last non-empty history to avoid flicker on transient API empties
-  const lastGoodHistory = useRef<HistoryResp | null>(null)
-
-  const { data: history } = useSWR<HistoryResp>(
-    historyKey,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 300_000,   // match ISR
-      dedupingInterval: 300_000,
-      errorRetryInterval: 10_000,
-      errorRetryCount: 5,
-      onSuccess: (data) => {
-        if (data && Array.isArray(data.points) && data.points.length >= 2) {
-          lastGoodHistory.current = data
-        }
-      },
+  useEffect(() => {
+    if (Array.isArray(data) && data.length > 0) {
+      lastGoodRef.current = data
     }
-  )
+  }, [data])
 
-  const effectiveHistory = useMemo<HistoryResp | null>(() => {
-    if (history?.points?.length) return history
-    return lastGoodHistory.current // fall back to last good
-  }, [history])
+  const series: Point[] =
+    (Array.isArray(data) && data.length > 0)
+      ? data
+      : (lastGoodRef.current ?? [])
 
-  // 4) Live price ping to keep the right edge moving (doesn't change key)
-  const { data: live } = useSWR<{ price: number | null }>(
-    `/api/price/${encodeURIComponent(coingeckoId)}`,
-    fetcher,
-    {
-      refreshInterval: 15_000,
-      dedupingInterval: 15_000,
-      revalidateOnFocus: false,
-      shouldRetryOnError: true,
-      errorRetryInterval: 10_000,
-      errorRetryCount: 5,
-    }
-  )
-
-  // 5) Build value series: sweep trades across price history, value = qty × price
-  const series = useMemo<ValuePoint[] | null>(() => {
-    if (!trades || !firstBuyMs) return null
-
-    const histPts = effectiveHistory?.points
-      ?.filter(p => p.t >= firstBuyMs)
-      ?.sort((a, b) => a.t - b.t) ?? []
-
-    // If no history made it through, synthesize a flat line at last trade price / live price
-    if (histPts.length < 2) {
-      // compute current qty
-      let qty = 0
-      for (const tr of trades) {
-        const tt = new Date(tr.trade_time).getTime()
-        if (tt < firstBuyMs) continue
-        qty = tr.side === 'buy' ? qty + tr.quantity : Math.max(0, qty - tr.quantity)
-      }
-      const fallbackPrice = typeof live?.price === 'number'
-        ? (live!.price as number)
-        : (trades.at(-1)?.price ?? 0)
-      const t1 = Math.max(firstBuyMs, Date.now() - 1000)
-      const t2 = Date.now()
-      return [
-        { t: t1, value: qty * fallbackPrice, qty, price: fallbackPrice },
-        { t: t2, value: qty * fallbackPrice, qty, price: fallbackPrice },
-      ]
-    }
-
-    let qty = 0
-    let ti = 0
-    const out: ValuePoint[] = []
-    for (const p of histPts) {
-      for (; ti < trades.length; ti++) {
-        const tt = new Date(trades[ti].trade_time).getTime()
-        if (tt > p.t) break
-        qty = trades[ti].side === 'buy'
-          ? qty + trades[ti].quantity
-          : Math.max(0, qty - trades[ti].quantity)
-      }
-      out.push({ t: p.t, value: qty * p.v, qty, price: p.v })
-    }
-
-    // Live right-edge
-    const lastQty = out.at(-1)?.qty ?? 0
-    const livePrice = typeof live?.price === 'number' ? (live!.price as number) : (out.at(-1)?.price ?? 0)
-    out.push({ t: Date.now(), value: lastQty * livePrice, qty: lastQty, price: livePrice })
-
-    // Guarantee at least 2 points
-    if (out.length === 1) out.unshift({ ...out[0], t: out[0].t - 1 })
-    return out
-  }, [trades, firstBuyMs, effectiveHistory, live])
-
-  // Axis formatters
-  const tickFmtY = (v: number) => fmtCurrency(v)
-  const tickFmtX = (ts: number) =>
-    new Date(ts).toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
-
-  // Guards (user messaging stays, but we still try to synthesize a line above)
-  if (!trades || trades.length === 0) {
-    return (
-      <div className="rounded-2xl border border-[#081427] p-4">
-        <div className="text-sm text-slate-300 mb-2">Holdings Value Over Time</div>
-        <div className="text-slate-400 text-sm">No trades yet. Add a BUY trade to start the chart.</div>
-      </div>
-    )
-  }
-  if (!firstBuyMs) {
-    return (
-      <div className="rounded-2xl border border-[#081427] p-4">
-        <div className="text-sm text-slate-300 mb-2">Holdings Value Over Time</div>
-        <div className="text-slate-400 text-sm">No BUY trades found. The chart starts at your first BUY.</div>
-      </div>
-    )
-  }
+  const showSkeleton = series.length === 0 && (isLoading || isValidating) && !error
+  const showErrorInline = series.length === 0 && !!error
 
   return (
-    <div className="rounded-2xl border border-[#081427] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm text-slate-300">Holdings Value Over Time</div>
+    <div className={['rounded-2xl border border-[#081427] p-4', className].filter(Boolean).join(' ')}>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+        <div className="text-sm font-medium">Price History</div>
+        <div className="flex flex-wrap gap-1">
+          {RANGE_OPTS.map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setRange(opt.key)}
+              className={[
+                'rounded-full px-3 py-1 text-xs border transition-colors',
+                range === opt.key
+                  ? 'bg-white/15 text-white border-white/25'
+                  : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
+              ].join(' ')}
+              aria-pressed={range === opt.key}
+              title={opt.label}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="h-72 w-full">
-        {series && series.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series} margin={{ top: 10, right: 20, bottom: 20, left: 8 }}>
-              <defs>
-                <linearGradient id="valFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3763d6" stopOpacity={0.35}/>
-                  <stop offset="100%" stopColor="#3763d6" stopOpacity={0}/>
-                </linearGradient>
-                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.25" floodColor="#0b1830"/>
-                </filter>
-              </defs>
-
-              <CartesianGrid stroke="#0b1830" strokeOpacity={0.8} />
-
-              <XAxis
-                dataKey="t"
-                type="number"
-                domain={['dataMin', 'dataMax']}
-                tickFormatter={tickFmtX}
-                axisLine={{ stroke: '#0b1830' }}
-                tickLine={{ stroke: '#0b1830' }}
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-              >
-                <Label value="Time" position="insideBottomRight" offset={-10} fill="#94a3b8" />
-              </XAxis>
-
-              <YAxis
-                tickFormatter={tickFmtY}
-                axisLine={{ stroke: '#0b1830' }}
-                tickLine={{ stroke: '#0b1830' }}
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-                width={80}
-              >
-                <Label value="Value (USD)" angle={-90} position="insideLeft" offset={-2} fill="#94a3b8" />
-              </YAxis>
-
-              <Tooltip
-                contentStyle={{ background: '#0a162c', border: '1px solid #0b1830', borderRadius: 8 }}
-                labelFormatter={(ts) => new Date(Number(ts)).toLocaleString()}
-                formatter={(v: any, name: any) => {
-                  if (name === 'value') return [fmtCurrency(v), 'Value']
-                  if (name === 'price') return [fmtCurrency(v), 'Price']
-                  if (name === 'qty') return [String(v), 'Qty']
-                  return [String(v), name]
-                }}
-              />
-
-              <Area
-                dataKey="value"
-                name="Value"
-                type="monotone"
-                stroke="#3763d6"
-                strokeWidth={2}
-                fill="url(#valFill)"
-                dot={false}
-                animationDuration={300}
-                style={{ filter: 'url(#shadow)' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+      {/* Chart */}
+      <div className="h-64">
+        {showSkeleton ? (
+          <div className="h-full w-full animate-pulse rounded-xl bg-white/5" />
+        ) : series.length > 0 ? (
+          <CoinHistoryChart data={series} />
         ) : (
-          <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-            Not enough data to draw the chart yet.
+          <div className="h-full w-full grid place-items-center text-xs text-slate-400">
+            {showErrorInline ? 'Unable to load price history (temporary). Try another range.' : 'No data yet.'}
           </div>
         )}
       </div>
+
+      {/* Footnote */}
+      <p className="mt-3 text-[11px] text-slate-500">
+        “Max” spans from your first BUY for this asset (if any), otherwise the provider’s maximum range. Area under the line fades for visual clarity.
+      </p>
     </div>
   )
 }
