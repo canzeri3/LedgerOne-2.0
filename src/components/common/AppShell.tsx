@@ -3,19 +3,22 @@
 import { ReactNode } from 'react'
 import AuthButton from '@/components/auth/AuthButton'
 import Sidebar from '@/components/common/Sidebar'
+import AuthListener from '@/components/auth/AuthListener'
 
 // Deep page background (rich-black, very deep blue)
 const PAGE_BG   = 'oklch(0.08 0.02 260 / 1)'
 // Semi-opaque surfaces
 const SIDEBAR_BG = 'oklch(0.21 0.03 264.66 / 0.85)'
 const HEADER_BG  = 'oklch(0.18 0.04 264.66 / 0.78)'
-
 // Subtle border tone for dark UIs
 const BORDER     = '#0b1830'
 
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>
+      {/* Mount once to keep server cookies in sync with client auth */}
+      <AuthListener />
+
       {/* Sticky sidebar + independent scrolling main column */}
       <div className="grid grid-cols-12">
         {/* Sticky, full-height sidebar (independent of page scroll) */}

@@ -12,13 +12,6 @@ type Props = {
   className?: string
 }
 
-/**
- * UI-only wrapper that merges Active ladder + History ladders into one card
- * with a top-right selector (Active, N..1). No data fetching or business logic is changed.
- *
- * It renders your existing History component once, then shows exactly one snapshot by
- * toggling the display of the history list’s children.
- */
 export default function SellPlannerCombinedCard({
   title = 'Sell Planner',
   ActiveView,
@@ -28,10 +21,10 @@ export default function SellPlannerCombinedCard({
 }: Props) {
   const [selected, setSelected] = useState<'active' | number>('active')
 
-  // Root for the HistoryView; we’ll find its first element child, which is the list container.
+  // Root wrapper around the HistoryView so we can read/manipulate its rendered children (UI-only)
   const historyRootRef = useRef<HTMLDivElement>(null)
 
-  // Count history entries by inspecting the first child container's children (UI-only).
+  // Count history entries (children of the first container inside HistoryView)
   const [historyLength, setHistoryLength] = useState(0)
   useEffect(() => {
     const root = historyRootRef.current
@@ -49,13 +42,13 @@ export default function SellPlannerCombinedCard({
     return () => obs.disconnect()
   }, [])
 
-  // Build labels: [N, N-1, ..., 1]
+  // Pills: N..1 (Active shown separately)
   const labels = useMemo(() => {
     const N = Math.max(0, historyLength)
-    return Array.from({ length: N }, (_, i) => N - i)
+    return Array.from({ length: N }, (_, i) => N - i) // N..1
   }, [historyLength])
 
-  // Map the displayed label → DOM index (1-based) inside the list container
+  // Map label -> 1-based nth index in the DOM container
   const nthIndex = useMemo(() => {
     if (selected === 'active' || historyLength === 0) return null
     const N = historyLength
@@ -63,31 +56,92 @@ export default function SellPlannerCombinedCard({
     return newestFirst ? (N - label + 1) : label
   }, [selected, historyLength, newestFirst])
 
-  // Show only the selected child in the history list (UI-only DOM tweak).
+  // When switching to a history version, hide all siblings except selected
   useEffect(() => {
     const root = historyRootRef.current
     if (!root) return
     const firstContainer = root.firstElementChild as HTMLElement | null
     if (!firstContainer) return
 
-    // When viewing Active, let the entire history render normally hidden by parent 'display:none'
-    if (selected === 'active') return
+    if (selected === 'active') {
+      // Show all when hidden by parent display:none anyway
+      Array.from(firstContainer.children).forEach((el: Element) => {
+        (el as HTMLElement).style.display = ''
+      })
+      return
+    }
 
     const target = typeof nthIndex === 'number' ? nthIndex : null
     const kids = Array.from(firstContainer.children) as HTMLElement[]
-
     kids.forEach((el, idx) => {
-      // idx is 0-based; target is 1-based
       el.style.display = target === idx + 1 ? '' : 'none'
     })
 
-    // Clean up on unmount/selection change: reset styles so HistoryView isn’t permanently altered
+    // Cleanup on selection change/unmount
     return () => {
       kids.forEach((el) => {
         el.style.display = ''
       })
     }
   }, [selected, nthIndex])
+
+  // ---- Delete UI (history only) ----
+  async function handleDeleteSelected() {
+    if (selected === 'active') return
+    const root = historyRootRef.current
+    if (!root) return
+    const firstContainer = root.firstElementChild as HTMLElement | null
+    if (!firstContainer) return
+    if (typeof nthIndex !== 'number') return
+
+    const idx = nthIndex - 1 // 0-based
+    const kids = Array.from(firstContainer.children) as HTMLElement[]
+    const target = kids[idx]
+    if (!target) return
+
+    const ok = window.confirm('Delete this sell planner history snapshot?')
+    if (!ok) return
+
+    // Try to extract a history id from a data attribute if present
+    const historyId =
+      target.getAttribute('data-history-id') ??
+      (target as any).dataset?.historyId ??
+      null
+
+    // Dispatch a custom event so app-level code can persist the deletion if desired
+    try {
+      window.dispatchEvent(
+        new CustomEvent('sellPlanner:deleteHistory', {
+          detail: {
+            label: selected,              // e.g., 3..1
+            newestFirst,
+            domIndex1Based: nthIndex,     // the child index we showed
+            historyId,                    // may be null if not provided by DOM
+          },
+        })
+      )
+    } catch {
+      // ignore
+    }
+
+    // Best-effort API call if an id is available (safe no-op if route doesn't exist)
+    if (historyId) {
+      try {
+        await fetch(`/api/sell-planner/history?id=${encodeURIComponent(historyId)}`, {
+          method: 'DELETE',
+        })
+      } catch {
+        // ignore errors; UI removal still proceeds
+      }
+    }
+
+    // UI-only removal so it disappears immediately without affecting your fetch logic
+    target.remove()
+
+    // Update local count + selection
+    setHistoryLength((n) => Math.max(0, n - 1))
+    setSelected('active') // bounce back to Active after delete
+  }
 
   return (
     <Card
@@ -107,7 +161,6 @@ export default function SellPlannerCombinedCard({
           >
             Active
           </button>
-
           {labels.map((n) => (
             <button
               key={n}
@@ -129,16 +182,32 @@ export default function SellPlannerCombinedCard({
       }
       className={className}
     >
-      {/* Active ladder */}
-      <div style={{ display: selected === 'active' ? 'block' : 'none' }}>
-        {ActiveView}
-      </div>
-
-      {/* History (render once; parent toggles which entry is visible) */}
-      <div style={{ display: selected === 'active' ? 'none' : 'block' }}>
-        <div ref={historyRootRef}>
-          {HistoryView}
+      {/* Content area wraps are relative so we can pin the Delete button bottom-right */}
+      <div className="relative">
+        {/* Active ladder */}
+        <div style={{ display: selected === 'active' ? 'block' : 'none' }}>
+          {ActiveView}
         </div>
+
+        {/* History (render once; parent toggles which entry is visible) */}
+        <div style={{ display: selected === 'active' ? 'none' : 'block' }}>
+          <div ref={historyRootRef}>
+            {HistoryView}
+          </div>
+        </div>
+
+        {/* Delete button — visible only on history selection */}
+        {selected !== 'active' && (
+          <div className="flex justify-end pt-3 pb-1">
+            <button
+              type="button"
+              onClick={handleDeleteSelected}
+              className="ml-auto inline-flex items-center gap-2 rounded-md bg-red-600 hover:bg-red-500 active:bg-red-700 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+            >
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     </Card>
   )
