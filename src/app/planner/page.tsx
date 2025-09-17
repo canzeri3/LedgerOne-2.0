@@ -12,6 +12,7 @@ import SellPlannerCombinedCard from '@/components/planner/SellPlannerCombinedCar
 
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
+import PlannerHighlightAgent from '@/components/planner/PlannerHighlightAgent'
 
 type Coin = {
   coingecko_id: string
@@ -42,7 +43,7 @@ export default function PlannerPage() {
   )
 
   return (
-    <div className="px-4 md:px-6 py-6 max-w-screen-2xl mx-auto space-y-8">
+    <div className="px-4 md:px-6 py-6 max-w-screen-2xl mx-auto space-y-8" data-coingecko-id={coingeckoId || undefined}>
       {/* Header / coin selector */}
       <Card
         title="Buy / Sell Planner"
@@ -77,24 +78,32 @@ export default function PlannerPage() {
             <BuyPlannerInputs coingeckoId={coingeckoId} />
           </Card>
 
-          <Card title="Buy Planner — Ladder">
-            <BuyPlannerLadder coingeckoId={coingeckoId} />
-          </Card>
+          {/* Tag the Buy ladder so the highlighter can target its rows */}
+          <div data-buy-planner>
+            <Card title="Buy Planner — Ladder">
+              <BuyPlannerLadder coingeckoId={coingeckoId} />
+            </Card>
+          </div>
 
           <Card title="Sell Planner — Inputs">
             <SellPlannerInputs coingeckoId={coingeckoId} />
           </Card>
 
-          {/* COMBINED: Active Sell Ladder + History with version selector */}
-          <SellPlannerCombinedCard
-            title="Sell Planner"
-            ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
-            HistoryView={<SellPlannerHistory coingeckoId={coingeckoId} />}
-            newestFirst={true}  // SellPlannerHistory sorts by created_at DESC (newest first)
-          />
+          {/* Tag the Sell ladder/history container for highlighting */}
+          <div data-sell-planner>
+            {/* COMBINED: Active Sell Ladder + History with version selector */}
+            <SellPlannerCombinedCard
+              title="Sell Planner"
+              ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
+              HistoryView={<SellPlannerHistory coingeckoId={coingeckoId} />}
+              newestFirst={true}  // SellPlannerHistory sorts by created_at DESC (newest first)
+            />
+          </div>
         </>
       )}
+
+      {/* Invisible agent that highlights rows based on live price; no layout impact */}
+      <PlannerHighlightAgent />
     </div>
   )
 }
-

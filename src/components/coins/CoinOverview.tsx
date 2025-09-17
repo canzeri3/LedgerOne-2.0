@@ -1,4 +1,4 @@
- 'use client'
+'use client'
 
 import useSWR from 'swr'
 import React, { useEffect, useMemo, useState } from 'react'

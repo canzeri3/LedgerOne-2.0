@@ -1,4 +1,3 @@
-// src/components/planner/BuyPlannerLadder.tsx
 'use client'
 
 import { useMemo } from 'react'
@@ -93,7 +92,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
   // STRICT waterfall: tolerance = 0 → “above a level never counts”
   const fills = useMemo(() => computeBuyFills(plan, buys, 0), [plan, buys])
 
-  // Totals (keep hooks before any return)
+  // Totals
   const plannedTotalUsd = useMemo(
     () => plan.reduce((s, lv) => s + (lv.allocation || 0), 0),
     [plan]
@@ -104,26 +103,36 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     [plan]
   )
 
-  // Avg (live): on-plan average buy price = ΣallocatedUSD / ΣtokensFromAllocatedUSD
+  // Avg (live): on-plan average buy price
   const liveAvgPrice = useMemo(() => {
     if (!plan.length) return 0
     const sumUsd = (fills.allocatedUsd ?? []).reduce((s, v) => s + (v || 0), 0)
     if (sumUsd <= 0) return 0
     const sumTokens = plan.reduce((acc, lv, i) => {
       const usd = fills.allocatedUsd[i] ?? 0
-      return acc + (usd > 0 ? usd / lv.price : 0)
+      const tokens = lv.price > 0 ? usd / lv.price : 0
+      return acc + tokens
     }, 0)
     return sumTokens > 0 ? sumUsd / sumTokens : 0
-  }, [plan, fills])
+  }, [plan, fills.allocatedUsd])
 
-  if (!planner) {
-    return (
-      <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
-        <div className="text-base text-slate-300 mb-1">Buy Planner</div>
-        <div className="text-sm text-slate-500">No active Buy Planner for this coin.</div>
-      </div>
-    )
+  // LIVE price for yellow highlight (no layout changes)
+  const { data: priceResp } = useSWR<any>(
+    coingeckoId ? `/api/price/${encodeURIComponent(coingeckoId)}` : null,
+    (url: string) => fetch(url, { cache: 'no-store' }).then(r => r.json()),
+    { refreshInterval: 15000 }
+  )
+  const livePrice = Number(priceResp?.price)
+  const hasLivePrice = Number.isFinite(livePrice)
+
+  const shouldHighlightBuy = (level: number, price: number) => {
+    if (!Number.isFinite(level) || !Number.isFinite(price) || level <= 0) return false
+    const within = Math.abs(price - level) / level <= 0.03 // ±3%
+    const crossed = price <= level                         // reached or under
+    return within || crossed
   }
+
+  const EPS = 1e-8
 
   return (
     <div className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
@@ -154,8 +163,13 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
               const plannedTokens = lv.est_tokens ?? (lv.price > 0 ? plannedUsd / lv.price : 0)
               const pct = plannedUsd > 0 ? Math.min(1, filledUsd / plannedUsd) : 0
 
+              // GREEN only when full (100%), overrides yellow
+              const full = plannedUsd > 0 && missingUsd <= EPS
+              const yellow = !full && hasLivePrice && shouldHighlightBuy(Number(lv.price), livePrice)
+              const rowCls = full ? 'text-emerald-400' : yellow ? 'text-yellow-300' : ''
+
               return (
-                <tr key={lv.level} className="border-t border-slate-800/40 align-middle">
+                <tr key={lv.level} className={`border-t border-slate-800/40 align-middle ${rowCls}`}>
                   <td className="px-3 py-2">{lv.level}</td>
                   <td className="px-3 py-2">{fmtCurrency(lv.price)}</td>
                   <td className="px-3 py-2">{Number(plannedTokens).toFixed(6)}</td>

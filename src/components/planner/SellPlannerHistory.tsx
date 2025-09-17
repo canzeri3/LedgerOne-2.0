@@ -1,4 +1,3 @@
-// src/components/planner/SellPlannerHistory.tsx
 'use client'
 
 import { useMemo } from 'react'
@@ -7,6 +6,7 @@ import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import ProgressBar from '@/components/common/ProgressBar'
+import { useLivePrice } from '@/lib/useLivePrice'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -28,10 +28,12 @@ type SellLevelRow = {
   sell_tokens: number | null
 }
 
-const SELL_TOLERANCE = 0.03 // 3%
+const SELL_TOLERANCE = 0.03
+const EPS = 1e-8
 
 export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
+  const { price: livePrice } = useLivePrice(coingeckoId, 15000)
 
   const { data: planners } = useSWR<FrozenSellPlanner[]>(
     user ? ['/sell-history/planners', user.id, coingeckoId] : null,
@@ -51,7 +53,7 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
 
   const plannerIds = useMemo(() => (planners ?? []).map(p => p.id), [planners])
 
-  const { data: allLevels } = useSWR<SellLevelRow[]>(
+  const { data: allLevels } = useSWR<any[]>(
     user && plannerIds.length ? ['/sell-history/levels', ...plannerIds] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -62,17 +64,12 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
         .in('sell_planner_id', plannerIds)
         .order('level', { ascending: true })
       if (error) throw error
-      return (data ?? []).map(r => ({
-        level: (r as any).level,
-        price: Number((r as any).price),
-        sell_tokens: (r as any).sell_tokens ?? null,
-        sell_planner_id: (r as any).sell_planner_id,
-      })) as any
+      return data ?? []
     },
     { revalidateOnFocus: false, dedupingInterval: 20000 }
   )
 
-  const { data: allSells } = useSWR<SellTradeType[] & { sell_planner_id?: string }[]>(
+  const { data: allSells } = useSWR<any[]>(
     user && plannerIds.length ? ['/sell-history/sells', ...plannerIds] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -84,12 +81,7 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
         .in('sell_planner_id', plannerIds)
         .order('trade_time', { ascending: true })
       if (error) throw error
-      return (data ?? []).map(t => ({
-        price: Number((t as any).price),
-        quantity: Number((t as any).quantity),
-        trade_time: (t as any).trade_time,
-        sell_planner_id: (t as any).sell_planner_id,
-      }))
+      return data ?? []
     },
     { revalidateOnFocus: false, dedupingInterval: 20000 }
   )
@@ -103,9 +95,9 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
       const pid = r.sell_planner_id as string
       if (!levelsByPlanner.has(pid)) levelsByPlanner.set(pid, [])
       levelsByPlanner.get(pid)!.push({
-        level: r.level,
-        price: r.price,
-        sell_tokens: r.sell_tokens,
+        level: Number(r.level),
+        price: Number(r.price),
+        sell_tokens: r.sell_tokens ?? null,
       })
     })
 
@@ -113,8 +105,8 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
       const pid = t.sell_planner_id as string
       if (!sellsByPlanner.has(pid)) sellsByPlanner.set(pid, [])
       sellsByPlanner.get(pid)!.push({
-        price: t.price,
-        quantity: t.quantity,
+        price: Number(t.price),
+        quantity: Number(t.quantity),
         trade_time: t.trade_time,
       })
     })
@@ -123,7 +115,7 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
       const rows = (levelsByPlanner.get(p.id) ?? []).sort((a, b) => a.level - b.level)
       const sells = (sellsByPlanner.get(p.id) ?? [])
       const lvlsForFill = rows.map(r => ({
-        target_price: Number(r.price), // frozen ladder uses stored price
+        target_price: Number(r.price),
         planned_tokens: Math.max(0, Number(r.sell_tokens ?? 0)),
       }))
 
@@ -171,7 +163,7 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
   return (
     <div className="space-y-6">
       {cards.map(({ planner, view, totals }) => (
-        <div key={planner.id} className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5">
+        <div key={planner.id} className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-5" data-history-id={planner.id}>
           <div className="flex items-baseline justify-between mb-3">
             <div className="text-base text-slate-300">Sell Planner (Frozen)</div>
             <div className="text-sm text-slate-400">
@@ -192,21 +184,32 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
                 </tr>
               </thead>
               <tbody>
-                {view.map(row => (
-                  <tr key={row.level} className="border-t border-slate-800/40 align-middle">
-                    <td className="px-3 py-2">{row.level}</td>
-                    <td className="px-3 py-2">{fmtCurrency(row.targetPrice)}</td>
-                    <td className="px-3 py-2">{row.plannedTokens.toFixed(6)}</td>
-                    <td className="px-3 py-2">{fmtCurrency(row.plannedUsd)}</td>
-                    <td className="px-3 py-2">{(row.plannedTokens - row.fillTokens).toFixed(6)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end items-center gap-2">
-                        <div className="w-40"><ProgressBar pct={row.pct} /></div>
-                        <span className="w-10 text-right tabular-nums">{Math.round(row.pct * 100)}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {view.map(row => {
+                  const full = row.missingTokens <= EPS
+                  const nearOrCross =
+                    Number.isFinite(livePrice as any) &&
+                    (
+                      Math.abs((livePrice as number) - Number(row.targetPrice)) / Number(row.targetPrice) <= SELL_TOLERANCE ||
+                      (livePrice as number) >= Number(row.targetPrice)
+                    )
+                  const rowCls = full ? 'text-emerald-400' : nearOrCross ? 'text-yellow-300' : ''
+
+                  return (
+                    <tr key={row.level} className={`border-t border-slate-800/40 align-middle ${rowCls}`}>
+                      <td className="px-3 py-2">{row.level}</td>
+                      <td className="px-3 py-2">{fmtCurrency(row.targetPrice)}</td>
+                      <td className="px-3 py-2">{row.plannedTokens.toFixed(6)}</td>
+                      <td className="px-3 py-2">{fmtCurrency(row.plannedUsd)}</td>
+                      <td className="px-3 py-2">{(row.plannedTokens - row.fillTokens).toFixed(6)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end items-center gap-2">
+                          <div className="w-40"><ProgressBar pct={row.pct} /></div>
+                          <span className="w-10 text-right tabular-nums">{Math.round(row.pct * 100)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t border-slate-800/40">

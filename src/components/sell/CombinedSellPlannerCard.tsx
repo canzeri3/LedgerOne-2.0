@@ -12,7 +12,7 @@ type CombinedSellPlannerCardProps = {
   history: Snapshot[] | null | undefined
   /** Title at the top-left */
   title?: string
-  /** Reuses your existing ladder body renderer */
+  /** Reuse your existing ladder renderer for a given snapshot */
   renderSnapshot: (snapshot: Snapshot) => React.ReactNode
   /** Optional status flags */
   isLoading?: boolean
@@ -20,10 +20,8 @@ type CombinedSellPlannerCardProps = {
 }
 
 /**
- * Combines "Sell Planner – ladder" (active) and "Sell planner history" into one card
- * with a header selector: [Active] [N] [N-1] ... [1]
- * - No data/logic changes. Only picks which snapshot to render.
- * - The inner ladder UI is your existing component via renderSnapshot(snapshot).
+ * Single card with a top-right selector: [Active] [N] [N-1] ... [1]
+ * - No logic changes. Only swaps which snapshot is rendered.
  */
 export default function CombinedSellPlannerCard(props: CombinedSellPlannerCardProps) {
   const {
@@ -58,10 +56,10 @@ export default function CombinedSellPlannerCard(props: CombinedSellPlannerCardPr
     return arr
   }, [hist.length])
 
-  // Selector UI state (default to Active)
+  // Selector (default Active)
   const [selected, setSelected] = React.useState<'active' | number>('active')
 
-  // If history count changes, keep default as Active
+  // If history count changes, re-default to Active
   React.useEffect(() => {
     setSelected('active')
   }, [hist.length])

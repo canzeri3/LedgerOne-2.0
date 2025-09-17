@@ -2,18 +2,17 @@
 import * as React from 'react'
 
 /**
- * This component should mirror the *existing body* you currently render inside
- * your "Sell Planner – ladder" card. If you already have such a component,
- * use that and delete this file.
+ * Replace the return body below with the same JSX your current
+ * "Sell Planner – ladder" card uses to render its ladder rows.
+ * If you *already have* such a component, delete this file and
+ * use your existing component in Step 3.
  */
 export default function SellLadderBody({ planner }: { planner: any }) {
-  // TODO: Replace the return below with your current ladder body JSX.
-  // For example, if you already have <SellLadderRows planner={planner} />, return that.
   return (
     <div className="text-sm text-slate-300">
-      {/* Replace this placeholder with your real ladder UI */}
+      {/* TODO: Replace with your real ladder UI, e.g.: */}
       {/* <SellLadderRows planner={planner} /> */}
-      <pre className="text-xs opacity-75">SellLadderBody: replace with your ladder renderer</pre>
+      <pre className="text-xs opacity-70">SellLadderBody placeholder — swap in your real ladder rows</pre>
     </div>
   )
 }

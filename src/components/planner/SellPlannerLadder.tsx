@@ -1,4 +1,3 @@
-// src/components/planner/SellPlannerLadder.tsx
 'use client'
 
 import { useEffect, useMemo } from 'react'
@@ -46,12 +45,13 @@ type ActiveBuyPlanner = {
   is_active: boolean | null
 }
 
-// Mirror buy “near target counts” behavior
-const SELL_TOLERANCE = 0.03 // 3%
+// Highlight when near (±3%) or crossed ≥ target
+const SELL_TOLERANCE = 0.03
+const EPS = 1e-8
 
 export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
-  const { price: livePrice, lastPrice } = useLivePrice(coingeckoId, 15000)
+  const { price: livePrice } = useLivePrice(coingeckoId, 15000)
 
   // Active Sell Planner
   const { data: planner, mutate: mutatePlanner } = useSWR<SellPlanner | null>(
@@ -123,9 +123,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     async () => {
       const { data, error } = await supabaseBrowser
         .from('buy_planners')
-        .select(
-          'id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,started_at,is_active'
-        )
+        .select('id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,started_at,is_active')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
         .eq('is_active', true)
@@ -169,7 +167,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     [buysRaw]
   )
 
-  // Live baseline (strict on-plan avg). Logic unchanged.
+  // Live baseline (strict on-plan avg)
   const liveBaseline = useMemo(() => {
     if (!buyPlanner) return 0
     const top = Number(buyPlanner.top_price || 0)
@@ -190,13 +188,13 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return sumTokens > 0 ? (sumUsd / sumTokens) : 0
   }, [buyPlanner?.id, buys])
 
-  // Choose baseline: locked avg if present, else live baseline (unchanged)
+  // Baseline: locked avg if present, else live baseline
   const baseline = useMemo(() => {
     const locked = Number(planner?.avg_lock_price ?? 0)
     return locked > 0 ? locked : Number(liveBaseline || 0)
   }, [planner?.avg_lock_price, liveBaseline])
 
-  // Rows with target price (dynamic when active & unlocked). Logic unchanged.
+  // Rows with target price (dynamic when active & unlocked)
   const rows = useMemo(() => {
     const lvl = levels ?? []
     const activeUnlocked = !!planner?.is_active && !planner?.avg_lock_price
@@ -212,7 +210,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     })
   }, [levels, baseline, planner?.is_active, planner?.avg_lock_price])
 
-  // Waterfall allocation for SELL progress with 3% tolerance
+  // Waterfall allocation for SELL progress
   const sellFill = useMemo(() => {
     if (!rows.length || !(sells?.length)) {
       return {
@@ -230,7 +228,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return computeSellFills(lvls, sells, SELL_TOLERANCE)
   }, [rows, sells])
 
-  // Build view for UI (unchanged layout)
+  // Build view for UI
   const view = useMemo(() => {
     return rows.map((row, i) => {
       const fillTokens = Number(sellFill.allocatedTokens[i] ?? 0)
@@ -242,7 +240,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     })
   }, [rows, sellFill])
 
-  // Realtime (unchanged)
+  // Realtime updates
   useEffect(() => {
     if (!user) return
     const ch = supabaseBrowser
@@ -272,19 +270,10 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return () => { supabaseBrowser.removeChannel(ch) }
   }, [user?.id, coingeckoId, mutatePlanner, mutateLevels, mutateSells, mutateBuys])
 
-  // Totals for footer (UI only)
-  const totalPlannedTokens = useMemo(
-    () => view.reduce((s, r) => s + r.plannedTokens, 0),
-    [view]
-  )
-  const totalPlannedUsd = useMemo(
-    () => view.reduce((s, r) => s + r.plannedUsd, 0),
-    [view]
-  )
-  const totalMissingTokens = useMemo(
-    () => view.reduce((s, r) => s + r.missingTokens, 0),
-    [view]
-  )
+  // Totals
+  const totalPlannedTokens = useMemo(() => view.reduce((s, r) => s + r.plannedTokens, 0), [view])
+  const totalPlannedUsd    = useMemo(() => view.reduce((s, r) => s + r.plannedUsd, 0), [view])
+  const totalMissingTokens = useMemo(() => view.reduce((s, r) => s + r.missingTokens, 0), [view])
 
   if (!planner) {
     return (
@@ -323,9 +312,17 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
           </thead>
           <tbody>
             {view.map(row => {
-              const pct = row.pct
+              const full = row.missingTokens <= EPS
+              const nearOrCross =
+                Number.isFinite(livePrice as any) &&
+                (
+                  Math.abs((livePrice as number) - Number(row.targetPrice)) / Number(row.targetPrice) <= SELL_TOLERANCE ||
+                  (livePrice as number) >= Number(row.targetPrice)
+                )
+              const rowCls = full ? 'text-emerald-400' : nearOrCross ? 'text-yellow-300' : ''
+
               return (
-                <tr key={row.level} className="border-t border-slate-800/40 align-middle">
+                <tr key={row.level} className={`border-t border-slate-800/40 align-middle ${rowCls}`}>
                   <td className="px-3 py-2">{row.level}</td>
                   <td className="px-3 py-2">{fmtCurrency(row.targetPrice)}</td>
                   <td className="px-3 py-2">{row.plannedTokens.toFixed(6)}</td>
@@ -334,10 +331,10 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
                   <td className="px-3 py-2">
                     <div className="flex justify-end items-center gap-2">
                       <div className="w-40">
-                        <ProgressBar pct={pct} />
+                        <ProgressBar pct={row.pct} />
                       </div>
                       <span className="w-10 text-right tabular-nums">
-                        {Math.round(pct * 100)}%
+                        {Math.round(row.pct * 100)}%
                       </span>
                     </div>
                   </td>
