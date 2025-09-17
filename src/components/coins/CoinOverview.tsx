@@ -1,24 +1,27 @@
-'use client'
+ 'use client'
 
 import useSWR from 'swr'
+import React, { useEffect, useMemo, useState } from 'react'
 import { fmtCurrency, fmtPct } from '@/lib/format'
 import { useFavorites } from '@/lib/useFavorites'
-import { Star, TrendingUp, TrendingDown } from 'lucide-react'
-import React from 'react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 
 type PriceResp = {
   price: number | null
-  // NOTE: Backends vary. This may be:
-  //  - fractional change (e.g., 0.025 = +2.5%)
-  //  - percent as a number (e.g., 2.5 = +2.5%)
-  //  - absolute price delta (e.g., 1540.82 = +$1540.82)
-  change_24h: number | null
-  captured_at: string | null
-  provider: string | null
-  stale: boolean
+  // Optional variants your API may return:
+  change_24h?: number | null            // could be absolute USD delta OR percent
+  change_24h_pct?: number | null        // percent number (e.g., -0.82 or -0.82%)
+  change_24h_percent?: number | null    // alias
+  price_24h?: number | null             // price 24h ago
+  previous_price_24h?: number | null    // alias
+  captured_at?: string | null
+  provider?: string | null
+  stale?: boolean
 }
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+type HistoryPoint = { t: number; p: number }
+
+const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then(r => r.json())
 
 type Props = {
   id: string
@@ -26,41 +29,151 @@ type Props = {
   symbol: string
 }
 
-/** Normalize a possibly-misinterpreted "change_24h" into a FRACTION (0.0245 = +2.45%).
- * Heuristics:
- *  - |x| <= 1       -> treat as fraction already
- *  - 1 < |x| <= 20  -> treat as percent value (x/100)
- *  - otherwise      -> treat as absolute price delta; percent = delta / (price - delta)
- * This covers common API variations and fixes the “+1,540.82%” bug.
- */
-function normalizeChangeToFraction(raw: number | null | undefined, price: number | null | undefined) {
-  if (raw == null) return null
-  const x = Number(raw)
-  const ax = Math.abs(x)
+/* ---------- helpers ---------- */
 
-  if (ax <= 1) return x // already fraction
-  if (ax <= 20) return x / 100 // percent number -> fraction
-
-  if (price != null) {
-    const prev = price - x // if x was absolute delta
-    if (prev !== 0) return x / prev
+function normalizeHistory(raw: any): HistoryPoint[] {
+  if (!raw) return []
+  if (Array.isArray(raw?.prices)) {
+    const out: HistoryPoint[] = []
+    for (const row of raw.prices) {
+      if (Array.isArray(row) && row.length >= 2) {
+        const t = Number(row[0]); const p = Number(row[1])
+        if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p })
+      }
+    }
+    out.sort((a, b) => a.t - b.t)
+    return out
   }
-  // Fallback: assume percent number
-  return x / 100
+  if (Array.isArray(raw)) {
+    const out: HistoryPoint[] = []
+    for (const row of raw) {
+      if (Array.isArray(row) && row.length >= 2) {
+        const t = Number(row[0]); const p = Number(row[1])
+        if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p })
+        continue
+      }
+      if (row && typeof row === 'object') {
+        const t = Number(row.t ?? row.time ?? row.timestamp ?? row[0])
+        const p = Number(row.p ?? row.price ?? row.value ?? row.v ?? row[1])
+        if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p })
+      }
+    }
+    out.sort((a, b) => a.t - b.t)
+    return out
+  }
+  return []
+}
+
+function percentNumberToFraction(x: number | null | undefined): number | null {
+  if (x == null) return null
+  const v = Number(x)
+  if (!Number.isFinite(v)) return null
+  return Math.abs(v) <= 1 ? v : v / 100
+}
+
+function fractionFromHistory(hist: HistoryPoint[] | null): number | null {
+  if (!hist || hist.length < 2) return null
+  const first = hist[0]?.p
+  const last = hist[hist.length - 1]?.p
+  if (!Number.isFinite(first) || !Number.isFinite(last) || first === 0) return null
+  return last / first - 1
+}
+
+// Priority:
+// 1) explicit percent fields
+// 2) previous price
+// 3) history (authoritative)
+// 4) interpret change_24h safely (fraction | percent number | USD delta)
+function derive24hFraction(priceData: PriceResp | undefined, hist: HistoryPoint[] | null): number | null {
+  if (priceData) {
+    const price = Number(priceData.price)
+    const pctField = percentNumberToFraction(priceData.change_24h_pct ?? priceData.change_24h_percent)
+    if (pctField != null) return pctField
+
+    const prevPrice = Number(priceData.price_24h ?? priceData.previous_price_24h)
+    if (Number.isFinite(price) && Number.isFinite(prevPrice) && prevPrice > 0) {
+      return price / prevPrice - 1
+    }
+  }
+
+  const fromHist = fractionFromHistory(hist)
+  if (fromHist != null) return fromHist
+
+  if (priceData) {
+    const price = Number(priceData.price)
+    const raw = Number(priceData.change_24h)
+    if (Number.isFinite(raw)) {
+      if (Math.abs(raw) <= 1) return raw            // fraction already
+      if (Math.abs(raw) <= 20) return raw / 100     // percent number
+      if (Number.isFinite(price) && price - raw !== 0) {
+        return raw / (price - raw)                  // USD delta
+      }
+    }
+  }
+  return null
+}
+
+/* ---------- star icons (hollow/filled) ---------- */
+
+function StarHollow({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.45 13.97 5.82 21 12 17.27" />
+    </svg>
+  )
+}
+
+function StarFilled({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="12 17.27 18.18 21 16.54 13.97 22 9.24 14.81 8.63 12 2 9.19 8.63 2 9.24 7.45 13.97 5.82 21 12 17.27" />
+    </svg>
+  )
 }
 
 export default function CoinOverview({ id, name, symbol }: Props) {
-  // Favorites (star) toggle
+  // Favorites (optimistic)
   const { favorites, toggle, isLoading: favLoading } = useFavorites()
-  const isFav = !!favorites?.some(f => f.coingecko_id === id)
+  const isFavFromStore = useMemo(
+    () => !!favorites?.some((f: any) => f?.coingecko_id === id || f?.id === id || f?.slug === id),
+    [favorites, id]
+  )
+  const [isFav, setIsFav] = useState<boolean>(isFavFromStore)
+  useEffect(() => setIsFav(isFavFromStore), [isFavFromStore])
+  const onToggleFav = async () => {
+    if (favLoading) return
+    setIsFav(prev => !prev)
+    try { await toggle(id) } catch { setIsFav(prev => !prev) }
+  }
 
-  // Live price + 24h change
-  const { data } = useSWR<PriceResp>(`/api/price/${id}`, fetcher, { refreshInterval: 30_000 })
-  const price = data?.price ?? null
+  // Live price
+  const { data: priceData } = useSWR<PriceResp>(`/api/price/${id}`, fetcher, { refreshInterval: 30_000 })
+  const price = priceData?.price ?? null
 
-  // Normalize to FRACTION for fmtPct()
-  const pctFrac = normalizeChangeToFraction(data?.change_24h, price)
+  // 24h history (for authoritative comparison / fallback)
+  const { data: histRaw } = useSWR<any>(`/api/coin-history?id=${encodeURIComponent(id)}&days=1`, fetcher, { refreshInterval: 300_000 })
+  const hist = useMemo(() => normalizeHistory(histRaw), [histRaw])
 
+  // Final 24h percent (fraction)
+  const pctFrac = useMemo(() => derive24hFraction(priceData, hist), [priceData, hist])
   const pctPositive = pctFrac != null && pctFrac >= 0
   const pctClasses =
     pctFrac == null
@@ -75,20 +188,19 @@ export default function CoinOverview({ id, name, symbol }: Props) {
       <div className="flex items-end justify-between gap-3">
         {/* Left: favorite + name */}
         <div className="flex items-center gap-3">
-          {/* Floating star (same look/feel as sidebar coin star, no borders) */}
           <button
             type="button"
             aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
             aria-pressed={isFav}
-            onClick={() => toggle(id)}
+            onClick={onToggleFav}
             disabled={favLoading}
-            className={`inline-flex h-8 w-8 items-center justify-center transition ${
-              isFav
-                ? 'text-yellow-400 hover:opacity-90'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className="inline-flex h-8 w-8 items-center justify-center transition"
           >
-            <Star className={`h-5 w-5 ${isFav ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+            {isFav ? (
+              <StarFilled className="h-5 w-5 text-yellow-400" />
+            ) : (
+              <StarHollow className="h-5 w-5 text-slate-400" />
+            )}
           </button>
 
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
@@ -99,7 +211,7 @@ export default function CoinOverview({ id, name, symbol }: Props) {
           </h1>
         </div>
 
-        {/* Right: price + % change (keep layout; chip shows PERCENT, not raw price delta) */}
+        {/* Right: price + % change */}
         <div className="flex items-baseline gap-3">
           <div className="tabular-nums text-xl md:text-2xl font-semibold">
             {price != null ? (
@@ -129,14 +241,6 @@ export default function CoinOverview({ id, name, symbol }: Props) {
           </span>
         </div>
       </div>
-
-      {/* Optional stale badge
-      {data?.stale && (
-        <div className="mt-2 text-[10px] text-amber-300">
-          Price may be delayed.
-        </div>
-      )}
-      */}
     </div>
   )
 }

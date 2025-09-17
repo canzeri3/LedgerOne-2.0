@@ -167,7 +167,8 @@ export default function TradesPanel({ id }: Props) {
   const noActiveSell = !activeSell
 
   return (
-    <div className="rounded-2xl border border-[#081427] p-4 space-y-4 w-full">
+    // OUTER SHELL — stat-card style
+    <div className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 p-4 space-y-4 w-full">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="font-medium">Add Trade</h2>
         <div className="text-xs text-slate-400">
@@ -184,20 +185,21 @@ export default function TradesPanel({ id }: Props) {
       {err && <div className="text-sm text-rose-400">{err}</div>}
       {ok && <div className="text-sm text-emerald-400">{ok}</div>}
 
-      {/* Guidance banners */}
+      {/* Guidance banners — stat-card chip style */}
       {noActiveBuy && (
-        <div className="text-xs rounded-md border border-[#081427] p-2 bg-[#0a162c]">
+        <div className="text-xs rounded-md border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 p-2">
           No active Buy Planner for this coin. Go to <a className="underline" href="/planner">Planner</a> and click <span className="font-medium">Save New</span>.
         </div>
       )}
       {noActiveSell && (
-        <div className="text-xs rounded-md border border-[#081427] p-2 bg-[#0a162c]">
+        <div className="text-xs rounded-md border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 p-2">
           No active Sell Planner for this coin. Click <span className="font-medium">Save New</span> on the Buy Planner to create a new Sell epoch.
         </div>
       )}
 
       <div className="grid gap-2 md:grid-cols-6">
-        <div className="col-span-2 rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2">
+        {/* SIDE — container styled like a card */}
+        <div className="col-span-2 rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2">
           <div className="text-xs text-slate-400 mb-1">Side</div>
           <div className="flex gap-3">
             <label className="text-sm flex items-center gap-1">
@@ -209,29 +211,33 @@ export default function TradesPanel({ id }: Props) {
           </div>
         </div>
 
+        {/* PRICE */}
         <input
-          className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+          className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2"
           placeholder="Price"
           type="number" step="0.00000001" min="0"
           value={price} onChange={(e)=>setPrice(e.target.value)}
         />
 
+        {/* QUANTITY */}
         <input
-          className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+          className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2"
           placeholder="Quantity"
           type="number" step="0.00000001" min="0"
           value={qty} onChange={(e)=>setQty(e.target.value)}
         />
 
+        {/* FEE */}
         <input
-          className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+          className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2"
           placeholder="Fee (optional)"
           type="number" step="0.00000001" min="0"
           value={fee} onChange={(e)=>setFee(e.target.value)}
         />
 
+        {/* DATE/TIME */}
         <input
-          className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+          className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2"
           placeholder="Trade time"
           type="datetime-local"
           value={time}
@@ -248,7 +254,7 @@ export default function TradesPanel({ id }: Props) {
           <select
             value={selectedSellPlannerId}
             onChange={(e)=>setSelectedSellPlannerId(e.target.value)}
-            className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+            className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2"
             title="Choose which Sell Planner this trade should belong to"
           >
             <option value="" disabled>{sellPlanners.length ? 'Select Sell Planner' : 'No Sell Planners yet'}</option>
@@ -266,13 +272,17 @@ export default function TradesPanel({ id }: Props) {
         <button
           onClick={submitTrade}
           disabled={!canSubmit || saving}
-          className={`rounded-lg border border-[#081427] px-3 py-2 ${(!canSubmit || saving) ? 'bg-[#0e1b33] text-slate-500 cursor-not-allowed' : 'bg-[#0a162c]'}`}
+          className={`rounded-2xl border border-slate-700/40 ring-1 ring-slate-600/30 px-3 py-2 ${
+            (!canSubmit || saving)
+              ? 'bg-slate-900/40 backdrop-blur-[2px] text-slate-500 cursor-not-allowed'
+              : 'bg-slate-800/40 backdrop-blur-[2px] hover:bg-slate-700/40 text-slate-200'
+          }`}
         >
           {saving ? 'Saving…' : 'Add Trade'}
         </button>
         <button
           onClick={resetAfterSubmit}
-          className="rounded-lg bg-[#0a162c] border border-[#081427] px-3 py-2"
+          className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-3 py-2 hover:bg-slate-700/40 text-slate-200"
           type="button"
         >
           Reset
