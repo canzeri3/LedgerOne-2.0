@@ -6,7 +6,7 @@ import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
 
 // Deep page background (rich-black, very deep blue)
-const PAGE_BG   = 'oklch(0.08 0.02 260 / 1)'
+const PAGE_BG = 'oklch(0.145 0 0 / 0.85)';
 // Semi-opaque surfaces
 const SIDEBAR_BG = 'oklch(0.21 0.03 264.66 / 0.85)'
 const HEADER_BG  = 'oklch(0.18 0.04 264.66 / 0.78)'

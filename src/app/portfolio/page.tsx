@@ -8,7 +8,7 @@ import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import { useRouter } from 'next/navigation'
 import AllocationDonut from '@/components/portfolio/AllocationDonut'
-import PortfolioGrowthChart from '@/components/portfolio/PortfolioGrowthChart'
+import PortfolioHistoryChartCard from '@/components/portfolio/PortfolioHistoryChartCard'
 
 type TradeRow = {
   coingecko_id: string
@@ -122,7 +122,7 @@ export default function PortfolioPage() {
     return () => { cancelled = true }
   }, [user, frozenKey])
 
-  // ========== Live price polling (UI only) ==========
+  // Live snapshot pricing (for KPIs/table) — unchanged
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
 
@@ -159,7 +159,7 @@ export default function PortfolioPage() {
     }
 
     fetchAll()
-    const id = setInterval(fetchAll, 15_000) // adjust cadence if you want
+    const id = setInterval(fetchAll, 15_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [coinKey])
 
@@ -232,76 +232,6 @@ export default function PortfolioPage() {
     return { value, invested, unreal, realized, total: unreal + realized, delta24Usd, delta24Pct }
   }, [rows])
 
-  // ===== Base series from earliest trade (mark-to-current at each trade) =====
-  const baseSeries = useMemo(() => {
-    if (!trades || Object.keys(prices).length === 0) return []
-    const sorted = [...trades].sort(
-      (a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime()
-    )
-    const qtyByCoin = new Map<string, number>()
-    const valByCoin = new Map<string, number>() // position value at current price
-    let total = 0
-    const pts: { t: number; v: number }[] = []
-
-    for (const tr of sorted) {
-      const sign = tr.side === 'buy' ? 1 : -1
-      const nextQty = (qtyByCoin.get(tr.coingecko_id) ?? 0) + sign * tr.quantity
-      qtyByCoin.set(tr.coingecko_id, nextQty)
-
-      const priceNow = prices[tr.coingecko_id] ?? 0
-      const prevVal = valByCoin.get(tr.coingecko_id) ?? 0
-      const newVal = nextQty * priceNow
-      total += newVal - prevVal
-      valByCoin.set(tr.coingecko_id, newVal)
-
-      pts.push({ t: new Date(tr.trade_time).getTime(), v: Math.max(0, total) })
-    }
-    return pts
-  }, [trades, prices])
-
-  // ===== Live series that starts at earliest trade and extends with live sampling =====
-  type Point = { t: number; v: number }
-  const [liveSeries, setLiveSeries] = useState<Point[]>([])
-  const lastAppendRef = useRef<number>(0)
-
-  // Merge baseSeries (earliest trade → last trade) with any live tail points (> last trade time).
-  useEffect(() => {
-    const lastBaseTs = baseSeries.length ? baseSeries[baseSeries.length - 1].t : 0
-    setLiveSeries(prev => {
-      const tail = prev.filter(p => p.t > lastBaseTs)
-      let merged = [...baseSeries, ...tail]
-      if (merged.length === 0 || merged[merged.length - 1].t <= lastBaseTs) {
-        merged.push({ t: Date.now(), v: Math.max(0, totals.value) })
-      }
-      return merged
-    })
-  }, [
-    baseSeries.length
-      ? `${baseSeries[0].t}-${baseSeries[baseSeries.length - 1].t}-${baseSeries.length}`
-      : 'empty',
-    totals.value,
-  ])
-
-  // Append a fresh live point periodically (reacts to price changes & time passing)
-  useEffect(() => {
-    const appendNow = () => {
-      const now = Date.now()
-      if (now - lastAppendRef.current < 5000) return
-      lastAppendRef.current = now
-      setLiveSeries(prev => {
-        if (prev.length && now - prev[prev.length - 1].t < 3000 && Math.abs(prev[prev.length - 1].v - totals.value) < 1e-6) {
-          return prev
-        }
-        const next = [...prev, { t: now, v: Math.max(0, totals.value) }]
-        return next.slice(-2000)
-      })
-    }
-
-    appendNow()
-    const id = setInterval(appendNow, 15_000)
-    return () => clearInterval(id)
-  }, [totals.value])
-
   // Navigation helpers
   function goToCoin(cid: string) { router.push(`/coins/${cid}`) }
   function onRowKey(e: React.KeyboardEvent<HTMLTableRowElement>, cid: string) {
@@ -351,17 +281,11 @@ export default function PortfolioPage() {
         />
       </div>
 
-      {/* Growth chart + Allocation donut */}
+      {/* Portfolio price-history chart + Allocation donut */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Left: Portfolio Growth (earliest trade → now, live) */}
-        <div className="lg:col-span-2 rounded-2xl border border-[#081427] p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-medium">Portfolio Growth (Live)</div>
-            <div className="text-xs text-slate-400">Starts at your earliest trade; updates with price moves</div>
-          </div>
-          <div className="h-64">
-            <PortfolioGrowthChart data={liveSeries} />
-          </div>
+        {/* Left: Portfolio History (since earliest buy; cached history + range selector) */}
+        <div className="lg:col-span-2">
+          <PortfolioHistoryChartCard trades={trades ?? []} />
         </div>
 
         {/* Right: Allocation Donut */}
@@ -444,8 +368,7 @@ export default function PortfolioPage() {
       </div>
 
       <p className="text-xs text-slate-500">
-        The growth series is anchored at your earliest trade and extends with live, mark-to-market samples over time.
-        No backend changes; we value positions at current prices on each tick and on every new trade.
+        “Max” spans from your first BUY across all coins. Data is cached per-coin and aggregated client-side for smooth, real-time feel without changing your backend.
       </p>
     </div>
   )
