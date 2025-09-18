@@ -17,7 +17,8 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "recharts": "^3.2.0",
-    "swr": "^2.3.0"
+    "swr": "^2.3.0",
+    "clsx": "^2.1.1"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
@@ -30,3 +31,4 @@
     "typescript": "^5.5.4"
   }
 }
+

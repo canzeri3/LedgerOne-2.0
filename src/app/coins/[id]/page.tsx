@@ -1,50 +1,60 @@
-import { use } from 'react'
-import { headers } from 'next/headers'
 import CoinOverview from '@/components/coins/CoinOverview'
 import CoinStatsGrid from '@/components/coins/CoinStatsGrid'
 import TradesPanel from '@/components/coins/TradesPanel'
 import TradesList from '@/components/coins/TradesList'
 import CoinValueChart from '@/components/coins/CoinValueChart'
+import SectionCard from '@/components/common/SectionCard'
+
+// BUY planner
+import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
+
+// SELL planner (combined card that shows Levels + Frozen/History)
+import CombinedSellPlannerCard from '@/components/sell/CombinedSellPlannerCard'
 
 type RouteParams = { id: string }
-type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 
-// Build an absolute base URL for server-side fetches (works locally and in prod)
-function getBaseUrl() {
-  const h = headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
-  const proto = h.get('x-forwarded-proto') ?? 'http'
-  return `${proto}://${host}`
-}
-
-export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
-  const { id } = use(params)
-  const baseUrl = getBaseUrl()
-
-  const coins = use(
-    fetch(`${baseUrl}/api/coins`, { cache: 'no-store' })
-      .then(async (r) => (r.ok ? ((await r.json()) as CoinMeta[]) : ([] as CoinMeta[])))
-      .catch(() => [] as CoinMeta[])
-  )
-
-  const meta = coins.find((c) => c.coingecko_id === id)
-  const name = meta?.name ?? id
-  const symbol = meta?.symbol ?? id
+/**
+ * Server component. No client hooks here.
+ * Child components handle their own data fetching.
+ */
+export default async function CoinPage({ params }: { params: RouteParams }) {
+  const id = params.id
+  const name = id
+  const symbol = id.toUpperCase().slice(0, 5)
 
   return (
     <div className="space-y-6">
-      {/* Header stat card with price + 24h change */}
+      {/* Overview + stats */}
       <CoinOverview id={id} name={name} symbol={symbol} />
-<CoinStatsGrid id={id} />
-      {/* NEW: Full-width Value chart */}
+      <CoinStatsGrid id={id} />
+
+      {/* Chart */}
       <CoinValueChart coingeckoId={id} />
 
-      {/* Stack: Add Trade card, then Recent Trades underneath */}
+      {/* Stack: Add Trade, then planners (styled to match stat/Add Trade cards), then recent trades */}
       <div className="space-y-4">
+        {/* Add Trade (already styled) */}
         <TradesPanel id={id} />
+
+        {/* Buy Planner – Ladder */}
+        <SectionCard
+          title="Buy Planner – Ladder"
+          description="Your active buy ladder for this coin."
+        >
+          <BuyPlannerLadder coingeckoId={id} />
+        </SectionCard>
+
+        {/* Sell Planner (combined: active levels + frozen history) */}
+        <SectionCard
+          title="Sell Planner"
+          description="Active take-profit levels and frozen history."
+        >
+          <CombinedSellPlannerCard coingeckoId={id} />
+        </SectionCard>
+
+        {/* Recent Trades */}
         <TradesList id={id} />
       </div>
     </div>
   )
 }
-

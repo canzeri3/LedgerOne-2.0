@@ -1,41 +1,93 @@
-'use client'
+import * as React from 'react'
 
-import { ReactNode } from 'react'
-import clsx from 'clsx'
+/** Minimal className combiner (avoids extra deps) */
+function cn(...inputs: Array<string | undefined | null | false>) {
+  return inputs.filter(Boolean).join(' ')
+}
 
-type CardProps = {
-  children: ReactNode
-  className?: string
+/**
+ * Named shadcn-style primitives
+ */
+
+export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn('rounded-2xl border border-white/10 bg-black/30 backdrop-blur', className)}
+      {...props}
+    />
+  )
+)
+Card.displayName = 'Card'
+
+export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-4 md:p-6', className)} {...props} />
+  )
+)
+CardHeader.displayName = 'CardHeader'
+
+export const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3 ref={ref} className={cn('text-base md:text-lg font-medium leading-none', className)} {...props} />
+  )
+)
+CardTitle.displayName = 'CardTitle'
+
+export const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
+  ({ className, ...props }, ref) => (
+    <p ref={ref} className={cn('text-xs md:text-sm text-white/60', className)} {...props} />
+  )
+)
+CardDescription.displayName = 'CardDescription'
+
+export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('p-4 md:p-6 pt-0', className)} {...props} />
+  )
+)
+CardContent.displayName = 'CardContent'
+
+export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('p-4 md:p-6 pt-0', className)} {...props} />
+  )
+)
+CardFooter.displayName = 'CardFooter'
+
+/**
+ * Default export: a convenience wrapper that supports
+ * title / subtitle / headerRight, matching how PlannerPage uses <Card ...>.
+ * This keeps existing named imports working, and fixes default-import usage.
+ */
+export type DefaultCardProps = React.HTMLAttributes<HTMLDivElement> & {
   title?: string
   subtitle?: string
-  headerRight?: ReactNode
+  headerRight?: React.ReactNode
+  contentClassName?: string
 }
 
-export default function Card({ children, className, title, subtitle, headerRight }: CardProps) {
-  return (
-    <section
-      className={clsx(
-        // High-contrast grey card against deep blue
-        'rounded-2xl border border-slate-700/70',
-        'bg-gradient-to-b from-slate-800/80 to-slate-900/80 backdrop-blur',
-        'shadow-[0_10px_30px_-15px_rgba(0,0,0,0.6)]',
-        'transition-transform duration-200 hover:-translate-y-[1px]',
-        className
-      )}
-    >
-      {(title || headerRight || subtitle) && (
-        <div className="px-5 pt-5 pb-3 border-b border-slate-700/50">
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              {title && <h2 className="text-sm font-medium text-slate-100">{title}</h2>}
-              {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+const DefaultCard = React.forwardRef<HTMLDivElement, DefaultCardProps>(
+  ({ title, subtitle, headerRight, className, children, contentClassName, ...props }, ref) => {
+    const hasHeader = Boolean(title || subtitle || headerRight)
+    return (
+      <Card ref={ref} className={className} {...props}>
+        {hasHeader ? (
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              {title ? <CardTitle>{title}</CardTitle> : null}
+              {subtitle ? <CardDescription className="mt-1">{subtitle}</CardDescription> : null}
             </div>
             {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
-          </div>
-        </div>
-      )}
-      <div className="p-5">{children}</div>
-    </section>
-  )
-}
+          </CardHeader>
+        ) : null}
+        <CardContent className={cn(hasHeader ? 'pt-0' : '', contentClassName)}>
+          {children}
+        </CardContent>
+      </Card>
+    )
+  }
+)
+DefaultCard.displayName = 'DefaultCard'
 
+export default DefaultCard
