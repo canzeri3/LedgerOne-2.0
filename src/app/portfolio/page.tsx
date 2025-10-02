@@ -255,11 +255,6 @@ export default function PortfolioPage() {
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
             <p className="text-xs text-slate-400 mt-1">Your full holdings, performance, and allocation — live.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <a href="/audit" className="inline-flex items-center justify-center rounded-md border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
-              Audit Log
-            </a>
-          </div>
         </div>
       </div>
 
