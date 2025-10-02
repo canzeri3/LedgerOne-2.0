@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
@@ -23,7 +23,7 @@ export default function TradeLogs({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!user) { setTrades([]); setLoading(false); return }
     setLoading(true)
     const { data, error } = await supabaseBrowser
@@ -35,9 +35,9 @@ export default function TradeLogs({ id }: { id: string }) {
     if (error) setError(error.message)
     setTrades((data ?? []) as DbTrade[])
     setLoading(false)
-  }
+  }, [id, user])
 
-  useEffect(() => { load() }, [user, id])
+  useEffect(() => { void load() }, [load])
 
   if (!user) {
     return (

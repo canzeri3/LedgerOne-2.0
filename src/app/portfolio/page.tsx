@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -68,13 +68,7 @@ export default function PortfolioPage() {
   }, [trades])
 
   const coinIds = useMemo(() => Array.from(tradesByCoin.keys()), [tradesByCoin])
-  const coinKey = useMemo(() => [...coinIds].sort().join(','), [coinIds])
-
   const [frozen, setFrozen] = useState<FrozenPlanner[]>([])
-  const frozenKey = useMemo(
-    () => [...frozen.map(f => f.id)].sort().join(','),
-    [frozen]
-  )
 
   useEffect(() => {
     let cancelled = false
@@ -94,7 +88,7 @@ export default function PortfolioPage() {
       if (!cancelled) setFrozen(x)
     })()
     return () => { cancelled = true }
-  }, [user, coinKey])
+  }, [user, coinIds])
 
   const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
   useEffect(() => {
@@ -120,7 +114,7 @@ export default function PortfolioPage() {
       if (!cancelled) setFrozenSells(rows)
     })()
     return () => { cancelled = true }
-  }, [user, frozenKey])
+  }, [user, frozen])
 
   // Live snapshot pricing (for KPIs/table) — unchanged
   const [prices, setPrices] = useState<Record<string, number>>({})
@@ -161,11 +155,11 @@ export default function PortfolioPage() {
     fetchAll()
     const id = setInterval(fetchAll, 15_000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [coinKey])
+  }, [coinIds])
 
-  function coinMeta(cid: string): CoinMeta | undefined {
-    return coins?.find(c => c.coingecko_id === cid)
-  }
+  const coinMeta = useCallback((cid: string): CoinMeta | undefined => (
+    coins?.find(c => c.coingecko_id === cid)
+  ), [coins])
 
   // Per-coin computed rows (unchanged business logic)
   const rows = useMemo(() => {
@@ -216,7 +210,7 @@ export default function PortfolioPage() {
         delta24Pct,
       }
     }).sort((a,b) => b.value - a.value)
-  }, [coinIds, tradesByCoin, prices, coins, frozen, frozenSells, chg24hPctMap])
+  }, [coinIds, tradesByCoin, prices, frozen, frozenSells, chg24hPctMap, coinMeta])
 
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0)

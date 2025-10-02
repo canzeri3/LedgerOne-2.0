@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency, fmtPct } from '@/lib/format'
@@ -34,7 +34,7 @@ export default function SellLevels({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!user) { setLevels(null); setActiveEpoch(null); setLoading(false); return }
     setLoading(true)
     setError(null)
@@ -47,7 +47,8 @@ export default function SellLevels({ id }: { id: string }) {
       .eq('is_active', true)
       .maybeSingle()
     if (e1 && e1.code !== 'PGRST116') setError(e1.message)
-    setActiveEpoch((epochRow as any) ?? null)
+    const currentEpoch = (epochRow as Epoch | null) ?? null
+    setActiveEpoch(currentEpoch)
 
     const q = supabaseBrowser
       .from('sell_levels')
@@ -56,16 +57,16 @@ export default function SellLevels({ id }: { id: string }) {
       .eq('coingecko_id', id)
       .order('level', { ascending: true })
 
-    const { data: lvRows, error: e2 } = activeEpoch
-      ? await q.eq('epoch_id', (epochRow as any)?.id ?? null)
+    const { data: lvRows, error: e2 } = currentEpoch
+      ? await q.eq('epoch_id', currentEpoch.id)
       : await q.is('epoch_id', null)
     if (e2) setError(e2.message)
 
     setLevels((lvRows ?? []) as any)
     setLoading(false)
-  }
+  }, [id, user])
 
-  useEffect(() => { load() }, [user, id])
+  useEffect(() => { void load() }, [load])
 
   const withinTol = (target: number, tol = 0.05) => {
     const p = priceData?.price

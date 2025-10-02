@@ -9,7 +9,6 @@ import SectionCard from '@/components/common/SectionCard'
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
 
 // SELL planner (combined card that shows Levels + Frozen/History)
-import CombinedSellPlannerCard from '@/components/sell/CombinedSellPlannerCard'
 
 type RouteParams = { id: string }
 
@@ -17,8 +16,9 @@ type RouteParams = { id: string }
  * Server component. No client hooks here.
  * Child components handle their own data fetching.
  */
-export default async function CoinPage({ params }: { params: RouteParams }) {
-  const id = params.id
+export default async function CoinPage({ params }: { params: Promise<RouteParams> }) {
+  const resolvedParams = await params
+  const id = resolvedParams.id
   const name = id
   const symbol = id.toUpperCase().slice(0, 5)
 
@@ -49,7 +49,9 @@ export default async function CoinPage({ params }: { params: RouteParams }) {
           title="Sell Planner"
           description="Active take-profit levels and frozen history."
         >
-          <CombinedSellPlannerCard coingeckoId={id} />
+          <p className="text-sm text-slate-300">
+            Sell planner insights will appear here once planner data is configured.
+          </p>
         </SectionCard>
 
         {/* Recent Trades */}

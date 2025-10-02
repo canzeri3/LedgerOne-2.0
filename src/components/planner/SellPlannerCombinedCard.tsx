@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
@@ -190,7 +190,7 @@ export default function SellPlannerCombinedCard({
   }
 
   // Apply/removes the highlight class on each row in a container
-  function applyHighlights(container: HTMLElement | null, price: number | null) {
+  const applyHighlights = useCallback((container: HTMLElement | null, price: number | null) => {
     if (!container || !Number.isFinite(price as number)) return
     const rows = rowElsOf(container)
     for (const row of rows) {
@@ -199,14 +199,14 @@ export default function SellPlannerCombinedCard({
       const on = level != null && shouldHighlightSell(level, price as number)
       row.classList.toggle('text-yellow-300', !!on)
     }
-  }
+  }, [])
 
   // Re-run highlight when price changes or content mutates
   useEffect(() => {
     if (!hasLivePrice) return
     applyHighlights(activeRootRef.current, livePrice)
     applyHighlights(historyRootRef.current, livePrice)
-  }, [hasLivePrice, livePrice, selected, historyLength])
+  }, [applyHighlights, hasLivePrice, historyLength, livePrice, selected])
   /* --------------------------------------------------------------------------- */
 
   return (

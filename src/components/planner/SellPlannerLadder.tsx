@@ -186,7 +186,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     }, 0)
 
     return sumTokens > 0 ? (sumUsd / sumTokens) : 0
-  }, [buyPlanner?.id, buys])
+  }, [buyPlanner, buys])
 
   // Baseline: locked avg if present, else live baseline
   const baseline = useMemo(() => {
@@ -268,7 +268,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       .subscribe()
 
     return () => { supabaseBrowser.removeChannel(ch) }
-  }, [user?.id, coingeckoId, mutatePlanner, mutateLevels, mutateSells, mutateBuys])
+  }, [user, user?.id, coingeckoId, mutatePlanner, mutateLevels, mutateSells, mutateBuys])
 
   // Totals
   const totalPlannedTokens = useMemo(() => view.reduce((s, r) => s + r.plannedTokens, 0), [view])

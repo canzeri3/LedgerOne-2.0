@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import CoinHistoryChart from '@/components/charts/CoinHistoryChart'
 
 type TradeLite = { side: 'buy' | 'sell'; trade_time: string }

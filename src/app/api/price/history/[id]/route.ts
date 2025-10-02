@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const id = decodeURIComponent(params.id)
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id: rawId } = await context.params
+  const id = decodeURIComponent(rawId)
   const url = new URL(req.url)
   const from = url.searchParams.get('from') // ms since epoch
   const now = Date.now()

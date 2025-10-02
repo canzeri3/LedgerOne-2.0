@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr'
 export async function POST(req: Request) {
   const { event, session } = await req.json().catch(() => ({}))
 
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const res = NextResponse.json({ ok: true })
 
   // Wire cookies adapter for @supabase/ssr

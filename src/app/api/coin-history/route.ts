@@ -105,7 +105,7 @@ export async function GET(req: Request) {
           const fromSec = nowSec - numericDays * 86400
           out = await fetchRange(fromSec, nowSec)
         }
-      } catch (fallbackErr) {
+      } catch {
         // Final safety: return a clear 502 with details
         return NextResponse.json(
           {

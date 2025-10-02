@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 
@@ -54,7 +54,7 @@ export default function TradesPanel({ id }: Props) {
     }
   }
 
-  async function loadPlanners() {
+  const loadPlanners = useCallback(async () => {
     if (!user) { setActiveBuy(null); setActiveSell(null); setSellPlanners([]); setSelectedSellPlannerId(''); setLoading(false); return }
     setLoading(true); setErr(null); setOk(null)
 
@@ -89,9 +89,9 @@ export default function TradesPanel({ id }: Props) {
     // for sell form default selection
     setSelectedSellPlannerId(activeS?.id ?? '')
     setLoading(false)
-  }
+  }, [id, user])
 
-  useEffect(() => { loadPlanners() }, [user, id])
+  useEffect(() => { void loadPlanners() }, [loadPlanners])
 
   const canSubmit = useMemo(() => {
     const p = Number(price), q = Number(qty)

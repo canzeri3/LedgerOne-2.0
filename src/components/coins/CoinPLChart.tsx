@@ -291,7 +291,7 @@ export default function CoinPLChart({ coingeckoId }: { coingeckoId: string }) {
             <Tooltip
               contentStyle={{ background: '#0a162c', border: '1px solid #0b1830', borderRadius: 8 }}
               labelFormatter={(ts) => new Date(Number(ts)).toLocaleString()}
-              formatter={(v: any, name: any, ctx: any) => {
+              formatter={(v: any, name: any, _ctx: any) => {
                 if (name === 'total') return [fmtCurrency(v), 'Total P&L']
                 if (name === 'realized') return [fmtCurrency(v), 'Realized']
                 if (name === 'unrealized') return [fmtCurrency(v), 'Unrealized']

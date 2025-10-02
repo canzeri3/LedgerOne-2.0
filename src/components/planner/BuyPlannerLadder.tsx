@@ -56,7 +56,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     const depth = (Number(planner.ladder_depth || 70) === 90 ? 90 : 70) as 70 | 90
     const growth = Number(planner.growth_per_level ?? 25)
     return buildBuyLevels(top, budget, depth, growth)
-  }, [planner?.id])
+  }, [planner])
 
   // BUY trades tied to this active Buy planner (chronological)
   const { data: buysRaw } = useSWR<any[] | null>(

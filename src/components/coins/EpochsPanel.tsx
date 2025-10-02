@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
@@ -24,7 +24,7 @@ export default function EpochsPanel({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!user) { setActive(null); setLoading(false); return }
     setLoading(true); setError(null)
     const { data, error } = await supabaseBrowser
@@ -37,9 +37,9 @@ export default function EpochsPanel({ id }: { id: string }) {
     if (error && error.code !== 'PGRST116') setError(error.message) // ignore "no rows" code
     setActive((data as any) ?? null)
     setLoading(false)
-  }
+  }, [id, user])
 
-  useEffect(() => { load() }, [user, id])
+  useEffect(() => { void load() }, [load])
 
   async function startEpoch() {
     if (!user) return

@@ -7,7 +7,7 @@ import * as React from 'react'
  * If you *already have* such a component, delete this file and
  * use your existing component in Step 3.
  */
-export default function SellLadderBody({ planner }: { planner: any }) {
+export default function SellLadderBody({ planner: _planner }: { planner: any }) {
   return (
     <div className="text-sm text-slate-300">
       {/* TODO: Replace with your real ladder UI, e.g.: */}

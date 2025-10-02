@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * GET /api/price/[id]
@@ -18,10 +18,11 @@ import { NextResponse } from 'next/server'
  * - Always USD; no FX conversions.
  */
 export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
-  const id = decodeURIComponent(params?.id || '').trim()
+  const resolvedParams = await context.params
+  const id = decodeURIComponent(resolvedParams?.id ?? '').trim()
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
@@ -112,7 +113,7 @@ export async function GET(
       return NextResponse.json(build(price, pct24h, updatedAtSec, 'coingecko_markets'), {
         headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=30' },
       })
-    } catch (fallbackErr) {
+    } catch {
       return NextResponse.json(
         {
           price: null,

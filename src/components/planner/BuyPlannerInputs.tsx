@@ -49,7 +49,7 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     setBudget(b == null ? '' : String(b))
     setDepth(String(planner.ladder_depth) === '90' ? '90' : '70')
     setGrowth(String(planner.growth_per_level ?? '1.25'))
-  }, [planner?.id])
+  }, [planner])
 
   const summary = useMemo(() => {
     const t = Number(top); const b = Number(budget)
@@ -107,7 +107,7 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
 
     setBusy(true)
     try {
-      const { data, error } = await supabaseBrowser.rpc('rotate_buy_sell_planners', {
+      const { data: ignoredData, error } = await supabaseBrowser.rpc('rotate_buy_sell_planners', {
         p_coingecko_id: coingeckoId,
         p_top_price: Number(top),
         p_budget: Number(budget),

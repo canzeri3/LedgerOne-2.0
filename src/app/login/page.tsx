@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Card from '@/components/ui/Card'
 

@@ -6,8 +6,8 @@ import { computeBuyFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 export const runtime = 'nodejs'
 
 // create a server-side Supabase client that reads/writes the auth cookies
-function getServerSupabase() {
-  const cookieStore = cookies()
+async function getServerSupabase() {
+  const cookieStore = await cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'pass ?coingecko_id=bitcoin (and optional &tol=0.03)' }, { status: 400 })
   }
 
-  const supabase = getServerSupabase()
+  const supabase = await getServerSupabase()
 
   // try signed-in user first
   const { data: auth } = await supabase.auth.getUser()
@@ -87,7 +87,7 @@ export async function GET(req: Request) {
   if (!bp?.id) return NextResponse.json({ error: 'no active buy_planners row' }, { status: 404 })
 
   // planned levels (persisted), or synthesize from planner config if none saved
-  const { data: lvlRows, error: eLvls } = await supabase
+  const { data: lvlRows, error: ignoredLevelsError } = await supabase
     .from('buy_levels')
     .select('level,price,allocation')
     .eq('user_id', userId)

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo } from 'react'
+import React, { useMemo } from 'react'
 import useSWR from 'swr'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { fmtCurrency } from '@/lib/format'
@@ -144,7 +144,7 @@ export default function CoinStatsGrid({ id }: Props) {
 
   // Trades (gate on user to ensure session is attached; mirrors your other components)
   const { data: trades } = useSWR<
-    Array<{ side: 'buy' | 'sell'; price: number; quantity: number; fee: number | null; trade_time: string }>
+    Array<{ side: 'buy' | 'sell'; price: number; quantity: number; fee: number; trade_time: string }>
   >(
     !loading && user ? ['/coin/stats/trades', user.id, id] : null,
     async () => {
@@ -159,7 +159,7 @@ export default function CoinStatsGrid({ id }: Props) {
         side: String(t.side) as 'buy' | 'sell',
         price: n(t.price),
         quantity: n(t.quantity),
-        fee: n(t.fee),
+        fee: n(t.fee ?? 0),
         trade_time: String(t.trade_time),
       }))
     },

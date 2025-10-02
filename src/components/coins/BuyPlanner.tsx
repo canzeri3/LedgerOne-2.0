@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -19,14 +19,6 @@ type PlannerCfg = {
   include_extra_deep: boolean | null
 }
 
-type DbTrade = {
-  side: 'buy' | 'sell'
-  price: number
-  quantity: number
-  fee: number | null
-  trade_time: string
-}
-
 export default function BuyPlanner({ id }: { id: string }) {
   const { user } = useUser()
   const { data: priceData } = useSWR<{ id: string; price: number | null }>(`/api/price/${id}`)
@@ -39,7 +31,7 @@ export default function BuyPlanner({ id }: { id: string }) {
   // Trades (buys only)
   const [buys, setBuys] = useState<Buy[]>([])
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!user) { setCfg(null); setBuys([]); setLoading(false); return }
     setLoading(true); setError(null)
 
@@ -72,9 +64,9 @@ export default function BuyPlanner({ id }: { id: string }) {
     }))
     setBuys(mappedBuys)
     setLoading(false)
-  }
+  }, [id, user])
 
-  useEffect(() => { load() }, [user, id])
+  useEffect(() => { void load() }, [load])
 
   // Defaults when no config exists yet
   const defaults = {

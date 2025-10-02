@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Card } from '@/components/ui/card'
+import Card from '@/components/ui/Card'
 
 type Snapshot = any
 
@@ -33,7 +33,7 @@ export default function CombinedSellPlannerCard(props: CombinedSellPlannerCardPr
     isError,
   } = props
 
-  const hist = Array.isArray(history) ? history : []
+  const hist = React.useMemo(() => (Array.isArray(history) ? history : []), [history])
 
   // Build selector chips: Active, [N], [N-1], ..., [1]
   const chips = React.useMemo(() => {

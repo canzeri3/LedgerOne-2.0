@@ -1,15 +1,15 @@
 'use client'
 
 import { useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabase =
+const supabase: SupabaseClient | null =
   typeof window !== 'undefined'
     ? createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL as string,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
       )
-    : (null as any)
+    : null
 
 /**
  * Listens for auth changes (login, logout, token refresh) and
@@ -20,7 +20,7 @@ export default function AuthListener() {
   useEffect(() => {
     if (!supabase) return
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_event: AuthChangeEvent, session: Session | null) => {
         try {
           await fetch('/auth/callback', {
             method: 'POST',

@@ -126,7 +126,7 @@ export default function PortfolioHistoryChartCard({ trades, className }: Props) 
       if (!tradesByCoin.has(t.coingecko_id)) tradesByCoin.set(t.coingecko_id, [])
       tradesByCoin.get(t.coingecko_id)!.push(t)
     }
-    for (const [cid, arr] of tradesByCoin) {
+    for (const arr of tradesByCoin.values()) {
       arr.sort((a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime())
     }
 
@@ -163,7 +163,7 @@ export default function PortfolioHistoryChartCard({ trades, className }: Props) 
       .sort((a, b) => a.t - b.t)
 
     return out
-  }, [historiesMap, coinIds.join(','), trades])
+  }, [historiesMap, coinIds, trades])
 
   // Keep last good series while refreshing/when some histories error
   const lastGoodRef = useRef<Point[] | null>(null)
