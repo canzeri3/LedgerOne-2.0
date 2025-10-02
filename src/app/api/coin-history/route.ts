@@ -67,10 +67,13 @@ export async function GET(req: Request) {
 
     // Decide which method to use
     const numericDays = Number(daysParam)
-    const isNumber = !Number.isNaN(numericDays)
+    const hasNumericDays = Number.isFinite(numericDays)
     const shouldUseRange =
-      (isNumber && (!allowedDays.has(numericDays) || numericDays > 365)) // custom/YTD/max-from-first-buy cases
-      || false
+      hasNumericDays && (!allowedDays.has(numericDays) || numericDays > 365) // custom/YTD/max-from-first-buy cases
+
+    if (daysParam !== 'max' && !hasNumericDays) {
+      return NextResponse.json({ error: 'Invalid days parameter' }, { status: 400 })
+    }
 
     let out:
       | { t: number; v: number }[]
