@@ -19,9 +19,10 @@ import { NextResponse } from 'next/server'
  */
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const id = decodeURIComponent(params?.id || '').trim()
+  const { id: rawId } = await context.params
+  const id = decodeURIComponent(rawId || '').trim()
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }

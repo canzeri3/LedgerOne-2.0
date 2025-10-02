@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null
 
 export async function GET() {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: 'Supabase environment variables are not configured.' },
+      { status: 503 }
+    )
+  }
   const { data, error } = await supabase
     .from('coins')
     .select('coingecko_id, symbol, name, rank')

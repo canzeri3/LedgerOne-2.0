@@ -4,12 +4,12 @@ import { useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Card from '@/components/ui/Card'
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://example.supabase.co'
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'public-anon-key'
+
 const supabase =
   typeof window !== 'undefined'
-    ? createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-      )
+    ? createClient(SUPABASE_URL, SUPABASE_ANON)
     : (null as any)
 
 export default function SignupPage() {

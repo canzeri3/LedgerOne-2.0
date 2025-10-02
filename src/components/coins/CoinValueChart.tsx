@@ -306,8 +306,8 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     if (!isShortWin || series.length === 0) return ['auto', 'auto']
     const values = series.map(d => Number(d.value)).filter(Number.isFinite)
     if (!values.length) return ['auto', 'auto']
-    let min = Math.min(...values)
-    let max = Math.max(...values)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
     if (min === max) {
       const span = Math.max(1, Math.abs(min) * 0.02)
       return [min - span, max + span]

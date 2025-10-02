@@ -3,7 +3,7 @@
 import { SelectHTMLAttributes } from 'react'
 import clsx from 'clsx'
 
-type Props = SelectHTMLAttributes<HTMLSelectElement> & {
+type Props = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & {
   size?: 'sm' | 'md'
   fullWidth?: boolean
 }

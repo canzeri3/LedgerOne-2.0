@@ -17,8 +17,8 @@ type RouteParams = { id: string }
  * Server component. No client hooks here.
  * Child components handle their own data fetching.
  */
-export default async function CoinPage({ params }: { params: RouteParams }) {
-  const id = params.id
+export default async function CoinPage({ params }: { params: Promise<RouteParams> }) {
+  const { id } = await params
   const name = id
   const symbol = id.toUpperCase().slice(0, 5)
 

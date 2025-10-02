@@ -6,25 +6,34 @@ import { computeBuyFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 export const runtime = 'nodejs'
 
 // create a server-side Supabase client that reads/writes the auth cookies
-function getServerSupabase() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set(name, value, options)
-        },
-        remove(name: string, options: any) {
-          cookieStore.set(name, '', { ...options, maxAge: 0 })
-        },
+async function getServerSupabase() {
+  const cookieStore = await cookies()
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null
+  }
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value
       },
-    }
-  )
+      set(name: string, value: string, options: any) {
+        const mutableStore = cookieStore as unknown as {
+          set?: (key: string, val: string, opts?: any) => void
+        }
+        mutableStore.set?.(name, value, options)
+      },
+      remove(name: string, options: any) {
+        const mutableStore = cookieStore as unknown as {
+          set?: (key: string, val: string, opts?: any) => void
+        }
+        mutableStore.set?.(name, '', { ...options, maxAge: 0 })
+      },
+    },
+  })
 }
 
 // helper: sort level indices by price desc (shallow -> deep)
@@ -44,7 +53,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'pass ?coingecko_id=bitcoin (and optional &tol=0.03)' }, { status: 400 })
   }
 
-  const supabase = getServerSupabase()
+  const supabase = await getServerSupabase()
+
+  if (!supabase) {
+    return NextResponse.json(
+      { error: 'Supabase environment variables are not configured.' },
+      { status: 503 }
+    )
+  }
 
   // try signed-in user first
   const { data: auth } = await supabase.auth.getUser()
