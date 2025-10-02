@@ -3,12 +3,21 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null
 
 export async function GET() {
+  if (!supabase) {
+    return NextResponse.json(
+      { ok: false, error: 'Supabase environment variables are not configured.' },
+      { status: 503 }
+    )
+  }
   try {
     const { data, error } = await supabase
       .from('ping')

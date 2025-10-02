@@ -1,19 +1,20 @@
 'use client'
 
 import * as React from 'react'
-import { Card } from '@/components/ui/card'
+import { Card } from '@/components/ui/Card'
 
 type Snapshot = any
 
 type CombinedSellPlannerCardProps = {
+  coingeckoId?: string
   /** Active sell planner snapshot (current ladder) */
-  active: Snapshot | null | undefined
+  active?: Snapshot | null
   /** History snapshots, **oldest first** (index 0 === [1]) */
-  history: Snapshot[] | null | undefined
+  history?: Snapshot[] | null
   /** Title at the top-left */
   title?: string
   /** Reuse your existing ladder renderer for a given snapshot */
-  renderSnapshot: (snapshot: Snapshot) => React.ReactNode
+  renderSnapshot?: (snapshot: Snapshot) => React.ReactNode
   /** Optional status flags */
   isLoading?: boolean
   isError?: boolean
@@ -25,13 +26,25 @@ type CombinedSellPlannerCardProps = {
  */
 export default function CombinedSellPlannerCard(props: CombinedSellPlannerCardProps) {
   const {
-    active,
+    coingeckoId: _coingeckoId,
+    active = null,
     history = [],
     title = 'Sell Planner – ladder',
     renderSnapshot,
     isLoading,
     isError,
   } = props
+
+  const renderSnapshotFn = React.useMemo(
+    () =>
+      renderSnapshot ??
+      ((snapshot: Snapshot) => (
+        <pre className="whitespace-pre-wrap break-words text-xs text-slate-300/80">
+          {JSON.stringify(snapshot, null, 2)}
+        </pre>
+      )),
+    [renderSnapshot]
+  )
 
   const hist = Array.isArray(history) ? history : []
 
@@ -130,7 +143,7 @@ export default function CombinedSellPlannerCard(props: CombinedSellPlannerCardPr
       {/* Body */}
       <div className="p-4">
         {chosenSnapshot
-          ? renderSnapshot(chosenSnapshot)
+          ? renderSnapshotFn(chosenSnapshot)
           : (
             <div className="text-sm text-slate-400">
               {selected === 'active'

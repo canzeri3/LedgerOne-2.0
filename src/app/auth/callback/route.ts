@@ -5,27 +5,30 @@ import { createServerClient } from '@supabase/ssr'
 export async function POST(req: Request) {
   const { event, session } = await req.json().catch(() => ({}))
 
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const res = NextResponse.json({ ok: true })
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return res
+  }
+
   // Wire cookies adapter for @supabase/ssr
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          res.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          res.cookies.set({ name, value: '', ...options, maxAge: 0 })
-        },
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value
       },
-    }
-  )
+      set(name: string, value: string, options: any) {
+        res.cookies.set({ name, value, ...options })
+      },
+      remove(name: string, options: any) {
+        res.cookies.set({ name, value: '', ...options, maxAge: 0 })
+      },
+    },
+  })
 
   try {
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {

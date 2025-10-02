@@ -30,7 +30,7 @@ export function buildBuyLevels(
   // allocate budget by weights, floor to cents, fix remainder on the last level
   const raw = weights.map(w => (budgetUsd * w) / sumW)
   const cents = raw.map(x => Math.floor(x * 100))
-  let left = Math.round(budgetUsd * 100) - cents.reduce((s, c) => s + c, 0)
+  const left = Math.round(budgetUsd * 100) - cents.reduce((s, c) => s + c, 0)
   cents[cents.length - 1] += left
   const allocs = cents.map(c => c / 100)
 

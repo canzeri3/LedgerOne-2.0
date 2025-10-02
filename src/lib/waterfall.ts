@@ -66,7 +66,7 @@ export function allocateBuysToPlan(plan: PlanLevel[], buys: Buy[], tolPct = 5): 
     if (!(usd > 0)) continue
 
     // find index of first eligible level (shallowest)
-    let startIdx = levels.findIndex(l => b.price <= l.price * (1 + tol))
+    const startIdx = levels.findIndex(l => b.price <= l.price * (1 + tol))
     if (startIdx === -1) continue // buy was above shallowest eligible
 
     for (let i = startIdx; i < levels.length && usd > 0; i++) {

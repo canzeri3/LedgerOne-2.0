@@ -46,7 +46,7 @@ function computeStats(trades: Array<{
   side: 'buy' | 'sell'
   price: number
   quantity: number
-  fee: number
+  fee?: number | null
   trade_time: string
 }>, livePrice: number | null) {
   const rows = [...trades].sort((a, b) =>
@@ -60,7 +60,7 @@ function computeStats(trades: Array<{
   for (const t of rows) {
     const qty = n(t.quantity)
     const price = n(t.price)
-    const fee = Math.max(0, n(t.fee))
+    const fee = Math.max(0, n(t.fee ?? 0))
     if (qty <= 0 || price <= 0) continue
 
     if (t.side === 'buy') {
