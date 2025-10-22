@@ -132,12 +132,12 @@ export default function PlannerPage() {
                     new CustomEvent('buyplanner:action', { detail: { action: 'edit' } })
                   )
                 }
-                className="rounded-lg px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
               >
                 Edit Planner
               </button>
 
-              {/* Save New — Uiverse.io (Madflows) animated gradient, matches font/size */}
+              {/* Save New — Uiverse.io (Madflows) animated gradient, now with matching ring */}
               <button
                 type="button"
                 onClick={() =>
@@ -231,8 +231,8 @@ export default function PlannerPage() {
           height: 2.5rem;
           padding: 0 2rem;
 
-          /* Match Edit button's rounded-lg */
-          border-radius: 0.5rem;
+          /* Corner radius to match Edit (Tailwind rounded = 0.25rem) */
+          border-radius: 0.25rem;
 
           /* Dark shell; gradient animates on hover via ::before */
           background: #39364fff;
@@ -244,7 +244,9 @@ export default function PlannerPage() {
           line-height: 1.25rem;  /* 20px */
           font-weight: 500;      /* medium */
 
-          border: none;
+          /* ↓ Add the same ring/border as the Edit button */
+          border: 1px solid rgb(58,59,63);
+
           cursor: pointer;
         }
         .button:hover::before {
@@ -266,10 +268,10 @@ export default function PlannerPage() {
           border-radius: inherit;
           background: linear-gradient(
             82.3deg,
-            rgba(127, 61, 226, 1) 10.8%,
-            rgba(92, 81, 237, 1) 94.3%
+            rgba(91, 52, 176, 1) 10.8%,
+            rgba(89, 69, 202, 1) 94.3%
           );
-          transition: all 0.45s;
+          transition: all 0.4s;
         }
       `}</style>
     </div>
