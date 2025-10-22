@@ -1,0 +1,14 @@
+/* Scope to just this chart wrapper */
+[data-coin-history-chart] .recharts-line .recharts-curve {
+  stroke: #a78bfa !important; /* FORCE purple */
+}
+
+[data-coin-history-chart] .recharts-line .recharts-dot,
+[data-coin-history-chart] .recharts-line .recharts-active-dot {
+  fill: #a78bfa !important;
+  stroke: #a78bfa !important;
+}
+
+[data-coin-history-chart] .recharts-tooltip-cursor {
+  stroke: rgba(255,255,255,0.15) !important;
+}

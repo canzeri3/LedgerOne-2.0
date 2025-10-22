@@ -1,0 +1,254 @@
+/* Route-scoped skin for /planner
+   — UI-only; no functional selectors; safe to add/remove.
+   — Reuses the dark palette you use on the coins page. */
+
+/* Root canvas */
+.planner-skin {
+  --bg-page: rgb(19,20,21);
+  --bg-surface: rgb(28,29,31);
+  --bg-toolbar: rgb(19,20,21);
+  --border-subtle: rgba(255,255,255,0.06);
+  --text: rgb(209,213,219);
+  --text-dim: rgb(163,163,164);
+  --green: rgb(113,190,90);
+  --red: rgb(176,49,49);
+  --accent: rgb(136,128,213); /* your purple */
+  --radius: 16px;             /* match coins page */
+  --radius-tight: 12px;
+  --gap: 16px;
+  --gap-lg: 20px;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  background: var(--bg-page);
+  color: var(--text);
+  display: grid;
+  gap: var(--gap-lg);
+  padding: 20px;
+}
+
+/* Sticky toolbar: coin picker, summary chips, actions */
+.planner-skin .planner-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  backdrop-filter: saturate(1.1) blur(6px);
+  background: linear-gradient(
+    to bottom,
+    rgba(19,20,21,0.9),
+    rgba(19,20,21,0.75)
+  );
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 12px 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--gap);
+}
+
+/* Optional sublayout inside toolbar: left = pickers/summary, right = actions */
+.planner-skin .planner-toolbar .actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+/* Main grids (two-up on desktop, stack on mobile) */
+.planner-skin .planner-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap-lg);
+}
+@media (min-width: 1024px) {
+  .planner-skin .planner-grid {
+    grid-template-columns: 1.1fr 1fr;
+  }
+}
+
+/* Uniform card container (uses your coins-page look) */
+.planner-skin .card {
+  background: radial-gradient(120% 140% at 10% -20%, rgba(136,128,213,0.08), transparent 45%),
+              var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* Inner panel spacing */
+.planner-skin .panel {
+  padding: 16px;
+}
+@media (min-width: 768px){
+  .planner-skin .panel { padding: 18px; }
+}
+
+/* Section headings normalize */
+.planner-skin h2, 
+.planner-skin .section-title {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 10px 0;
+}
+
+/* Input rows: tighter, aligned labels, coins-page look */
+.planner-skin .form-row {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 768px){
+  .planner-skin .form-row {
+    grid-template-columns: repeat(12, 1fr);
+    gap: 12px;
+  }
+}
+.planner-skin .form-col-6 { grid-column: span 6; }
+.planner-skin .form-col-4 { grid-column: span 4; }
+.planner-skin .form-col-3 { grid-column: span 3; }
+.planner-skin .form-col-12 { grid-column: 1 / -1; }
+
+/* Inputs / selects / number fields — coins-page tokens */
+.planner-skin input[type="text"],
+.planner-skin input[type="number"],
+.planner-skin select,
+.planner-skin .Input,
+.planner-skin .Select {
+  background: rgba(255,255,255,0.035);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-tight);
+  padding: 10px 12px;
+  outline: none;
+}
+.planner-skin input:focus,
+.planner-skin select:focus,
+.planner-skin .Input:focus,
+.planner-skin .Select:focus {
+  border-color: rgba(136,128,213,0.45);
+  box-shadow: 0 0 0 4px rgba(136,128,213,0.12);
+}
+
+/* Buttons — subtle + primary mapping to your theme */
+.planner-skin .btn,
+.planner-skin button {
+  border-radius: var(--radius-tight);
+  border: 1px solid var(--border-subtle);
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.035);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.planner-skin .btn:hover,
+.planner-skin button:hover {
+  border-color: rgba(255,255,255,0.18);
+  transform: translateY(-1px);
+}
+.planner-skin .btn-primary {
+  background: linear-gradient(180deg, rgba(136,128,213,0.55), rgba(136,128,213,0.32));
+  border-color: rgba(136,128,213,0.45);
+}
+
+/* Tables — shared style with coins page visuals */
+.planner-skin table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.planner-skin thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 10px;
+}
+.planner-skin tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.planner-skin tbody tr:nth-child(even) td {
+  background: rgba(255,255,255,0.02);
+}
+.planner-skin tfoot td {
+  font-weight: 600;
+  padding: 10px;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.03);
+}
+
+/* Progress bars (ladder progress) */
+.planner-skin .progress-rail {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.planner-skin .progress-fill {
+  position: absolute; inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), rgba(136,128,213,0.35));
+}
+
+/* Off-plan text colors */
+.planner-skin .text-green { color: var(--green); }
+.planner-skin .text-red { color: var(--red); }
+.planner-skin .text-dim { color: var(--text-dim); }
+
+/* Tiny badges for “Active/Inactive”, “Depth 70/90”, etc. */
+.planner-skin .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  font-size: 12px;
+}
+
+/* Spacing helpers to drop into existing markup without logic changes */
+.planner-skin .stack-sm  { display: grid; gap: 8px;  }
+.planner-skin .stack-md  { display: grid; gap: 12px; }
+.planner-skin .stack-lg  { display: grid; gap: 16px; }
+.planner-skin .stack-xl  { display: grid; gap: 20px; }
+
+/* Remove any bouncy hover lift on cards (you asked for still cards elsewhere) */
+.planner-skin .card:hover { transform: none !important; }
+
+/* Make numeric columns right-aligned by default for planner tables */
+.planner-skin .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Compact footnote row (e.g., “Off-plan 0.000000 / 50.0000”) */
+.planner-skin .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding-top: 6px;
+}
+
+/* Ensure any shadcn/ui Cards or third-party components inherit skin */
+.planner-skin .shadcn-card,
+.planner-skin .recharts-default-tooltip {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text) !important;
+}
+
+/* Make Buy grid asymmetric: inputs narrower (left), ladder wider (right) */
+@media (min-width: 1024px) {
+  .planner-skin .planner-grid--buy {
+    /* tweak weights to taste; left hugs, right stretches */
+    grid-template-columns: 0.85fr 1.45fr;
+  }
+}
+/* Sell section layout — Inputs narrow (left), Planner wide (right) */
+@media (min-width: 1024px) {
+  .planner-skin .planner-grid--sell {
+    grid-template-columns: 0.85fr 1.45fr;
+  }
+}

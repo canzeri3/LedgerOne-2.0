@@ -1,0 +1,69 @@
+/* Wrapper */
+.co-collapsible {
+  width: 100%;
+}
+
+/* Header button (no heavy border; subtle, click target only) */
+.co-collapsible__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: transparent;
+  border: 0;
+  padding: 0.5rem 0; /* subtle spacing, no layout shift */
+  cursor: pointer;
+}
+
+/* Left cluster: chevron + title */
+.co-collapsible__head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Chevron (pure CSS) */
+.co-collapsible__chev {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 180ms ease;
+  opacity: 0.8;
+}
+.co-collapsible__chev[data-open="1"] {
+  transform: rotate(45deg);
+}
+
+/* Title inherits your typography */
+.co-collapsible__title {
+  font-weight: 600;
+}
+
+/* Right cluster: alert badges (if any) */
+.co-collapsible__badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Yellow alert dot (visual only) */
+.co-alert-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: #facc15; /* Tailwind yellow-400 */
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.25);
+}
+
+/* Collapsible content area with smooth height transition */
+.co-collapsible__content {
+  overflow: hidden;
+  transition: max-height 220ms ease;
+  will-change: max-height;
+  /* No borders, no padding here — keeps your existing layout untouched */
+}
+
