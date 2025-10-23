@@ -316,9 +316,10 @@ export default function PlannerPage() {
 
           {/* ───────── SELL: inputs + active/history ───────── */}
        <Card
-  title="Sell Planner"
+   title="Sell Planner"
   className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
   headerBorderClassName="border-[rgb(41,42,45)]"
+  headerRight={<div id="sell-planner-header-right" className="flex items-center gap-2" />}
 >
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">

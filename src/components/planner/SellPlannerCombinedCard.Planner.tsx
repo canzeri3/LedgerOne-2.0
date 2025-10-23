@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import useSWR from 'swr'
 import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
@@ -13,6 +14,29 @@ type Props = {
   HistoryView: ReactNode
   newestFirst?: boolean
   className?: string
+}
+
+/** Mount point id in the OUTER Sell Planner <Card> headerRight */
+const OUTER_HEADER_MOUNT_ID = 'sell-planner-header-right'
+const TEXT_RGB = 'rgb(204,213,223)' // requested global text color
+
+/** Tiny portal that renders children into the outer card header if present, else inline fallback */
+function HeaderPortal({ children }: { children: ReactNode }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      setTarget(document.getElementById(OUTER_HEADER_MOUNT_ID))
+    }
+  }, [])
+  if (typeof window !== 'undefined' && target) {
+    // ensure header controls also use the unified text color
+    return createPortal(
+      <div className="text-[rgb(204,213,223)]">{children}</div>,
+      target
+    )
+  }
+  // fallback (e.g., if component reused elsewhere without outer mount)
+  return <div className="text-[rgb(204,213,223)]">{children}</div>
 }
 
 /**
@@ -108,30 +132,32 @@ export default function SellPlannerCombinedCardPlanner({
 
   return (
     <>
-      <Card
-        className={[
-          // Remove gradient & set solid background
-          'bg-none !bg-[rgb(28,29,31)] !from-transparent !to-transparent',
-          // Remove border ring + shadow and hover float
-          '!border-0 !shadow-none !hover:translate-y-0',
-          className || ''
-        ].join(' ')}
-        title={title}
-        headerRight={
-          historyLength > 0 ? (
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setSelected('active')}
-                className={[
-                  'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
-                  selected === 'active'
-                    ? 'bg-white/15 text-white border-white/20'
-                    : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
-                ].join(' ')}
-              >
-                Active
-              </button>
+      {/* ───────────────── Header moved to OUTER card via portal ───────────────── */}
+      {historyLength > 0 && (
+        <HeaderPortal>
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {/* Label (subtle). If you want it always visible, remove 'hidden md:inline'. */}
+            <span className="hidden md:inline text-xs mr-2">
+              {title ?? 'Active & History'}
+            </span>
+
+            {/* Active tab */}
+            <button
+              type="button"
+              onClick={() => setSelected('active')}
+              className={[
+                'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
+                selected === 'active'
+                  ? 'bg-white/10 border-white/20'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10',
+                // text inherits TEXT_RGB
+              ].join(' ')}
+            >
+              Active
+            </button>
+
+            {/* Version selectors (numbers only; no "V") */}
+            <div className="ml-1 flex items-center gap-1">
               {labels.map((n) => (
                 <button
                   key={n}
@@ -140,23 +166,34 @@ export default function SellPlannerCombinedCardPlanner({
                   className={[
                     'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
                     selected === n
-                      ? 'bg-white/15 text-white border-white/20'
-                      : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
+                      ? 'bg-white/10 border-white/20'
+                      : 'bg-white/5 hover:bg-white/10 border-white/10',
+                    // text inherits TEXT_RGB
                   ].join(' ')}
                 >
                   {n}
                 </button>
               ))}
             </div>
-          ) : undefined
-        }
+          </div>
+        </HeaderPortal>
+      )}
+
+      {/* ───────────────── Content card WITHOUT its own header ───────────────── */}
+      <Card
+        className={[
+          // Apply global text color to everything inside this card
+          'text-[rgb(204,213,223)]',
+          // Remove gradient & set solid background
+          'bg-none !bg-[rgb(28,29,31)] !from-transparent !to-transparent',
+          // Remove border ring + shadow and hover float
+          '!border-0 !shadow-none !hover:translate-y-0',
+          className || ''
+        ].join(' ')}
+        title={undefined} // prevent inner header; header now lives in outer card
       >
         <div className="relative w-full h-full">
-          {/* ── UI-only: DOUBLE-BORDER panel
-               - Outer: thick, matches Buy Planner border color and weight
-               - Inner: thin, directly touching outer (no gap)
-               - Background: rgb(28,29,31) per your spec
-          ───────────────────────────────────────────────────────────── */}
+          {/* ── UI-only: DOUBLE-BORDER panel ───────────────────────────────────── */}
           <div
             className="rounded-md bg-[rgb(28,29,31)]"
             style={{ borderStyle: 'solid', borderWidth: '2px', borderColor: 'rgb(49,50,54)' }}
@@ -166,11 +203,14 @@ export default function SellPlannerCombinedCardPlanner({
               style={{ borderStyle: 'solid', borderWidth: '6px', borderColor: 'rgb(41,42,45)' }}
             >
               <div className="p-2">
-                <div ref={activeRootRef} style={{ display: selected === 'active' ? 'block' : 'none' }}>
+                <div
+                  ref={activeRootRef}
+                  style={{ display: selected === 'active' ? 'block' : 'none', color: TEXT_RGB }}
+                >
                   {ActiveView}
                 </div>
 
-                <div style={{ display: selected === 'active' ? 'none' : 'block' }}>
+                <div style={{ display: selected === 'active' ? 'none' : 'block', color: TEXT_RGB }}>
                   <div ref={historyRootRef} className="space-y-3">
                     {HistoryView}
                   </div>
@@ -196,9 +236,9 @@ export default function SellPlannerCombinedCardPlanner({
                   )}
                 </div>
 
-                {/* Optional helper – won’t affect layout */}
+                {/* Optional helper – now also uses the same text color */}
                 {hasLivePrice ? (
-                  <div className="mt-2 text-xs text-slate-400">
+                  <div className="mt-2 text-xs" style={{ color: TEXT_RGB }}>
                     Live price context: ${Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </div>
                 ) : null}
@@ -220,6 +260,7 @@ export default function SellPlannerCombinedCardPlanner({
           border: 1px solid rgb(105, 40, 40);
           background-color: rgb(130, 50, 50);
           overflow: hidden;
+          color: ${TEXT_RGB}; /* ensure icon inherits color */
         }
         .sell-delete-btn,
         .sell-delete-btn .button__icon,
@@ -228,7 +269,7 @@ export default function SellPlannerCombinedCardPlanner({
         }
         .sell-delete-btn .button__text {
           transform: translateX(22px);
-          color: #fff;
+          color: ${TEXT_RGB};
           font-weight: 600;
           font-size: 10px;
           line-height: 1;
@@ -242,7 +283,7 @@ export default function SellPlannerCombinedCardPlanner({
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #fff;
+          color: ${TEXT_RGB}; /* icon stroke uses currentColor */
         }
         .sell-delete-btn .svg {
           width: 16px;
@@ -252,7 +293,7 @@ export default function SellPlannerCombinedCardPlanner({
           background: rgb(115, 45, 45);
         }
         .sell-delete-btn:hover .button__text {
-          color: transparent;
+          color: ${TEXT_RGB};
         }
         .sell-delete-btn:hover .button__icon {
           width: 94px;
@@ -301,10 +342,9 @@ export default function SellPlannerCombinedCardPlanner({
         return
       }
 
-      const remainingBefore = root.querySelectorAll('[data-history-id]').length
       const targetEl = root.querySelector(`[data-history-id="${id}"]`) as HTMLElement | null
-      // Remove the exact element if still present
       if (targetEl) targetEl.remove()
+
       const remaining = root.querySelectorAll('[data-history-id]').length
       if (remaining === 0) setSelected('active')
       else setSelected(Math.min(idx, remaining))
