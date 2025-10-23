@@ -8,7 +8,8 @@ import SellPlannerInputs from '@/components/planner/SellPlannerInputs'
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
 import SellPlannerLadder from '@/components/planner/SellPlannerLadder'
 import SellPlannerHistory from '@/components/planner/SellPlannerHistory'
-import SellPlannerCombinedCard from '@/components/planner/SellPlannerCombinedCard'
+/* CHANGED: use the planner-only copy instead of the shared one */
+import SellPlannerCombinedCardPlanner from '@/components/planner/SellPlannerCombinedCard.Planner'
 
 import Card from '@/components/ui/Card'
 import PlannerHighlightAgent from '@/components/planner/PlannerHighlightAgent'
@@ -120,10 +121,8 @@ function CoinDropdown({
           ref={popRef}
           role="listbox"
           aria-label="Coins"
-          /* remove overflow-hidden so ring shadows aren't clipped left/right */
           className="absolute z-50 mt-2 w-full rounded-xl ring-1 ring-[rgb(41,42,45)] bg-[rgb(28,29,31)] shadow-xl overflow-x-hidden"
         >
-          {/* list (y-scroll only; no horizontal scroll) */}
           <div className="max-h-[340px] overflow-y-auto">
             {items.length === 0 ? (
               <div className="px-3 py-3 text-sm text-[rgb(163,163,164)]">No results</div>
@@ -143,10 +142,8 @@ function CoinDropdown({
                       setOpen(false)
                     }}
                     className={
-                      // keep the box within its own row; hide overflow so text truncates
                       'relative w-full text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between overflow-hidden whitespace-nowrap truncate ' +
                       (isActive ? 'bg-[rgb(31,32,33)] ' : 'bg-transparent ') +
-                      // ring is now INSIDE the row via ring-offset (prevents being covered by neighbor and avoids side clipping)
                       (isSelected ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] rounded-lg ' : 'z-0 ')
                     }
                   >
@@ -318,7 +315,12 @@ export default function PlannerPage() {
           </Card>
 
           {/* ───────── SELL: inputs + active/history ───────── */}
-          <Card title="Sell Planner" className="w-full">
+       <Card
+  title="Sell Planner"
+  className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
+  headerBorderClassName="border-[rgb(41,42,45)]"
+>
+
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
               <section aria-label="Sell Planner Inputs" className="md:col-span-4 lg:col-span-3 space-y-4 sell-inputs-stack">
                 <div className="text-xs text-slate-400 md:hidden">Inputs</div>
@@ -339,7 +341,8 @@ export default function PlannerPage() {
               <section aria-label="Sell Planner Active and History" className="md:col-span-8 lg:col-span-9 space-y-4" data-sell-planner>
                 <div className="text-xs text-slate-400 md:hidden">Active &amp; History</div>
                 <div className="p-0">
-                  <SellPlannerCombinedCard
+                  {/* CHANGED: use the planner-only component here */}
+                  <SellPlannerCombinedCardPlanner
                     title="Active & History"
                     ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
                     HistoryView={<SellPlannerHistory coingeckoId={coingeckoId} />}
@@ -413,7 +416,7 @@ export default function PlannerPage() {
           width: 100%;
           height: inherit;
           border-radius: inherit;
-          background: linear-gradient(82.3deg, rgba(86, 53, 156, 1) 10.8%, rgba(112, 65, 189, 1) 94.3%);
+          background: linear-gradient(82.3deg, rgba(133, 91, 222, 1) 10.8%, rgba(136, 105, 185, 1) 94.3%);
           transition: all 0.4s;
         }
       `}</style>
