@@ -196,7 +196,8 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     <div className="w-full h-full flex flex-col">
       <div className="flex-1 overflow-auto">
         <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-          <thead className="text-slate-400">
+        <thead className="text-[rgba(237, 237, 237, 1)]">
+
             <tr>
               <th className="w-1/6 px-3 py-2">Lvl</th>
               <th className="w-1/6 px-3 py-2">Target Price</th>

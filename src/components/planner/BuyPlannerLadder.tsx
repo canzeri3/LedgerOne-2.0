@@ -135,7 +135,8 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     <div className="w-full h-full bg-[rgb(28,29,31)]">
       <div className="overflow-x-auto">
         <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-          <thead className="text-slate-400">
+          <thead className="text-[rgba(237, 237, 237, 1)]">
+
             <tr>
               <th className="w-1/6 px-3 py-2">Lvl</th>
               <th className="w-1/6 px-3 py-2">Target Price</th>

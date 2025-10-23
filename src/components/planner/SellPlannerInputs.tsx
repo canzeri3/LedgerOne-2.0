@@ -1,18 +1,157 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import Button from '@/components/ui/Button'
-import Select from '@/components/ui/Select'
 import {
   buildBuyLevels,
   computeBuyFills,
   type BuyLevel,
   type BuyTrade,
 } from '@/lib/planner'
+
+/* ── shared UI tokens matched to BuyPlannerInputs ─────────── */
+const baseBg = 'bg-[rgb(41,42,43)]'
+const baseText = 'text-slate-200'
+const noBorder =
+  'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
+const radiusClosed = 'rounded-lg'
+const radiusOpenBtn = 'rounded-t-lg rounded-b-none'
+const radiusOpenList = 'rounded-b-lg rounded-t-none'
+const fieldShell =
+  'mt-1 w-full rounded-lg bg-[rgb(41,42,43)] px-3 py-2.5 text-slate-200 outline-none focus:ring-0 focus:border-transparent appearance-none'
+
+/* ── InlineSelect: matches input size; right arrow; stable hooks ── */
+type InlineSelectProps = {
+  value: number
+  options: number[]
+  onChange: (v: number) => void
+  renderLabel: (v: number) => string
+  ariaLabel: string
+}
+function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: InlineSelectProps) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState<number>(value)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  // Single effect to keep dependency array size/order constant
+  useEffect(() => {
+    // keep active aligned to value
+    setActive(value)
+
+    // close on outside click
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (btnRef.current?.contains(t)) return
+      if (listRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+    }
+  }, [value])
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      setOpen(true)
+      return
+    }
+    if (!open) return
+    const idx = options.findIndex(v => v === active)
+    if (e.key === 'Escape') {
+      setOpen(false)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive(options[Math.min(options.length - 1, idx + 1)])
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive(options[Math.max(0, idx - 1)])
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      onChange(active)
+      setOpen(false)
+      return
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={onKeyDown}
+        className={`mt-1 w-full ${baseBg} ${baseText} ${noBorder} ${open ? radiusOpenBtn : radiusClosed}
+                    px-3 py-2.5 pr-10 text-sm text-left relative`}
+      >
+        <span className="block">{renderLabel(value)}</span>
+        {/* Right arrow, same placement as Select.tsx */}
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-transform ${open ? 'rotate-180' : ''} text-slate-400`}
+        >
+          <path
+            fill="currentColor"
+            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.24 3.4a.75.75 0 0 1-.92 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
+          />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={ariaLabel}
+          tabIndex={-1}
+          className={`${baseBg} ${baseText} ${noBorder} ${radiusOpenList}
+                      absolute left-0 right-0 top-full z-20 grid gap-1 px-2 py-2`}
+          onKeyDown={onKeyDown}
+        >
+          {options.map(opt => {
+            const isActive = opt === active
+            const isSelected = opt === value
+            return (
+              <button
+                key={opt}
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => { onChange(opt); setOpen(false) }}
+                onMouseEnter={() => setActive(opt)}
+                className={`w-full text-left text-sm px-2 py-2 rounded-md ${noBorder}
+                            ${isActive ? 'bg-[rgb(54,55,56)]' : 'bg-transparent'}`}
+              >
+                <span className="flex items-center gap-2">
+                  <span>{renderLabel(opt)}</span>
+                  {isSelected && (
+                    <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
+                      selected
+                    </span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type Planner = {
   id: string
@@ -52,7 +191,10 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { setMsg(null); setErr(null) }, [coingeckoId, activeSell?.id])
+  useEffect(() => {
+    setMsg(null)
+    setErr(null)
+  }, [coingeckoId, activeSell?.id])
 
   const help = useMemo(() => {
     const a = activeSell?.avg_lock_price
@@ -62,24 +204,34 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   // Pool = on-hand tokens within the epoch (simple version)
   const getPoolTokens = async (plannerId: string) => {
     const { data: sells, error: e1 } = await supabaseBrowser
-      .from('trades').select('quantity')
-      .eq('user_id', user!.id).eq('coingecko_id', coingeckoId)
-      .eq('side', 'sell').eq('sell_planner_id', plannerId)
+      .from('trades')
+      .select('quantity')
+      .eq('user_id', user!.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('side', 'sell')
+      .eq('sell_planner_id', plannerId)
     if (e1) throw e1
     const sold = (sells ?? []).reduce((a, r: any) => a + Number(r.quantity || 0), 0)
 
     const { data: bp } = await supabaseBrowser
-      .from('buy_planners').select('id,started_at')
-      .eq('user_id', user!.id).eq('coingecko_id', coingeckoId)
+      .from('buy_planners')
+      .select('id,started_at')
+      .eq('user_id', user!.id)
+      .eq('coingecko_id', coingeckoId)
       .eq('is_active', true)
-      .order('started_at', { ascending: false }).limit(1).maybeSingle()
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     let bought = 0
     if (bp?.id) {
       const { data: buys, error: e2 } = await supabaseBrowser
-        .from('trades').select('quantity')
-        .eq('user_id', user!.id).eq('coingecko_id', coingeckoId)
-        .eq('side', 'buy').eq('buy_planner_id', bp.id)
+        .from('trades')
+        .select('quantity')
+        .eq('user_id', user!.id)
+        .eq('coingecko_id', coingeckoId)
+        .eq('side', 'buy')
+        .eq('buy_planner_id', bp.id)
       if (e2) throw e2
       bought = (buys ?? []).reduce((a, r: any) => a + Number(r.quantity || 0), 0)
     }
@@ -94,8 +246,10 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     const { data: bp, error: eBp } = await supabaseBrowser
       .from('buy_planners')
       .select('id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level')
-      .eq('user_id', user.id).eq('coingecko_id', coingeckoId)
-      .eq('is_active', true).maybeSingle()
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('is_active', true)
+      .maybeSingle()
     if (eBp) throw eBp
     if (!bp?.id) return 0
 
@@ -109,8 +263,10 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     const { data: buysRaw, error: eBuys } = await supabaseBrowser
       .from('trades')
       .select('price,quantity,fee,trade_time,side,buy_planner_id')
-      .eq('user_id', user.id).eq('coingecko_id', coingeckoId)
-      .eq('side', 'buy').eq('buy_planner_id', (bp as any).id)
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('side', 'buy')
+      .eq('buy_planner_id', (bp as any).id)
       .order('trade_time', { ascending: true })
     if (eBuys) throw eBuys
 
@@ -128,17 +284,27 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     const allocatedUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
     const allocatedTokens = levels.reduce((sum, lv, i) => {
       const usd = fills.allocatedUsd[i] ?? 0
-      return sum + (usd > 0 ? (usd / lv.price) : 0)
+      return sum + (usd > 0 ? usd / lv.price : 0)
     }, 0)
 
-    return allocatedTokens > 0 ? (allocatedUsd / allocatedTokens) : 0
+    return allocatedTokens > 0 ? allocatedUsd / allocatedTokens : 0
   }
 
   const onGenerate = async () => {
-    setErr(null); setMsg(null)
-    if (!user) { setErr('Not signed in.'); return }
-    if (!activeSell?.id) { setErr('No active Sell planner found.'); return }
-    if (activeSell?.is_active === false) { setErr('This planner is frozen. Generate only on the active sell planner.'); return }
+    setErr(null)
+    setMsg(null)
+    if (!user) {
+      setErr('Not signed in.')
+      return
+    }
+    if (!activeSell?.id) {
+      setErr('No active Sell planner found.')
+      return
+    }
+    if (activeSell?.is_active === false) {
+      setErr('This planner is frozen. Generate only on the active sell planner.')
+      return
+    }
 
     // Base average: prefer locked; otherwise on-plan moving average (STRICT)
     let baseAvg = Number(activeSell?.avg_lock_price ?? 0)
@@ -170,7 +336,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       let remaining = poolTokens
       const plan = Array.from({ length: levels }, (_, i) => {
         const level = i + 1
-        const rise_pct = step * level                 // 50, 100, 150...
+        const rise_pct = step * level // 50, 100, 150...
         const price = avg * (1 + stepFrac * level)
         const sell_tokens = i === levels - 1 ? remaining : Math.max(0, remaining * pctOfRemaining)
         const sell_pct_of_remaining = pctOfRemaining
@@ -242,19 +408,28 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     <div className="space-y-4">
       <div className="text-xs text-slate-400">{help}</div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* Match BuyPlannerInputs layout: single column, tight gaps */}
+      <div className="grid grid-cols-1 gap-2">
         <label className="block">
           <span className="text-xs text-slate-300">Step size per level</span>
-          <Select value={step} onChange={(e) => setStep(Number(e.target.value))} fullWidth>
-            {stepOptions.map(v => <option key={v} value={v}>+{v}%</option>)}
-          </Select>
+          <InlineSelect
+            value={step}
+            options={stepOptions}
+            onChange={setStep}
+            ariaLabel="Select step size per level"
+            renderLabel={(v) => `+${v}%`}
+          />
         </label>
 
         <label className="block">
           <span className="text-xs text-slate-300">Sell % of remaining each level</span>
-          <Select value={sellPct} onChange={(e) => setSellPct(Number(e.target.value))} fullWidth>
-            {sellPctOptions.map(v => <option key={v} value={v}>{v}%</option>)}
-          </Select>
+          <InlineSelect
+            value={sellPct}
+            options={sellPctOptions}
+            onChange={setSellPct}
+            ariaLabel="Select sell % of remaining each level"
+            renderLabel={(v) => `${v}%`}
+          />
         </label>
 
         <label className="block">
@@ -262,8 +437,9 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
           <input
             value={String(levels)}
             onChange={(e) => setLevels(Number(e.target.value))}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2.5 text-slate-200 outline-none focus:border-blue-500/60"
+            className={fieldShell}
             placeholder="e.g. 8"
+            inputMode="numeric"
           />
         </label>
       </div>
