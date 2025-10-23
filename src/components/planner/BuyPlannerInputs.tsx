@@ -356,7 +356,7 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   return (
     <div className="p-2">
       {/* Inputs only — no action buttons here */}
-      <div className="grid grid-cols-1 gap-0.5">
+      <div className="grid grid-cols-1 gap-2">
         {/* Top price (USD) */}
         <label className="block">
           <span className="text-xs text-slate-300">Top price (USD)</span>

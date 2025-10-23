@@ -101,8 +101,12 @@ async function fallbackMarkets(id: string): Promise<PriceOut> {
 const FRESH_TTL_MS = 60_000        // serve from cache instantly for 60s
 const STALE_TTL_MS = 5 * 60_000    // allow stale if upstream fails for up to 5 minutes
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const id = decodeURIComponent(params?.id || '').trim()
+// 👇 await params in dev
+type Ctx = { params: Promise<{ id: string }> }
+
+export async function GET(_req: Request, ctx: Ctx) {
+  const { id: raw } = await ctx.params
+  const id = decodeURIComponent(raw || '').trim()
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
