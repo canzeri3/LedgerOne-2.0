@@ -109,6 +109,13 @@ export default function SellPlannerCombinedCardPlanner({
   return (
     <>
       <Card
+        className={[
+          // Remove gradient & set solid background
+          'bg-none !bg-[rgb(28,29,31)] !from-transparent !to-transparent',
+          // Remove border ring + shadow and hover float
+          '!border-0 !shadow-none !hover:translate-y-0',
+          className || ''
+        ].join(' ')}
         title={title}
         headerRight={
           historyLength > 0 ? (
@@ -143,7 +150,6 @@ export default function SellPlannerCombinedCardPlanner({
             </div>
           ) : undefined
         }
-        className={className}
       >
         <div className="relative w-full h-full">
           {/* ── UI-only: DOUBLE-BORDER panel
@@ -151,15 +157,14 @@ export default function SellPlannerCombinedCardPlanner({
                - Inner: thin, directly touching outer (no gap)
                - Background: rgb(28,29,31) per your spec
           ───────────────────────────────────────────────────────────── */}
-<div
-  className="rounded-md bg-[rgb(28,29,31)]"
-  style={{ borderStyle: 'solid', borderWidth: '2px', borderColor: 'rgb(49,50,54)' }}
->
-  <div
-    className="rounded-md"
-    style={{ borderStyle: 'solid', borderWidth: '6px', borderColor: 'rgb(41,42,45)' }}
->
-
+          <div
+            className="rounded-md bg-[rgb(28,29,31)]"
+            style={{ borderStyle: 'solid', borderWidth: '2px', borderColor: 'rgb(49,50,54)' }}
+          >
+            <div
+              className="rounded-md"
+              style={{ borderStyle: 'solid', borderWidth: '6px', borderColor: 'rgb(41,42,45)' }}
+            >
               <div className="p-2">
                 <div ref={activeRootRef} style={{ display: selected === 'active' ? 'block' : 'none' }}>
                   {ActiveView}
