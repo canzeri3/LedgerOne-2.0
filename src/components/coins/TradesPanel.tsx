@@ -4,6 +4,7 @@ import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { LockKeyhole, LockKeyholeOpen } from 'lucide-react'
 
 // NEW: reuse existing math so the dynamic average respects ON-PLAN allocation
 import {
@@ -128,6 +129,8 @@ export default function TradesPanel({ id }: Props) {
   const [price, setPrice] = useState<string>('')
   const [qty, setQty] = useState<string>('') // tokens or USD based on qtyMode
   const [qtyMode, setQtyMode] = useState<'tokens' | 'usd'>('tokens')
+  // NEW: lock the quantity mode to side (Buy=USD, Sell=Tokens) unless user unlocks
+  const [qtyLocked, setQtyLocked] = useState<boolean>(true)
   const [fee, setFee] = useState<string>('') // keep empty so placeholder shows
   const [time, setTime] = useState<string>(() => new Date().toISOString().slice(0, 16))
 
@@ -218,6 +221,12 @@ export default function TradesPanel({ id }: Props) {
   }
 
   useEffect(() => { loadPlanners() }, [user, id])
+
+  // NEW: whenever side changes, force canonical mode + re-lock
+  useEffect(() => {
+    setQtyMode(side === 'buy' ? 'usd' : 'tokens')
+    setQtyLocked(true)
+  }, [side])
 
   const canSubmit = useMemo(() => {
     const p = parseNum(price)
@@ -448,7 +457,9 @@ export default function TradesPanel({ id }: Props) {
     setPrice('')
     setQty('')
     setFee('')
-    setQtyMode('tokens')
+    // Keep mode aligned with current side and re-lock
+    setQtyMode(side === 'buy' ? 'usd' : 'tokens')
+    setQtyLocked(true)
     setTime(new Date().toISOString().slice(0, 16))
   }
 
@@ -474,7 +485,7 @@ export default function TradesPanel({ id }: Props) {
   return (
     <div className="add-trade-card text-[13px] rounded-2xl border border-slate-700/40 bg-slate-800/40 ring-1 ring-slate-600/30 p-3 space-y-3 w-full">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-      <h2 className="font-bold text-lg">Add Trade</h2>
+        <h2 className="font-bold text-lg">Add Trade</h2>
 
         <div className="text-[11px] text-slate-400">
           {loading ? 'Loading planners…' : (
@@ -555,13 +566,27 @@ export default function TradesPanel({ id }: Props) {
           <div className={`relative h-[48px] rounded-2xl border border-slate-700/40 bg-slate-800/40 ring-1 ring-[rgb(40,40,42)] overflow-hidden transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
             <input
               ref={qtyRef}
-              className="no-spinner w-full h-full min-w-0 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] pr-20 focus:outline-none"
+              className="no-spinner w-full h-full min-w-0 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] pr-24 focus:outline-none"
               placeholder={qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'}
               inputMode="decimal"
               type="text"
               value={qty}
               onChange={onQtyChange}
             />
+            {/* NEW: small lock/unlock button controlling mode switching */}
+<button
+  type="button"
+  onClick={() => setQtyLocked(l => !l)}
+  className="absolute inset-y-0 right-16 w-8 grid place-items-center text-[rgb(154,159,169)] hover:opacity-90"
+  title={qtyLocked ? 'Quantity mode locked (click to unlock)' : 'Quantity mode unlocked (click to lock)'}
+  aria-pressed={!qtyLocked}
+  aria-label={qtyLocked ? 'Locked' : 'Unlocked'}
+>
+  {qtyLocked ? <LockKeyhole size={14} strokeWidth={2} /> : <LockKeyholeOpen size={14} strokeWidth={2} />}
+</button>
+
+
+
             {/* Right-side selector */}
             <div
               className="absolute inset-y-0 right-0 w-16 border-l border-slate-700/40 rounded-r-[4px] overflow-hidden"
@@ -581,7 +606,10 @@ export default function TradesPanel({ id }: Props) {
                 <button
                   type="button"
                   onClick={() => setQtyMode('tokens')}
-                  className={`flex-1 text-[11px] px-2 flex items-center justify-center ${qtyMode === 'tokens' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}`}
+                  disabled={qtyLocked}
+                  className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none
+                              ${qtyMode === 'tokens' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
+                              ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-pressed={qtyMode === 'tokens'}
                 >
                   Tokens
@@ -589,7 +617,10 @@ export default function TradesPanel({ id }: Props) {
                 <button
                   type="button"
                   onClick={() => setQtyMode('usd')}
-                  className={`flex-1 text-[11px] px-2 flex items-center justify-center ${qtyMode === 'usd' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}`}
+                  disabled={qtyLocked}
+                  className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none
+                              ${qtyMode === 'usd' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
+                              ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-pressed={qtyMode === 'usd'}
                 >
                   USD $
