@@ -445,9 +445,22 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       </div>
 
       <div className="flex items-center gap-3 pt-1">
-        <Button onClick={onGenerate} disabled={busy} variant="primary">
-          Generate ladder
-        </Button>
+      <button
+  type="button"
+  onClick={onGenerate}
+  disabled={busy}
+  className="
+    inline-flex items-center justify-center
+    rounded-lg px-3.5 py-2.5 text-sm font-medium
+    transition-colors disabled:opacity-60 disabled:cursor-not-allowed
+    bg-[rgb(109,93,186)] hover:bg-[rgb(122,106,199)] active:bg-[rgb(98,84,175)]
+    text-[rgb(234,235,239)]
+    shadow-none ring-0 outline-none border-0
+  "
+>
+  Generate ladder
+</button>
+
       </div>
 
       {err && <div className="text-xs text-red-300">{err}</div>}

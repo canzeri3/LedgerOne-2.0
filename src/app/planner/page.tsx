@@ -266,6 +266,8 @@ export default function PlannerPage() {
             title="Buy Planner"
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
+              noHoverLift
+              noShadow
           >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
               {/* Left: Inputs */}
@@ -320,6 +322,8 @@ export default function PlannerPage() {
   className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
   headerBorderClassName="border-[rgb(41,42,45)]"
   headerRight={<div id="sell-planner-header-right" className="flex items-center gap-2" />}
+    noHoverLift
+    noShadow
 >
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
@@ -417,7 +421,7 @@ export default function PlannerPage() {
           width: 100%;
           height: inherit;
           border-radius: inherit;
-          background: linear-gradient(82.3deg, rgba(133, 91, 222, 1) 10.8%, rgba(136, 105, 185, 1) 94.3%);
+          background: linear-gradient(82.3deg, rgba(109,93,186) 10.8%, rgba(109,93,186) 94.3%);
           transition: all 0.4s;
         }
       `}</style>

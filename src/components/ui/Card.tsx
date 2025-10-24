@@ -11,6 +11,10 @@ type CardProps = {
   headerRight?: ReactNode
   /** Optional: override the color of the thin header divider line */
   headerBorderClassName?: string
+  /** Disable the slight hover-lift animation (used by planner cards) */
+  noHoverLift?: boolean
+  /** Disable the default soft drop shadow entirely */
+  noShadow?: boolean
 }
 
 export default function Card({
@@ -20,20 +24,27 @@ export default function Card({
   subtitle,
   headerRight,
   headerBorderClassName,
+  noHoverLift = false,
+  noShadow = false,
 }: CardProps) {
   return (
     <section
       className={clsx(
-        // High-contrast grey card against deep blue
         'rounded-2xl border border-slate-700/70',
         'bg-gradient-to-b from-slate-800/80 to-slate-900/80 backdrop-blur',
-        'shadow-[0_10px_30px_-15px_rgba(0,0,0,0.6)]',
-        'transition-transform duration-200 hover:-translate-y-[1px]',
+        !noShadow && 'shadow-[0_10px_30px_-15px_rgba(0,0,0,0.6)]',
+        !noHoverLift && 'transition-transform duration-200 hover:-translate-y-[1px]',
         className
       )}
+      data-card
     >
       {(title || headerRight || subtitle) && (
-        <div className={clsx('px-5 pt-5 pb-3 border-b', headerBorderClassName ?? 'border-slate-700/50')}>
+        <div
+          className={clsx(
+            'px-5 pt-5 pb-3 border-b',
+            headerBorderClassName ?? 'border-slate-700/50'
+          )}
+        >
           <div className="flex items-start gap-3">
             <div className="flex-1">
               {title && <h2 className="text-lg font-bold text-slate-100">{title}</h2>}

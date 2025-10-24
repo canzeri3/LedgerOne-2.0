@@ -190,6 +190,7 @@ export default function SellPlannerCombinedCardPlanner({
           '!border-0 !shadow-none !hover:translate-y-0',
           className || ''
         ].join(' ')}
+          noHoverLift
         title={undefined} // prevent inner header; header now lives in outer card
       >
         <div className="relative w-full h-full">

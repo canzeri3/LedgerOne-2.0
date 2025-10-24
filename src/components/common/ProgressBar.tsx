@@ -14,11 +14,12 @@ type Props = {
 export default function ProgressBar({ pct, text, className = '', heightPx = 8 }: Props) {
   const clamped = Number.isFinite(pct) ? Math.max(0, Math.min(1, pct)) : 0
   const width = `${(clamped * 100).toFixed(2)}%`
+  const isFull = clamped >= 0.999 // treat ~100% as full to avoid tiny slivers
 
   return (
     <div className={`w-full ${className}`} aria-label="progress">
       <div
-        className="relative w-full overflow-hidden rounded border border-[#0b1830] bg-[#0a162c]"
+        className="relative w-full overflow-hidden rounded bg-[rgb(54,55,56)]" // neutral grey track, no border
         role="progressbar"
         aria-valuenow={Math.round(clamped * 100)}
         aria-valuemin={0}
@@ -26,13 +27,14 @@ export default function ProgressBar({ pct, text, className = '', heightPx = 8 }:
         style={{ height: `${heightPx}px` }}
       >
         <div
-          className="h-full"
+          className={`absolute left-0 top-0 bottom-0 ${isFull ? 'rounded' : 'rounded-l'}`}
           style={{
             width,
             transition: 'width 300ms ease',
-            // Solid darker blue, no gradient:
-            background: 'rgb(50, 90, 140)',
-            boxShadow: '0 2px 6px rgba(11,24,48,0.35)',
+            // Filled color: neutral purple you requested
+            background: 'rgba(66, 138, 63, 1)',
+            boxShadow: '0 2px 6px rgba(36, 11, 48, 0.35)',
+            willChange: 'width',
           }}
         />
       </div>
