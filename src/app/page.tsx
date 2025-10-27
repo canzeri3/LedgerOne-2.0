@@ -6,6 +6,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import PortfolioGrowthChart, { type Point } from '@/components/dashboard/PortfolioGrowthChart'
 import { fmtCurrency } from '@/lib/format'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   buildBuyLevels,
@@ -16,7 +17,6 @@ import {
   type SellLevel as PlannerSellLevel,
   type SellTrade as PlannerSellTrade,
 } from '@/lib/planner'
-
 
 type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; quantity: number; trade_time: string }
 type Timeframe = '24h' | '7d' | '30d' | '90d' | '1y' | 'YTD' | 'Max'
@@ -286,53 +286,87 @@ function AlertsTooltip({
   const { data: activeBuyPlanners } = useSWR<BuyPlannerRow[]>(
     user ? ['/alerts/buy-planners', user.id] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('buy_planners')
-        .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
-        .eq('user_id', user!.id)
-        .eq('is_active', true)
-      if (error) throw error
-      return (data ?? []) as BuyPlannerRow[]
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('buy_planners')
+          .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
+          .eq('user_id', user!.id)
+          .eq('is_active', true)
+        if (error) throw error
+        return (data ?? []) as BuyPlannerRow[]
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: true, dedupingInterval: 10000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 10_000,
+    }
   )
 
   const { data: activeSellPlanners } = useSWR<{ id: string; coingecko_id: string; is_active: boolean | null }[]>(
     user ? ['/alerts/sell-planners', user.id] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('sell_planners')
-        .select('id,coingecko_id,is_active,user_id')
-        .eq('user_id', user!.id)
-        .eq('is_active', true)
-      if (error) throw error
-      return (data ?? []).map((p: any) => ({ id: p.id, coingecko_id: p.coingecko_id, is_active: p.is_active }))
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('sell_planners')
+          .select('id,coingecko_id,is_active,user_id')
+          .eq('user_id', user!.id)
+          .eq('is_active', true)
+        if (error) throw error
+        return (data ?? []).map((p: any) => ({ id: p.id, coingecko_id: p.coingecko_id, is_active: p.is_active }))
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: true, dedupingInterval: 10000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 10_000,
+    }
   )
 
-  const sellPlannerIds = useMemo(() => (activeSellPlanners ?? []).map(p => p.id), [activeSellPlanners])
+  const sellPlannerIds = useMemo(
+    () => (activeSellPlanners ?? []).map(p => p.id).sort(), // stable order for a stable SWR key below
+    [activeSellPlanners]
+  )
+
   const { data: sellLevels } = useSWR<{ sell_planner_id: string; level: number; price: number; sell_tokens: number | null }[]>(
     user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('sell_levels')
-        .select('sell_planner_id,level,price,sell_tokens')
-        .in('sell_planner_id', sellPlannerIds)
-      if (error) throw error
-      return (data ?? []) as any
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('sell_levels')
+          .select('sell_planner_id,level,price,sell_tokens')
+          .in('sell_planner_id', sellPlannerIds)
+        if (error) throw error
+        return (data ?? []) as any
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: true, dedupingInterval: 10000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 10_000,
+    }
   )
 
   const alertCoinIds = useMemo(() => {
     const s = new Set<string>()
     ;(activeBuyPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
     ;(activeSellPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
-    return Array.from(s)
+    return Array.from(s).sort() // sorted for stable SWR key below
   }, [activeBuyPlanners, activeSellPlanners])
 
-  // Price fetch (unchanged from your page—but localized to this component)
+  // Price fetch (unchanged UI; robust key + fail-soft)
   function toPriceMap(payload: unknown, fallbackIds: string[]): Map<string, number> {
     const m = new Map<string, number>()
     if (Array.isArray(payload)) {
@@ -355,7 +389,7 @@ function AlertsTooltip({
   }
 
   const { data: pricesMap } = useSWR<Map<string, number>>(
-    user && alertCoinIds.length ? ['/alerts/prices', ...alertCoinIds].join(':') : null,
+    user && alertCoinIds.length ? ['/alerts/prices', ...alertCoinIds].join(':') : null, // stable because alertCoinIds is sorted
     async () => {
       try {
         const multi = await fetch(`/api/price-live?ids=${encodeURIComponent(alertCoinIds.join(','))}`, { cache: 'no-store' })
@@ -364,23 +398,34 @@ function AlertsTooltip({
           const map1 = toPriceMap(j, alertCoinIds)
           if ([...map1.values()].some(Number.isFinite)) return map1
         }
-      } catch {}
-      const pairs = await Promise.all(alertCoinIds.map(async (cid) => {
-        try {
-          const r = await fetch(`/api/price/${cid}`, { cache: 'no-store' })
-          if (!r.ok) throw new Error(String(r.status))
-          const j = await r.json()
-          const price = Number((j as any)?.price ?? (j as any)?.current_price ?? (j as any)?.v)
-          return { cid, price: Number.isFinite(price) ? price : NaN }
-        } catch {
-          return { cid, price: NaN }
-        }
-      }))
-      const m = new Map<string, number>()
-      for (const { cid, price } of pairs) if (Number.isFinite(price)) m.set(cid, price)
-      return m
+      } catch { /* fall through */ }
+      try {
+        const pairs = await Promise.all(alertCoinIds.map(async (cid) => {
+          try {
+            const r = await fetch(`/api/price/${cid}`, { cache: 'no-store' })
+            if (!r.ok) throw new Error(String(r.status))
+            const j = await r.json()
+            const price = Number((j as any)?.price ?? (j as any)?.current_price ?? (j as any)?.v)
+            return { cid, price: Number.isFinite(price) ? price : NaN }
+          } catch {
+            return { cid, price: NaN }
+          }
+        }))
+        const m = new Map<string, number>()
+        for (const { cid, price } of pairs) if (Number.isFinite(price)) m.set(cid, price)
+        return m
+      } catch {
+        return new Map<string, number>()
+      }
     },
-    { revalidateOnFocus: true, refreshInterval: 20_000, dedupingInterval: 5_000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: 20_000,
+      dedupingInterval: 5_000,
+    }
   )
 
   const sym = (cid: string) =>
@@ -388,7 +433,7 @@ function AlertsTooltip({
 
   type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
 
-  // ⬇ NEW: fetch rich trades here (price/fee included) so we can compute fills exactly like Portfolio page.
+  // ⬇ rich trades to compute fills exactly like Portfolio (fail-soft)
   type TradeRow = {
     coingecko_id: string
     side: 'buy' | 'sell'
@@ -402,15 +447,25 @@ function AlertsTooltip({
   const { data: richTrades } = useSWR<TradeRow[]>(
     user && (alertCoinIds?.length ?? 0) ? ['/alerts/trades-rich', user.id] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('trades')
-        .select('coingecko_id,side,price,quantity,fee,trade_time,sell_planner_id')
-        .eq('user_id', user!.id)
-        .order('trade_time', { ascending: true })
-      if (error) throw error
-      return (data ?? []) as TradeRow[]
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('trades')
+          .select('coingecko_id,side,price,quantity,fee,trade_time,sell_planner_id')
+          .eq('user_id', user!.id)
+          .order('trade_time', { ascending: true })
+        if (error) throw error
+        return (data ?? []) as TradeRow[]
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: true, dedupingInterval: 10000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 10_000,
+    }
   )
 
   const tradesByCoinRich = useMemo(() => {
@@ -499,7 +554,7 @@ function AlertsTooltip({
     JSON.stringify(activeBuyPlanners),
     JSON.stringify(activeSellPlanners),
     JSON.stringify(sellLevels),
-    JSON.stringify(pricesMap instanceof Map ? [...pricesMap.entries()] : []),
+    JSON.stringify(pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []),
     JSON.stringify([...tradesByCoinRich.entries()].map(([k,v]) => [k, v.length])),
   ])
 
@@ -554,8 +609,6 @@ function AlertsTooltip({
       </span>
     )
   }
-  
-  
 
   const CountPill = ({ n }: { n: number }) => {
     if (!n) return null
@@ -565,8 +618,6 @@ function AlertsTooltip({
       </span>
     )
   }
-  
-  
 
   // UI (unchanged)
   return (
@@ -578,31 +629,28 @@ function AlertsTooltip({
     >
       {/* Button (only this and the panel can open the tooltip) */}
       <button
-  className="relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 ring-slate-600/40 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2"
-  type="button"
-  aria-haspopup="true"
-  aria-expanded={open}
-  onPointerEnter={openNow}
->
-
-
+        className="relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 ring-slate-600/40 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2"
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onPointerEnter={openNow}
+      >
         <div className="absolute inset-0 bg-gradient-to-r from-indigo-400/10 via-indigo-400/10 to-indigo-300/10 blur-xl transition-opacity" />
         <span className="relative flex items-center gap-2">
-        <svg
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="currentColor"
-  className="w-4 h-4"
-  strokeWidth={1.6}
-  strokeLinecap="round"
-  strokeLinejoin="round"
-  aria-hidden="true"
-  focusable="false"
->
-  <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-  <path d="M10.3 21a1.7 1.7 0 0 0 3.4 0" />
-</svg>
-
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            className="w-4 h-4"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.7 1.7 0 0 0 3.4 0" />
+          </svg>
           <span>Alerts</span>
           <CountPill n={totalAlerts} />
         </span>
@@ -610,33 +658,35 @@ function AlertsTooltip({
 
       {/* Panel */}
       {open && (
-       <div
-       role="dialog"
-       aria-label="Alerts"
-       className="absolute right-0 z-50 mt-2 w-[260px] rounded-lg bg-[rgb(42,44,49)] ring-1 ring-slate-700/40 shadow-2xl p-2"
-       onPointerEnter={openNow}
-       onPointerLeave={(e) => scheduleClose(e)}
-     >
-     
+        <div
+          role="dialog"
+          aria-label="Alerts"
+          className="absolute right-0 z-50 mt-2 w-[260px] rounded-lg bg-[rgb(42,44,49)] ring-1 ring-slate-700/40 shadow-2xl p-2"
+          onPointerEnter={openNow}
+          onPointerLeave={(e) => scheduleClose(e)}
+        >
           <div className="grid gap-1">
             {alertItems.length === 0 ? (
               <div className="px-2 py-3 text-xs text-slate-300/70">No active alerts</div>
             ) : (
               alertItems.map((it, idx) => (
-                <button
-                  key={`${it.cid}:${it.side}:${idx}`}
-                  className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
-                  onClick={() => router.push(`/coins/${it.cid}`)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/coins/${it.cid}`) }}
-                >
-                  <span className="flex items-center gap-2">
-                    <Badge kind={it.side} />
-                    <span className="text-sm text-slate-100/95">{it.symbol}</span>
-                  </span>
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300/80">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                </button>
+         <Link
+  key={`${it.cid}:${it.side}:${idx}`}
+  href={`/coins/${it.cid}`}
+  prefetch
+  className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
+  onPointerEnter={openNow} /* keeps tooltip open while moving toward it */
+  onFocus={openNow}
+>
+  <span className="flex items-center gap-2">
+    <Badge kind={it.side} />
+    <span className="text-sm text-slate-100/95">{it.symbol}</span>
+  </span>
+  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300/80">
+    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+  </svg>
+</Link>
+
               ))
             )}
           </div>
@@ -646,40 +696,65 @@ function AlertsTooltip({
   )
 }
 
-
 /* ── page ──────────────────────────────────────────────────── */
 export default function Page() {
   const { user } = useUser()
   const [tf, setTf] = useState<Timeframe>('30d')
 
-  // Trades (all-time)
+  // Trades (all-time) — fail-soft + consistent options
   const { data: trades } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('trades')
-        .select('coingecko_id,side,quantity,trade_time')
-        .eq('user_id', user!.id)
-      if (error) throw error
-      return (data ?? []).map((t: any) => ({
-        coingecko_id: String(t.coingecko_id),
-        side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
-        quantity: Number(t.quantity ?? 0),
-        trade_time: String(t.trade_time),
-      })) as TradeLite[]
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('trades')
+          .select('coingecko_id,side,quantity,trade_time')
+          .eq('user_id', user!.id)
+        if (error) throw error
+        return (data ?? []).map((t: any) => ({
+          coingecko_id: String(t.coingecko_id),
+          side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
+          quantity: Number(t.quantity ?? 0),
+          trade_time: String(t.trade_time),
+        })) as TradeLite[]
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: tf === '24h', refreshInterval: tf === '24h' ? 30_000 : 120_000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: tf === '24h',
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: tf === '24h' ? 30_000 : 120_000,
+      dedupingInterval: 10_000,
+    }
   )
 
-  const coinIds = useMemo(() => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))), [trades])
+  const coinIds = useMemo(
+    () => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))).sort(), // sorted for stable keys below
+    [trades]
+  )
 
-  // coins meta for tooltip labels
+  // coins meta for tooltip labels — fail-soft
   const { data: coins } = useSWR<CoinMeta[]>(
     user ? ['/portfolio/coins'] : null,
     async () => {
-      const res = await fetch('/api/coins')
-      const j = await res.json()
-      return (j ?? []) as CoinMeta[]
+      try {
+        const res = await fetch('/api/coins', { cache: 'no-store' })
+        if (!res.ok) throw new Error(String(res.status))
+        const j = await res.json()
+        return (j ?? []) as CoinMeta[]
+      } catch {
+        return []
+      }
+    },
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 30_000,
     }
   )
 
@@ -693,18 +768,32 @@ export default function Page() {
     return m
   }, [trades])
 
-  // TF-dependent histories for the chart series
+  // TF-dependent histories for the chart series — robust key + keepPreviousData
   const { data: historiesMap } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParamFor(tf)] : null,
     () => fetchHistories(coinIds, daysParamFor(tf)),
-    { revalidateOnFocus: tf === '24h', refreshInterval: tf === '24h' ? 30_000 : 120_000, keepPreviousData: true }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: tf === '24h',
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: tf === '24h' ? 30_000 : 120_000,
+      dedupingInterval: 10_000,
+    }
   )
 
   // TF-INDEPENDENT live histories for live balance display only (refresh 30s)
   const { data: historiesMapLive } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories-live', coinIds.join(','), '1'] : null,
     () => fetchHistories(coinIds, '1'),
-    { revalidateOnFocus: true, refreshInterval: 30_000, keepPreviousData: true }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: 30_000,
+      dedupingInterval: 10_000,
+    }
   )
 
   const aggregated: Point[] = useMemo(() => {
@@ -797,35 +886,33 @@ export default function Page() {
         {/* Header (left content spans full width now) */}
         <div className="px-4 pt-4">
           <div className="flex flex-col gap-4 md:gap-6">
-          <h2 className="text-l md:text-l font-semibold tracking-tight pl-2 md:pl-3 lg:pl-4">Portfolio Balance</h2>
-          <div className="text-3xl md:text-4xl font-bold text-slate-100 pl-2 md:pl-3 lg:pl-4">
-  {fmtCurrency(liveValue)}
-</div>
-
+            <h2 className="text-l md:text-l font-semibold tracking-tight pl-2 md:pl-3 lg:pl-4">Portfolio Balance</h2>
+            <div className="text-3xl md:text-4xl font-bold text-slate-100 pl-2 md:pl-3 lg:pl-4">
+              {fmtCurrency(liveValue)}
+            </div>
 
             {/* % change row now spans the whole card width */}
             <div className="flex items-center">
-            <div
-  className={[
-    'text-sm md:text-lg font-medium',
-    'pl-2 md:pl-3 lg:pl-4',
-    pct >= 0 ? 'text-[rgb(124,188,97)]' : 'text-[rgb(214,66,78)]',
-  ].join(' ')}
-  style={{ fontVariantNumeric: 'tabular-nums' }}
->
-  <span>{pct >= 0 ? '+' : '-'}</span>
-  <ScrollingNumericText text={pctAbsText} />
-  <span>%</span>
-  <span> (</span>
-  <span>{delta >= 0 ? '' : '-'}</span>
-  <span>$</span>
-  <ScrollingNumericText text={deltaDigitsOnly} />
-  <span>)</span>
-</div>
+              <div
+                className={[
+                  'text-sm md:text-lg font-medium',
+                  'pl-2 md:pl-3 lg:pl-4',
+                  pct >= 0 ? 'text-[rgb(124,188,97)]' : 'text-[rgb(214,66,78)]',
+                ].join(' ')}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                <span>{pct >= 0 ? '+' : '-'}</span>
+                <ScrollingNumericText text={pctAbsText} />
+                <span>%</span>
+                <span> (</span>
+                <span>{delta >= 0 ? '' : '-'}</span>
+                <span>$</span>
+                <ScrollingNumericText text={deltaDigitsOnly} />
+                <span>)</span>
+              </div>
 
-
-                     {/* Timeframe selector: leave a small gap from the right edge */}
-                     <div className="ml-auto -mr-0.5">
+              {/* Timeframe selector: leave a small gap from the right edge */}
+              <div className="ml-auto -mr-0.5">
                 <WindowTabs
                   value={TF_TO_WINDOW[tf]}
                   onChange={(win) => setTf(WINDOW_TO_TF[win])}
@@ -838,10 +925,10 @@ export default function Page() {
 
         {/* Card body */}
         <div className="p-4">
-  <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px]">
-    <PortfolioGrowthChart data={aggregated} />
-  </div>
-</div>
+          <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px]">
+            <PortfolioGrowthChart data={aggregated} />
+          </div>
+        </div>
 
       </div>
 
