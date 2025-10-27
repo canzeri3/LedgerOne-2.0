@@ -8,6 +8,7 @@ import PortfolioGrowthChart, { type Point } from '@/components/dashboard/Portfol
 import { fmtCurrency } from '@/lib/format'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import {
   buildBuyLevels,
   computeBuyFills,
@@ -935,15 +936,24 @@ export default function Page() {
       {/* Spacer */}
       <div className="h-2 md:h-2 lg:h-2"></div>
 
-      {/* Asset Allocation */}
-      <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
-        <div className="px-4 pt-4">
-          <h2 className="text-lg md:text-xl font-semibold tracking-tight">Asset Allocation</h2>
-        </div>
-        <div className="p-4">
-          <p className="text-slate-200 text-sm">Coming soon — this card will show your portfolio allocation by asset.</p>
-        </div>
-      </div>
+{/* Portfolio Holdings */}
+<div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
+  <div className="px-4 pt-4">
+ <h2 className="text-md md:text-2xmd font-semibold tracking-tight">Portfolio Holdings</h2>
+  </div>
+  {/* Edge-to-edge table: no horizontal padding */}
+  <div className="px-0 py-2 md:py-4">
+    <PortfolioHoldingsTable
+      coinIds={coinIds}
+      historiesMapLive={historiesMapLive ?? {}}
+      trades={trades}
+      coins={coins}
+    />
+  </div>
+
+</div>
+
+ 
     </div>
   )
 }

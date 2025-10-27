@@ -98,7 +98,7 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
       </div>
 
       {/* Chart */}
-      <div className="h-64">
+ <div className="min-w-0 h-64">
         {isLoading && series.length === 0 ? (
           <div className="h-full w-full animate-pulse rounded-xl bg-white/5" />
         ) : (
