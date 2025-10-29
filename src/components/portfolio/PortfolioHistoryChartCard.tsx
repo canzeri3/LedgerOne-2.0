@@ -178,7 +178,8 @@ export default function PortfolioHistoryChartCard({ trades, className }: Props) 
   const showErrorInline = seriesToShow.length === 0 && !!error
 
   return (
-    <div className={['rounded-2xl border border-[#081427] p-4', className].filter(Boolean).join(' ')}>
+   <div className={['rounded-md bg-[rgb(28,29,31)] p-4', className].filter(Boolean).join(' ')}>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
         <div className="text-sm font-medium">Portfolio Value (Price History)</div>
@@ -188,7 +189,7 @@ export default function PortfolioHistoryChartCard({ trades, className }: Props) 
               key={opt.key}
               onClick={() => setRange(opt.key)}
               className={[
-                'rounded-full px-3 py-1 text-xs border transition-colors',
+                'rounded-full px-3 py-1 text-xs transition-colors',
                 range === opt.key
                   ? 'bg-white/15 text-white border-white/25'
                   : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',

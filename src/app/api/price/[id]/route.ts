@@ -41,18 +41,30 @@ function withHeaders() {
   return headers
 }
 
-async function fetchJsonWithRetry(url: URL, attempts = 3, timeoutMs = 3500): Promise<any> {
+/**
+ * Minimal, robust upstream fetch:
+ * - cache: 'no-store' to avoid any Next ISR/dedupe surprises in dev
+ * - 3 attempts, exponential backoff, 5s per-attempt hard timeout
+ * - retries on 429/5xx only; otherwise bubbles the error
+ */
+async function fetchJsonWithRetry(url: URL, attempts = 3, timeoutMs = 5000): Promise<any> {
   let lastErr: any
   const headers = withHeaders()
   for (let i = 0; i < attempts; i++) {
     const controller = new AbortController()
     const to = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const r = await fetch(url.toString(), { headers, signal: controller.signal, next: { revalidate: 15 } })
+      const r = await fetch(url.toString(), {
+        headers,
+        signal: controller.signal,
+        cache: 'no-store', // ← important: avoid ISR-ish behavior during dev bursts
+      })
       clearTimeout(to)
       if (r.ok) return await r.json()
+
       const body = await r.text().catch(() => '')
-      if ((r.status === 429 || r.status >= 500) && i < attempts - 1) {
+      // Retry only on rate limit or server errors
+      if ((r.status === 429 || (r.status >= 500 && r.status <= 599)) && i < attempts - 1) {
         await new Promise(res => setTimeout(res, Math.min(2000 * 2 ** i, 6000)))
         continue
       }
@@ -61,6 +73,7 @@ async function fetchJsonWithRetry(url: URL, attempts = 3, timeoutMs = 3500): Pro
       clearTimeout(to)
       lastErr = e?.name === 'AbortError' ? new Error('Upstream timeout') : e
       if (i < attempts - 1) {
+        // small jittered backoff between attempts
         await new Promise(res => setTimeout(res, 600 + Math.floor(Math.random() * 400)))
       }
     }
@@ -98,10 +111,10 @@ async function fallbackMarkets(id: string): Promise<PriceOut> {
   return build(price, pct24h, updatedAtSec, 'coingecko_markets')
 }
 
-const FRESH_TTL_MS = 60_000        // serve from cache instantly for 60s
-const STALE_TTL_MS = 5 * 60_000    // allow stale if upstream fails for up to 5 minutes
+const FRESH_TTL_MS = 60_000      // serve from cache instantly for 60s
+const STALE_TTL_MS = 5 * 60_000  // allow stale if upstream fails for up to 5 minutes
 
-// 👇 await params in dev
+// 👇 await params in dev (Next 15 requires this for dynamic APIs)
 type Ctx = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, ctx: Ctx) {
@@ -114,15 +127,27 @@ export async function GET(_req: Request, ctx: Ctx) {
   // Return fresh cache if available
   const hit = cache.get(id)
   if (hit && now() < hit.expiresAt) {
-    return NextResponse.json(hit.data, { headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20', 'X-Price-Cache': 'fresh' } })
+    return NextResponse.json(hit.data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20',
+        'X-Price-Cache': 'fresh',
+      },
+    })
   }
 
-  // Deduplicate concurrent requests
+  // Deduplicate concurrent requests for the same id
   if (inflight.has(id)) {
     try {
       const data = await inflight.get(id)!
-      return NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20', 'X-Price-Cache': 'shared' } })
-    } catch {}
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20',
+          'X-Price-Cache': 'shared',
+        },
+      })
+    } catch {
+      // fallthrough to new attempt below
+    }
   }
 
   const work = (async (): Promise<PriceOut> => {
@@ -137,16 +162,33 @@ export async function GET(_req: Request, ctx: Ctx) {
   try {
     const data = await work
     cache.set(id, { data, expiresAt: now() + FRESH_TTL_MS, staleAt: now() + STALE_TTL_MS })
-    return NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20' } })
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20',
+      },
+    })
   } catch (err: any) {
     // Serve stale if we can
     const stale = cache.get(id)
     if (stale && now() < stale.staleAt) {
       const data = { ...stale.data, source: 'cache' as const }
-      return NextResponse.json(data, { headers: { 'Cache-Control': 'private, no-store', 'X-Price-Cache': 'stale' } })
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'X-Price-Cache': 'stale',
+        },
+      })
     }
     return NextResponse.json(
-      { price: null, pct24h: null, abs24h: null, lastPrice: null, updatedAt: null, source: 'none' as const, error: String(err?.message || err) },
+      {
+        price: null,
+        pct24h: null,
+        abs24h: null,
+        lastPrice: null,
+        updatedAt: null,
+        source: 'none' as const,
+        error: String(err?.message || err),
+      },
       { status: 502, headers: { 'Cache-Control': 'private, no-store' } }
     )
   } finally {

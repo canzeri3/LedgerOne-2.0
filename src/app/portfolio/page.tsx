@@ -13,7 +13,6 @@ import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown }
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 
-
 /* Planner math (unchanged) */
 import {
   buildBuyLevels,
@@ -264,25 +263,22 @@ export default function PortfolioPage() {
   }: {
     label: string; value: React.ReactNode; accent?: Accent; icon?: 'up' | 'down'; sub?: string
   }) => {
-    const ring =
-      accent === 'pos' ? 'ring-emerald-500/25'
-      : accent === 'neg' ? 'ring-rose-500/25'
-      : 'ring-slate-700/30'
-    const glow =
-      accent === 'pos' ? 'shadow-[0_0_0.5rem_rgba(16,185,129,0.15)]'
-      : accent === 'neg' ? 'shadow-[0_0_0.5rem_rgba(244,63,94,0.15)]'
-      : 'shadow-[0_0_0.5rem_rgba(148,163,184,0.08)]'
+    // Keep accent text colors; NO borders on the container
+    // Use your exact red (rgb 197,78,81) for negative values
     const text =
       accent === 'pos' ? 'text-emerald-400'
-      : accent === 'neg' ? 'text-rose-400'
+      : accent === 'neg' ? 'text-[rgba(189, 45, 50, 1)]'
       : 'text-slate-200'
+    const iconUpClass = 'h-4 w-4 text-emerald-400'
+    const iconDownClass = 'h-4 w-4 text-[rgba(189, 45, 50, 1)]'
+
     return (
-      <div className={`h-full rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ${glow} ring-1 ${ring}`}>
+      <div className="h-full rounded-md bg-[rgb(28,29,31)]">
         <div className="p-4">
           <div className="flex items-center justify-between">
             <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
-            {icon === 'up' && <TrendingUp className="h-4 w-4 text-emerald-400" />}
-            {icon === 'down' && <TrendingDown className="h-4 w-4 text-rose-400" />}
+            {icon === 'up' && <TrendingUp className={iconUpClass} />}
+            {icon === 'down' && <TrendingDown className={iconDownClass} />}
           </div>
           <div className={`mt-2 text-xl md:text-2xl font-semibold tabular-nums ${text}`}>{value}</div>
           {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
@@ -365,7 +361,7 @@ export default function PortfolioPage() {
     const p = payload[0]
     const d = p?.payload as { full: string; name: string; value: number; pct: number }
     return (
-      <div className="rounded-md border border-slate-700/40 bg-slate-900/90 text-slate-100 text-xs p-2 shadow-xl">
+      <div className="rounded-md bg-slate-900/90 text-slate-100 text-xs p-2 shadow-xl">
         <div className="font-medium">{d.full}</div>
         <div className="text-[11px] text-slate-300">{d.name}</div>
         <div className="mt-0.5 tabular-nums">{fmtCurrency(d.value)} · {fmtPct(d.pct)}</div>
@@ -569,8 +565,8 @@ export default function PortfolioPage() {
           className={[
             'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
             isBuy
-              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25'
-              : 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/25',
+              ? 'bg-emerald-500/15 text-emerald-300'
+              : 'bg-rose-500/15 text-rose-300',
           ].join(' ')}
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 opacity-90">
@@ -585,7 +581,7 @@ export default function PortfolioPage() {
     const CountPill = ({ n }: { n: number }) => {
       if (!n) return null
       return (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide bg-indigo-500/20 text-indigo-200 ring-1 ring-indigo-500/30">
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide bg-indigo-500/20 text-indigo-200">
           {n}
         </span>
       )
@@ -616,13 +612,13 @@ export default function PortfolioPage() {
         {/* Dropdown (downwards) */}
         <div className="absolute invisible opacity-0 group-hover:visible group-hover:opacity-100 top-full left-1/2 -translate-x-1/2 mt-3 w-80 transition-all duration-300 ease-out transform group-hover:translate-y-0 -translate-y-2 z-50">
           {/* OPAQUE panel */}
-          <div className="relative p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-white/10 shadow-[0_10px_30px_rgba(2,6,23,0.6)]">
+          <div className="relative p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-[0_10px_30px_rgba(2,6,23,0.6)]">
             {/* Caret at TOP pointing to button */}
-            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-gradient-to-br from-slate-900 to-slate-800 rotate-45 border-l border-t border-white/10"></div>
+            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-gradient-to-br from-slate-900 to-slate-800 rotate-45"></div>
 
             {/* Header: [i] Alerts N */}
             <div className="flex items-center gap-2 mb-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 ring-1 ring-indigo-500/25">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-300">
                   <path clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" fillRule="evenodd"></path>
                 </svg>
@@ -674,7 +670,7 @@ export default function PortfolioPage() {
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
         <div className="flex items-center gap-2">
           <AlertsTooltip coinIds={coinIds} tradesByCoin={tradesByCoin} coins={coins} />
-          <a href="/audit" className="inline-flex items-center justify-center rounded-md border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
+          <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
             Audit Log
           </a>
         </div>
@@ -702,8 +698,9 @@ export default function PortfolioPage() {
           <PortfolioHistoryChartCard trades={trades ?? []} />
         </div>
 
-        <div className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-700/30 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-700/40 flex items-center justify-between">
+        {/* Allocation card → NO borders */}
+        <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
+          <div className="px-4 py-3 flex items-center justify-between">
             <div className="text-sm font-medium">Allocation by Asset</div>
             <span className="text-[11px] text-slate-400">All assets</span>
           </div>
@@ -743,9 +740,9 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* HOLDINGS */}
-      <div className="rounded-2xl border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-700/30 overflow-hidden shadow-[0_0_0.5rem_rgba(148,163,184,0.08)]">
-        <div className="px-4 py-3 border-b border-slate-700/40">
+      {/* HOLDINGS → NO borders; zebra rows */}
+      <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
+        <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <div className="text-sm font-medium">Holdings</div>
@@ -805,7 +802,8 @@ export default function PortfolioPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-sm">
-            <thead className="text-slate-300 sticky top-0 bg-slate-800/60 backdrop-blur-[2px]">
+            {/* Header with top/bottom border rgb(42,43,45) and fixed bg */}
+            <thead className="text-slate-300 sticky top-0 bg-[rgb(28,29,31)] border-y border-[rgb(42,43,45)]">
               <tr className="text-left">
                 <th className="py-2 pl-4 pr-2 font-medium">Coin</th>
                 <th className="py-2 pr-2 font-medium text-right">Qty</th>
@@ -817,6 +815,7 @@ export default function PortfolioPage() {
                 <th className="py-2 pr-4 font-medium text-right">Total P&L</th>
               </tr>
             </thead>
+
             <tbody>
               {filteredSorted.map(r => {
                 const rowPad = dense ? 'py-1.5' : 'py-2.5'
@@ -826,14 +825,13 @@ export default function PortfolioPage() {
                     onClick={() => router.push(`/coins/${r.cid}`)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/coins/${r.cid}`) } }}
                     tabIndex={0}
-                    className="group cursor-pointer hover:bg-white/5 focus:bg-white/10 outline-none transition-colors"
+                    className="group cursor-pointer outline-none transition-colors odd:bg-[rgb(28,29,31)] even:bg-[rgb(26,27,28)] hover:bg-[rgb(19,20,21)] focus:bg-[rgb(19,20,21)]"
                   >
                     <td className={`${rowPad} pl-4 pr-2`}>
                       <div className="flex items-center gap-2">
-                      <div className="h-6 w-6 md:h-8 md:w-8">
-                      <CoinLogo symbol={r.symbol} name={r.name} className="h-5 w-5 md:h-7 md:w-7 shadow-none" />
-
-</div>
+                        <div className="h-6 w-6 md:h-8 md:w-8">
+                          <CoinLogo symbol={r.symbol} name={r.name} className="h-5 w-5 md:h-7 md:w-7 shadow-none" />
+                        </div>
 
                         <div className="min-w-0">
                           <div className="font-medium truncate">{r.name}</div>
@@ -847,13 +845,14 @@ export default function PortfolioPage() {
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.value)}</td>
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.costBasisRemaining)}</td>
 
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-rose-400'}`}>
+                    {/* NEGATIVE = rgba(189, 45, 50, 1) */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
                       {fmtCurrency(r.unrealUsd)}
                     </td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.realizedUsd>=0?'text-emerald-400':'text-rose-400'}`}>
+                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.realizedUsd>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
                       {fmtCurrency(r.realizedUsd)}
                     </td>
-                    <td className={`${rowPad} pr-4 text-right tabular-nums ${r.totalPnl>=0?'text-emerald-400':'text-rose-400'}`}>
+                    <td className={`${rowPad} pr-4 text-right tabular-nums ${r.totalPnl>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
                       {fmtCurrency(r.totalPnl)}
                     </td>
                   </tr>
