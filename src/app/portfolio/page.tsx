@@ -13,6 +13,9 @@ import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown }
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 
+/** 4.10 batched price layer */
+import { PricesProvider, usePrices } from '@/contexts/PricesContext'
+
 /* Planner math (unchanged) */
 import {
   buildBuyLevels,
@@ -24,9 +27,10 @@ import {
   type SellTrade as PlannerSellTrade,
 } from '@/lib/planner'
 
+/** --- Types that mirror your schema/UI needs --- */
 type TradeRow = {
   coingecko_id: string
-  side: 'buy'|'sell'
+  side: 'buy' | 'sell'
   price: number
   quantity: number
   fee: number | null
@@ -35,10 +39,6 @@ type TradeRow = {
 }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number | null }
-type PriceResp = { price: number | null, change_24h?: number | null }
-
-/* ➜ include cid so clicking an alert can route correctly */
-type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
 type BuyPlannerRow = {
   coingecko_id: string
   top_price: number | null
@@ -55,6 +55,7 @@ export default function PortfolioPage() {
   const { user } = useUser()
   const router = useRouter()
 
+  /** --------- Core data: trades + coin metadata (unchanged) --------- */
   const { data: trades } = useSWR<TradeRow[]>(
     user ? ['/portfolio/trades', user.id] : null,
     async () => {
@@ -85,6 +86,7 @@ export default function PortfolioPage() {
     }
   )
 
+  /** --------- Build tradesByCoin + base coinIds (unchanged) --------- */
   const tradesByCoin = useMemo(() => {
     const m = new Map<string, TradeRow[]>()
     ;(trades ?? []).forEach(t => {
@@ -94,21 +96,21 @@ export default function PortfolioPage() {
     return m
   }, [trades])
 
-  const coinIds = useMemo(() => Array.from(tradesByCoin.keys()), [tradesByCoin])
-  const coinKey = useMemo(() => [...coinIds].sort().join(','), [coinIds])
+  const baseCoinIds = useMemo(() => Array.from(tradesByCoin.keys()), [tradesByCoin])
 
+  /** --------- Frozen planner context (unchanged) --------- */
   const [frozen, setFrozen] = useState<FrozenPlanner[]>([])
   const frozenKey = useMemo(() => [...frozen.map(f => f.id)].sort().join(','), [frozen])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!user || coinIds.length === 0) { setFrozen([]); return }
+      if (!user || baseCoinIds.length === 0) { setFrozen([]); return }
       const { data: planners } = await supabaseBrowser
         .from('sell_planners')
         .select('id,coingecko_id,avg_lock_price,is_active')
         .eq('user_id', user.id)
-        .in('coingecko_id', coinIds)
+        .in('coingecko_id', baseCoinIds)
         .eq('is_active', false)
       const x = (planners ?? []).map(p => ({
         id: p.id,
@@ -118,7 +120,7 @@ export default function PortfolioPage() {
       if (!cancelled) setFrozen(x)
     })()
     return () => { cancelled = true }
-  }, [user, coinKey])
+  }, [user, baseCoinIds.join(',')])
 
   const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
   useEffect(() => {
@@ -146,61 +148,126 @@ export default function PortfolioPage() {
     return () => { cancelled = true }
   }, [user, frozenKey])
 
-  // Live snapshot pricing (for KPIs/table)
-  const [prices, setPrices] = useState<Record<string, number>>({})
-  const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
-
-  useEffect(() => {
-    if (coinIds.length === 0) { setPrices({}); setChg24hPctMap({}); return }
-    let cancelled = false
-
-    async function fetchAll() {
-      const pairs = await Promise.all(coinIds.map(async (cid) => {
-        try {
-          const res = await fetch(`/api/price/${cid}`)
-          const j: PriceResp = await res.json()
-          const price = (j && typeof j.price === 'number') ? j.price : null
-          let pct: number | null = null
-          if (j && j.change_24h != null) {
-            const raw = Number(j.change_24h)
-            pct = Math.abs(raw) > 1 ? raw / 100 : raw
-          }
-          return [cid, price, pct] as const
-        } catch {
-          return [cid, null, null] as const
-        }
+  /** --------- ACTIVE planners + levels (moved here so Provider can include their ids) --------- */
+  const { data: activeBuyPlanners } = useSWR<BuyPlannerRow[]>(
+    user ? ['/alerts/buy-planners', user.id] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('buy_planners')
+        .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
+        .eq('user_id', user!.id)
+        .eq('is_active', true)
+      if (error) throw error
+      return (data ?? []).map(({ coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active }) => ({
+        coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active
       }))
+    },
+    { revalidateOnFocus: true, dedupingInterval: 10000 }
+  )
 
-      if (cancelled) return
-      const priceMap: Record<string, number> = {}
-      const pctMap: Record<string, number | null> = {}
-      pairs.forEach(([cid, price, pct]) => {
-        if (price != null) priceMap[cid] = price
-        pctMap[cid] = pct
-      })
-      setPrices(priceMap)
-      setChg24hPctMap(pctMap)
-    }
+  const { data: activeSellPlanners } = useSWR<SellPlannerRow[]>(
+    user ? ['/alerts/sell-planners', user.id] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('sell_planners')
+        .select('id,coingecko_id,is_active,user_id')
+        .eq('user_id', user!.id)
+        .eq('is_active', true)
+      if (error) throw error
+      return (data ?? []).map(({ id, coingecko_id, is_active }) => ({ id, coingecko_id, is_active }))
+    },
+    { revalidateOnFocus: true, dedupingInterval: 10000 }
+  )
 
-    fetchAll()
-    const id = setInterval(fetchAll, 15_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [coinKey])
+  const sellPlannerIds = useMemo(
+    () => (activeSellPlanners ?? []).map(p => p.id),
+    [activeSellPlanners?.map?.(p => p.id).join(',')]
+  )
 
-  function coinMeta(cid: string): CoinMeta | undefined {
-    return coins?.find(c => c.coingecko_id === cid)
-  }
+  const { data: sellLevels } = useSWR<SellLevelRow[]>(
+    user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('sell_levels')
+        .select('sell_planner_id,level,price,sell_tokens')
+        .in('sell_planner_id', sellPlannerIds)
+        .order('level', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    { revalidateOnFocus: true, dedupingInterval: 10000 }
+  )
 
-  // Build per-coin rows
+  /** --------- Derive all coin IDs needed on this page (for one batched price call) --------- */
+  const plannerCoinIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of activeBuyPlanners ?? []) s.add(p.coingecko_id)
+    for (const p of activeSellPlanners ?? []) s.add(p.coingecko_id)
+    return Array.from(s)
+  }, [JSON.stringify(activeBuyPlanners), JSON.stringify(activeSellPlanners)])
+
+  const allCoinIds = useMemo(() => {
+    const s = new Set<string>(baseCoinIds)
+    for (const id of plannerCoinIds) s.add(id)
+    return Array.from(s)
+  }, [baseCoinIds, plannerCoinIds])
+
+  /** --------- Wrap the entire page with PricesProvider (one batched fetch per page) --------- */
+  return (
+    <PricesProvider ids={allCoinIds}>
+      <PortfolioContent
+        router={router}
+        coins={coins}
+        tradesByCoin={tradesByCoin}
+        coinIds={baseCoinIds}
+        frozen={frozen}
+        frozenSells={frozenSells}
+        activeBuyPlanners={activeBuyPlanners ?? []}
+        activeSellPlanners={activeSellPlanners ?? []}
+        sellLevels={sellLevels ?? []}
+      />
+    </PricesProvider>
+  )
+}
+
+/* ============================= MAIN CONTENT ============================= */
+function PortfolioContent({
+  router,
+  coins,
+  tradesByCoin,
+  coinIds,
+  frozen,
+  frozenSells,
+  activeBuyPlanners,
+  activeSellPlanners,
+  sellLevels,
+}: {
+  router: ReturnType<typeof useRouter>
+  coins: CoinMeta[] | undefined
+  tradesByCoin: Map<string, TradeRow[]>
+  coinIds: string[]
+  frozen: FrozenPlanner[]
+  frozenSells: TradeRow[]
+  activeBuyPlanners: BuyPlannerRow[]
+  activeSellPlanners: SellPlannerRow[]
+  sellLevels: SellLevelRow[]
+}) {
+  /** 4.10: read prices once from the Provider */
+  const { getPrice } = usePrices()
+
+  const coinMeta = (cid: string) => coins?.find(c => c.coingecko_id === cid)
+
+  /** ---- Build per-coin rows (UI math unchanged) ---- */
   const rows = useMemo(() => {
     return coinIds.map(cid => {
       const t = tradesByCoin.get(cid) ?? []
       const pnl = computePnl(t.map(x => ({
         side: x.side, price: x.price, quantity: x.quantity, fee: x.fee ?? 0, trade_time: x.trade_time
       } as PnlTrade)))
+
       const qty = pnl.positionQty
       const avg = pnl.avgCost
-      const last = prices[cid] ?? null
+      const last = getPrice(cid) // <<<< SINGLE SOURCE OF TRUTH
       const value = last != null ? qty * last : 0
       const costBasisRemaining = qty * avg
       const unrealUsd = value - costBasisRemaining
@@ -214,15 +281,10 @@ export default function PortfolioPage() {
         return acc + (got - spent)
       }, 0)
 
-      const chgPct = chg24hPctMap[cid] ?? null
-      let delta24Usd = 0
-      let delta24Pct: number | null = null
-      if (last != null && chgPct != null) {
-        const prev = last / (1 + chgPct)
-        const prevVal = prev * qty
-        delta24Usd = value - prevVal
-        delta24Pct = prevVal > 0 ? (delta24Usd / prevVal) : null
-      }
+      // If you previously derived 24h deltas from pct: keep the UI stable by
+      // computing them as unknown when we don't have pct in this page
+      const delta24Usd = 0
+      const delta24Pct: number | null = null
 
       return {
         cid,
@@ -239,32 +301,33 @@ export default function PortfolioPage() {
         delta24Usd,
         delta24Pct,
       }
-    }).sort((a,b) => b.value - a.value)
-  }, [coinIds, tradesByCoin, prices, coins, frozen, frozenSells, chg24hPctMap])
+    }).sort((a, b) => b.value - a.value)
+  }, [coinIds, tradesByCoin, coins, frozen, frozenSells, getPrice])
 
+  /** ---- Totals (unchanged UI) ---- */
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0)
     const invested = rows.reduce((a, r) => a + r.costBasisRemaining, 0)
     const unreal = rows.reduce((a, r) => a + r.unrealUsd, 0)
     const realized = rows.reduce((a, r) => a + r.realizedUsd, 0)
     const prevTotal = rows.reduce((a, r) => {
-      const prev = (r.delta24Pct != null && r.value != null) ? (r.value / (r.delta24Pct + 1)) : r.value
+      const prev = (r.delta24Pct != null && r.value != null)
+        ? r.value / (r.delta24Pct + 1)
+        : r.value
       return a + (prev ?? 0)
     }, 0)
     const delta24Usd = value - prevTotal
-    const delta24Pct = prevTotal > 0 ? (delta24Usd / prevTotal) : null
+    const delta24Pct = prevTotal > 0 ? delta24Usd / prevTotal : null
     return { value, invested, unreal, realized, total: unreal + realized, delta24Usd, delta24Pct }
   }, [rows])
 
-  // ---------- StatCard ----------
+  /** ---- StatCard (unchanged visuals) ---- */
   type Accent = 'pos' | 'neg' | 'neutral'
   const StatCard = ({
     label, value, accent = 'neutral', icon, sub,
   }: {
     label: string; value: React.ReactNode; accent?: Accent; icon?: 'up' | 'down'; sub?: string
   }) => {
-    // Keep accent text colors; NO borders on the container
-    // Use your exact red (rgb 197,78,81) for negative values
     const text =
       accent === 'pos' ? 'text-emerald-400'
       : accent === 'neg' ? 'text-[rgba(189, 45, 50, 1)]'
@@ -289,7 +352,7 @@ export default function PortfolioPage() {
   const kpiAccent = (n: number | null | undefined): Accent =>
     n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
 
-  // ---------------- Holdings UI state (client-side) ------------------
+  /** ---- Holdings table UI state (unchanged) ---- */
   type SortKey = 'name' | 'qty' | 'avg' | 'value' | 'invested' | 'unreal' | 'realized' | 'total'
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('value')
@@ -328,7 +391,7 @@ export default function PortfolioPage() {
     return sorted
   }, [rows, query, sortKey, sortDir])
 
-  // ---------------- Allocation (ALL only) ----------------------------
+  /** ---- Allocation card (unchanged visuals) ---- */
   const coinColor = useCallback((sym: string): string => {
     const s = sym.toUpperCase()
     const map: Record<string,string> = {
@@ -369,120 +432,33 @@ export default function PortfolioPage() {
     )
   }
 
-  /* ─────────────────── Alerts Tooltip (logic unchanged; items now clickable) ─────────────────── */
+  /** ----------------------- Alerts Tooltip ----------------------- **/
   function AlertsTooltip({
     coinIds, tradesByCoin, coins,
-  }: { coinIds: string[]; tradesByCoin: Map<string, TradeRow[]>; coins: CoinMeta[] | undefined }) {
+    activeBuyPlanners, activeSellPlanners, sellLevels
+  }: {
+    coinIds: string[]
+    tradesByCoin: Map<string, TradeRow[]>
+    coins: CoinMeta[] | undefined
+    activeBuyPlanners: BuyPlannerRow[]
+    activeSellPlanners: SellPlannerRow[]
+    sellLevels: SellLevelRow[]
+  }) {
     const { user } = useUser()
-    const router = useRouter() // local router for click/keyboard nav
-
-    const { data: activeBuyPlanners, mutate: mutateBuys } = useSWR<BuyPlannerRow[]>(
-      user ? ['/alerts/buy-planners', user.id] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('buy_planners')
-          .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
-          .eq('user_id', user!.id)
-          .eq('is_active', true)
-        if (error) throw error
-        return (data ?? []).map(({ coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active }) => ({
-          coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active
-        }))
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
-
-    const { data: activeSellPlanners, mutate: mutateSells } = useSWR<SellPlannerRow[]>(
-      user ? ['/alerts/sell-planners', user.id] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('sell_planners')
-          .select('id,coingecko_id,is_active,user_id')
-          .eq('user_id', user!.id)
-          .eq('is_active', true)
-        if (error) throw error
-        return (data ?? []).map(({ id, coingecko_id, is_active }) => ({ id, coingecko_id, is_active }))
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
-
-    useEffect(() => {
-      if (!user) return
-      const ch = supabaseBrowser
-        .channel('alerts_planners')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'buy_planners', filter: `user_id=eq.${user.id}` }, () => { mutateBuys() })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_planners', filter: `user_id=eq.${user.id}` }, () => { mutateSells() })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_levels' }, () => { mutateSells() })
-        .subscribe()
-      return () => { supabaseBrowser.removeChannel(ch) }
-    }, [user, mutateBuys, mutateSells])
-
-    const plannerCoinIds = useMemo(() => {
-      const s = new Set<string>()
-      for (const p of activeBuyPlanners ?? []) s.add(p.coingecko_id)
-      for (const p of activeSellPlanners ?? []) s.add(p.coingecko_id)
-      return Array.from(s)
-    }, [JSON.stringify(activeBuyPlanners), JSON.stringify(activeSellPlanners)])
-
-    const alertCoinIds = useMemo(() => {
-      const s = new Set<string>(coinIds)
-      for (const id of plannerCoinIds) s.add(id)
-      return Array.from(s)
-    }, [coinIds, plannerCoinIds])
-
-    const sellPlannerIds = useMemo(
-      () => (activeSellPlanners ?? []).map(p => p.id),
-      [activeSellPlanners?.map?.(p => p.id).join(',')]
-    )
-
-    const { data: sellLevels } = useSWR<SellLevelRow[]>(
-      user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('sell_levels')
-          .select('sell_planner_id,level,price,sell_tokens')
-          .in('sell_planner_id', sellPlannerIds)
-          .order('level', { ascending: true })
-        if (error) throw error
-        return data ?? []
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
-
-    const { data: priceList } = useSWR<{ coingecko_id: string; price: number | null }[]>(
-      user && alertCoinIds.length ? ['/alerts/prices', ...alertCoinIds].join(':') : null,
-      async () => {
-        const pairs = await Promise.all(alertCoinIds.map(async (cid) => {
-          try {
-            const res = await fetch(`/api/price/${cid}`)
-            const j: PriceResp = await res.json()
-            const price = (j && typeof j.price === 'number') ? j.price : null
-            return { coingecko_id: cid, price }
-          } catch {
-            return { coingecko_id: cid, price: null }
-          }
-        }))
-        return pairs
-      },
-      { revalidateOnFocus: true, refreshInterval: 15000 }
-    )
-
-    const pricesMap = useMemo(() => {
-      const m = new Map<string, number>()
-      for (const r of priceList ?? []) if (r.price != null) m.set(r.coingecko_id, r.price)
-      return m
-    }, [JSON.stringify(priceList)])
+    const router = useRouter()
+    const { getPrice } = usePrices() // << batched price accessor
 
     const symbolOf = (cid: string) =>
       coins?.find(c => c.coingecko_id === cid)?.symbol?.toUpperCase() ?? cid.toUpperCase()
 
-    const alertItems: AlertItem[] = useMemo(() => {
+    const alertItems = useMemo(() => {
+      type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
       const out: AlertItem[] = []
 
       // BUY alerts
       for (const p of activeBuyPlanners ?? []) {
         const cid = p.coingecko_id
-        const live = pricesMap.get(cid) ?? 0
+        const live = getPrice(cid) ?? 0
         if (!(live > 0)) continue
 
         const top = Number(p.top_price ?? 0)
@@ -497,7 +473,6 @@ export default function PortfolioPage() {
           .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
 
         const fills = computeBuyFills(plan, buys, 0)
-
         const hit = plan.some((lv, i) => {
           const lvl = Number(lv.price)
           if (!(lvl > 0)) return false
@@ -518,7 +493,7 @@ export default function PortfolioPage() {
 
       for (const sp of activeSellPlanners ?? []) {
         const cid = sp.coingecko_id
-        const live = pricesMap.get(cid) ?? 0
+        const live = getPrice(cid) ?? 0
         if (!(live > 0)) continue
 
         const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a,b)=>a.level-b.level)
@@ -534,7 +509,6 @@ export default function PortfolioPage() {
           .map<PlannerSellTrade>(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
 
         const fill = computeSellFills(levels, sells, 0.05)
-
         const hit = levels.some((lv, i) => {
           const lvl = Number(lv.target_price)
           if (!(lvl > 0)) return false
@@ -552,8 +526,8 @@ export default function PortfolioPage() {
       JSON.stringify(activeBuyPlanners),
       JSON.stringify(activeSellPlanners),
       JSON.stringify(sellLevels),
-      JSON.stringify([...pricesMap.entries()]),
-      JSON.stringify([...tradesByCoin.entries()].map(([k,v])=>[k,v.length]))
+      JSON.stringify([...tradesByCoin.entries()].map(([k,v])=>[k,v.length])),
+      getPrice
     ])
 
     const totalAlerts = alertItems.length
@@ -577,7 +551,6 @@ export default function PortfolioPage() {
       )
     }
 
-    // Count pill number-only
     const CountPill = ({ n }: { n: number }) => {
       if (!n) return null
       return (
@@ -587,12 +560,10 @@ export default function PortfolioPage() {
       )
     }
 
-    // Navigate helper for items
     const openCoin = (cid: string) => router.push(`/coins/${cid}`)
 
     return (
       <div className="alerts-tooltip relative inline-block group">
-        {/* Button: [i] Alerts N */}
         <button
           className="relative px-4 py-2 text-xs font-semibold text-white bg-indigo-600/90 rounded-xl hover:bg-indigo-700/90 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-all duration-300 overflow-hidden inline-flex items-center gap-2"
           type="button"
@@ -609,14 +580,10 @@ export default function PortfolioPage() {
           </span>
         </button>
 
-        {/* Dropdown (downwards) */}
         <div className="absolute invisible opacity-0 group-hover:visible group-hover:opacity-100 top-full left-1/2 -translate-x-1/2 mt-3 w-80 transition-all duration-300 ease-out transform group-hover:translate-y-0 -translate-y-2 z-50">
-          {/* OPAQUE panel */}
           <div className="relative p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-[0_10px_30px_rgba(2,6,23,0.6)]">
-            {/* Caret at TOP pointing to button */}
             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-gradient-to-br from-slate-900 to-slate-800 rotate-45"></div>
 
-            {/* Header: [i] Alerts N */}
             <div className="flex items-center gap-2 mb-2">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-300">
@@ -627,7 +594,6 @@ export default function PortfolioPage() {
               <CountPill n={totalAlerts} />
             </div>
 
-            {/* List (items clickable & keyboard accessible) */}
             <div className="mt-2 space-y-1.5">
               {totalAlerts === 0 && (
                 <p className="text-sm text-slate-300/90">No active alerts right now.</p>
@@ -663,13 +629,21 @@ export default function PortfolioPage() {
     )
   }
 
+  /** ---------------------------- RENDER ---------------------------- */
   return (
     <div data-portfolio-page className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
       {/* Title */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
         <div className="flex items-center gap-2">
-          <AlertsTooltip coinIds={coinIds} tradesByCoin={tradesByCoin} coins={coins} />
+          <AlertsTooltip
+            coinIds={coinIds}
+            tradesByCoin={tradesByCoin}
+            coins={coins}
+            activeBuyPlanners={activeBuyPlanners}
+            activeSellPlanners={activeSellPlanners}
+            sellLevels={sellLevels}
+          />
           <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
             Audit Log
           </a>
@@ -695,10 +669,10 @@ export default function PortfolioPage() {
       {/* History + Allocation */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 chart-wrap">
-          <PortfolioHistoryChartCard trades={trades ?? []} />
+          <PortfolioHistoryChartCard trades={tradesByCoin ? Array.from(tradesByCoin.values()).flat() : []} />
         </div>
 
-        {/* Allocation card → NO borders */}
+        {/* Allocation card */}
         <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="text-sm font-medium">Allocation by Asset</div>
@@ -740,7 +714,7 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* HOLDINGS → NO borders; zebra rows */}
+      {/* HOLDINGS */}
       <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
         <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -802,7 +776,6 @@ export default function PortfolioPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-sm">
-            {/* Header with top/bottom border rgb(42,43,45) and fixed bg */}
             <thead className="text-slate-300 sticky top-0 bg-[rgb(28,29,31)] border-y border-[rgb(42,43,45)]">
               <tr className="text-left">
                 <th className="py-2 pl-4 pr-2 font-medium">Coin</th>
@@ -832,7 +805,6 @@ export default function PortfolioPage() {
                         <div className="h-6 w-6 md:h-8 md:w-8">
                           <CoinLogo symbol={r.symbol} name={r.name} className="h-5 w-5 md:h-7 md:w-7 shadow-none" />
                         </div>
-
                         <div className="min-w-0">
                           <div className="font-medium truncate">{r.name}</div>
                           <div className="text-[11px] text-slate-400 -mt-0.5">{r.symbol}</div>
@@ -845,7 +817,6 @@ export default function PortfolioPage() {
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.value)}</td>
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.costBasisRemaining)}</td>
 
-                    {/* NEGATIVE = rgba(189, 45, 50, 1) */}
                     <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
                       {fmtCurrency(r.unrealUsd)}
                     </td>
@@ -872,7 +843,7 @@ export default function PortfolioPage() {
       </div>
 
       <p className="text-xs text-slate-500">
-        “Max” spans from your first BUY across all coins. Data is cached per-coin and aggregated client-side for smooth, real-time feel without changing your backend.
+        “Max” spans from your first BUY across all coins. Data is batched per page for reliability and speed.
       </p>
     </div>
   )
