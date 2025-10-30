@@ -1,0 +1,24 @@
+/* Scope to just CoinValueChart instances */
+[data-coin-value-chart] .recharts-line .recharts-curve,
+[data-coin-value-chart] .recharts-area .recharts-curve {
+  stroke: #a78bfa !important; /* lock the line to purple */
+}
+
+/* If an Area is used (common on coin pages), make the filled area purple too */
+[data-coin-value-chart] .recharts-area-area {
+  fill: #a78bfa !important;
+  fill-opacity: 0.18 !important; /* subtle */
+}
+
+/* Dots/active dots (if rendered) */
+[data-coin-value-chart] .recharts-line .recharts-dot,
+[data-coin-value-chart] .recharts-line .recharts-active-dot {
+  fill: #a78bfa !important;
+  stroke: #a78bfa !important;
+}
+
+/* Tooltip cursor line stays neutral */
+[data-coin-value-chart] .recharts-tooltip-cursor {
+  stroke: rgba(255,255,255,0.15) !important;
+}
+

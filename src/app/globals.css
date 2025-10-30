@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hard-stop any purple visited links globally */
+a, a:visited, a:hover, a:active {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Ensure base colors are the deep-blue scheme */
+html, body {
+  height: 100%;
+  background-color: rgb(19,20,21); /* generic RGB(15,16,17) */
+  color: #e5e7eb;                  /* slate-100 */
+}
+
+/* ============================== */
+/* Add Trade card base styling    */
+/* ============================== */
+/* Make the Add Trade card bg rgb(28,29,31) and remove any ring */
+.add-trade-card {
+  background-color: rgb(28,29,31) !important;  /* requested color */
+  border-color: rgb(28,29,31) !important;      /* hide borders if present */
+  outline: none !important;
+  box-shadow: none !important;                  /* remove default shadows */
+
+  /* Neutralize Tailwind ring utilities on this element */
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+}
+
+/* Keep the same look even when sticky (stuck) */
+[data-stuck="true"] .add-trade-card {
+  background-color: rgb(28,29,31) !important;  /* stay consistent when stuck */
+  border-color: rgb(28,29,31) !important;
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+}
+
+/* Toggle knob slides when the invisible peer checkbox is checked */
+.peer:checked + .switch-track .switch-knob {
+  transform: translateX(1rem); /* matches w-8 track: 32px => ~16px travel */
+}
+
+/* --- Uiverse-style radio for Buy/Sell, scoped to the Add Trade card (compact) --- */
+.add-trade-card .radio-buttons-container {
+  display: flex;
+  align-items: center;
+  gap: 14px;              /* was 24px */
+}
+
+.add-trade-card .radio-button {
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+}
+
+.add-trade-card .radio-button__input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.add-trade-card .radio-button__label {
+  display: inline-block;
+  padding-left: 24px;     /* was 30px */
+  margin-bottom: 6px;     /* was 10px */
+  position: relative;
+  font-size: 14px;        /* was 16px */
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
+}
+
+.add-trade-card .radio-button__custom {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 16px;            /* was 20px */
+  height: 16px;           /* was 20px */
+  border-radius: 50%;
+  border: 2px solid #555;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
+}
+
+.add-trade-card .radio-button__input:checked + .radio-button__label .radio-button__custom {
+  transform: translateY(-50%) scale(0.9);
+  border: 4px solid #4c8bf5;   /* thinner to match 16px knob */
+  color: #4c8bf5;
+}
+
+.add-trade-card .radio-button__input:checked + .radio-button__label {
+  color: #4c8bf5;
+}
+
+.add-trade-card .radio-button__label:hover .radio-button__custom {
+  transform: translateY(-50%) scale(1.15);
+  border-color: #4c8bf5;
+  box-shadow: 0 0 8px #4c8bf580;
+}
+
+/* The peer rule for the Pin switch knob stays as-is elsewhere */
+
+/* --- Compact variant for the Side (Buy/Sell) radios inside Add Trade --- */
+.add-trade-card .side-compact .radio-buttons-container {
+  gap: 10px; /* tighter than the default */
+}
+
+.add-trade-card .side-compact .radio-button__label {
+  font-size: 12px;       /* smaller label text */
+  padding-left: 20px;    /* tighter left padding */
+  margin-bottom: 4px;
+}
+
+.add-trade-card .side-compact .radio-button__custom {
+  width: 14px;           /* smaller dot */
+  height: 14px;
+  border-width: 2px;
+}
+
+.add-trade-card .side-compact .radio-button__input:checked + .radio-button__label .radio-button__custom {
+  border-width: 4px;     /* thinner “checked” ring to fit 14px knob */
+}
+
+/* --- Enlarge Buy/Sell control (side-compact) without changing the card size --- */
+.add-trade-card .side-compact .radio-buttons-container {
+  gap: 14px; /* a touch wider for readability */
+}
+
+.add-trade-card .side-compact .radio-button__label {
+  font-size: 15px;      /* up from 12–14 */
+  padding-left: 26px;   /* make room for larger dot */
+  margin-bottom: 2px;
+  line-height: 1.2;
+}
+
+.add-trade-card .side-compact .radio-button__custom {
+  width: 18px;          /* bigger dot */
+  height: 18px;
+  border-width: 2px;
+}
+
+.add-trade-card .side-compact .radio-button__input:checked + .radio-button__label .radio-button__custom {
+  border-width: 5px;    /* thicker ring to match 18px */
+}
+
+/* Subtle hover scale tuned for bigger size */
+.add-trade-card .side-compact .radio-button__label:hover .radio-button__custom {
+  transform: translateY(-50%) scale(1.12);
+}
+
+/* --- Dark theme for the native datetime picker popup (Add Trade only) --- */
+.add-trade-card input[type="datetime-local"] {
+  /* Instruct the browser to render its built-in popup in dark mode */
+  color-scheme: dark;
+}
+
+/* Optional: make the calendar icon fit dark UI in WebKit/Chromium */
+/* Recolor the native calendar icon to rgb(45,56,72) without changing its shape/position */
+.add-trade-card input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  /* CSS filter tuned to visually match rgb(157,163,175) (#2D3848) on a light glyph */
+  filter: invert(19%) sepia(8%) saturate(914%) hue-rotate(178deg) brightness(91%) contrast(92%);
+}
+
+
+/* Side card equal height (fits in 44px like inputs), desktop only */
+.add-trade-card .side-equal .radio-buttons-container { gap: 12px; }
+.add-trade-card .side-equal .radio-button__label {
+  font-size: 13px;
+  padding-left: 22px;
+  margin-bottom: 0; /* keep it single-line */
+}
+.add-trade-card .side-equal .radio-button__custom {
+  width: 14px; height: 14px; border-width: 2px;
+}
+.add-trade-card .side-equal .radio-button__input:checked + .radio-button__label .radio-button__custom {
+  border-width: 4px;
+}
+
+/* Remove spinner arrows on specific number inputs inside Add Trade */
+.add-trade-card input.no-spinner::-webkit-outer-spin-button,
+.add-trade-card input.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.add-trade-card input.no-spinner[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+/* Remove spinner arrows on specific number inputs inside Add Trade */
+.add-trade-card input.no-spinner::-webkit-outer-spin-button,
+.add-trade-card input.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.add-trade-card input.no-spinner[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+/* ============================== */
+/* Coins page tighter corners     */
+/* ============================== */
+@layer utilities {
+  /* Make large radii even tighter on the Coins page only */
+  .coins-page :is(.rounded-3xl, .rounded-2xl, .rounded-xl) {
+    border-radius: 0.25rem !important; /* Tailwind `rounded` (~4px) */
+  }
+
+  /* Ensure shadcn/ui Card wrappers are also tightened */
+  .coins-page :is(.card) {
+    border-radius: 0.25rem !important; /* ~4px */
+  }
+}

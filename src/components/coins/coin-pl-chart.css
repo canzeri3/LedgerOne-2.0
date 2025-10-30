@@ -1,0 +1,15 @@
+[data-coin-pl-chart] .recharts-line .recharts-curve,
+[data-coin-pl-chart] .recharts-area .recharts-curve {
+  stroke: #a78bfa !important;
+}
+
+[data-coin-pl-chart] .recharts-area-area {
+  fill: #a78bfa !important;
+  fill-opacity: 0.18 !important;
+}
+
+[data-coin-pl-chart] .recharts-line .recharts-dot,
+[data-coin-pl-chart] .recharts-line .recharts-active-dot {
+  fill: #a78bfa !important;
+  stroke: #a78bfa !important;
+}

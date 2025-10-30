@@ -1,0 +1,276 @@
+/* Portfolio page adopts the same “institutional dark” chrome as Coins page.
+   Scope everything under [data-portfolio-page] to avoid side effects. */
+
+   [data-portfolio-page] {
+    /* Vertical rhythm matches coins page stacks */
+    --lo-card-bg: rgba(15, 23, 42, 0.40);      /* slate-900/40 */
+    --lo-card-bg-strong: rgba(15, 23, 42, 0.90);/* slate-900/90 */
+    --lo-card-border: rgba(51, 65, 85, 0.40);   /* slate-700/40 */
+    --lo-card-ring: rgba(51, 65, 85, 0.35);     /* slate-700/35 */
+    --lo-soft-blue: #93c5fd;                    /* chart stroke (coins) */
+    --lo-text: #e5e7eb;                         /* slate-100 */
+    --lo-text-subtle: rgba(226,232,240,0.7);    /* subtle labels */
+  
+    /* Tooltip palette hooks (used by Alerts tooltip) */
+    --lo-tip-bg-a: rgba(17, 24, 39, 0.95);     /* gray-900/95 */
+    --lo-tip-bg-b: rgba(31, 41, 55, 0.95);     /* gray-800/95 */
+    --lo-tip-border: rgba(255,255,255,0.10);
+    --lo-tip-shadow: 0 0 30px rgba(79,70,229,0.15);
+    --lo-emerald: #10b981;
+    --lo-rose: #f43f5e;
+  }
+  
+  /* Generic “card shell” — apply visually to common blocks without touching logic */
+  [data-portfolio-page] .as-card,
+  [data-portfolio-page] section,
+  [data-portfolio-page] .panel,
+  [data-portfolio-page] .widget,
+  [data-portfolio-page] .box,
+  [data-portfolio-page] .card,
+  [data-portfolio-page] .table-wrap,
+  [data-portfolio-page] .import-wrap,
+  [data-portfolio-page] .export-wrap,
+  [data-portfolio-page] .donut-wrap,
+  [data-portfolio-page] .chart-wrap {
+    border-radius: 1rem;                        /* rounded-2xl feel */
+    border: 1px solid var(--lo-card-border);
+    background: var(--lo-card-bg);
+    padding: 0.75rem;                           /* p-3 base */
+    box-shadow: 0 0 0 1px var(--lo-card-ring) inset; /* ring-1 look on dark */
+  }
+  
+  /* Let larger blocks breathe a bit more on md+ to mirror CoinValueChart card */
+  @media (min-width: 768px) {
+    [data-portfolio-page] .as-card,
+    [data-portfolio-page] section,
+    [data-portfolio-page] .panel,
+    [data-portfolio-page] .widget,
+    [data-portfolio-page] .box,
+    [data-portfolio-page] .card,
+    [data-portfolio-page] .table-wrap,
+    [data-portfolio-page] .import-wrap,
+    [data-portfolio-page] .export-wrap,
+    [data-portfolio-page] .donut-wrap,
+    [data-portfolio-page] .chart-wrap {
+      padding: 1rem;                            /* md:p-4 */
+    }
+  }
+  
+  /* “Tiny label” style used everywhere on coin page */
+  [data-portfolio-page] .label,
+  [data-portfolio-page] .kpi-label,
+  [data-portfolio-page] .chart-label,
+  [data-portfolio-page] .section-label {
+    margin-bottom: 0.25rem;                     /* mb-1 */
+    font-size: 10px;                            /* text-[10px] */
+    letter-spacing: 0.05em;                     /* tracking-wide */
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.9);            /* text-slate-400-ish */
+  }
+  
+  /* Helper text style */
+  [data-portfolio-page] .muted,
+  [data-portfolio-page] .help,
+  [data-portfolio-page] .footnote {
+    margin-top: 0.5rem;
+    font-size: 11px;                            /* text-[11px] */
+    color: rgba(148, 163, 184, 0.8);            /* text-slate-400-ish */
+  }
+  
+  /* Emulate tabular numeric alignment for portfolio numbers */
+  [data-portfolio-page] .nums,
+  [data-portfolio-page] .kpi,
+  [data-portfolio-page] .currency,
+  [data-portfolio-page] .amount,
+  [data-portfolio-page] .pl {
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* Recharts tooltip skin identical to coin charts */
+  [data-portfolio-page] .recharts-default-tooltip {
+    border: 1px solid rgba(51, 65, 85, 0.50) !important;    /* border-slate-700/50 */
+    background: var(--lo-card-bg-strong) !important;        /* bg-slate-900/90 */
+    padding: 0.5rem 0.75rem !important;                     /* px-3 py-2 */
+    font-size: 0.75rem !important;                          /* text-xs */
+    box-shadow: 0 10px 25px rgba(2,6,23,0.45), 0 0 0 1px var(--lo-card-ring) inset !important;
+    color: var(--lo-text) !important;
+  }
+  
+  /* Recharts axes/grid/ticks: soft slate like coins page */
+  [data-portfolio-page] .recharts-cartesian-axis-line,
+  [data-portfolio-page] .recharts-cartesian-grid-horizontal line,
+  [data-portfolio-page] .recharts-cartesian-grid-vertical line,
+  [data-portfolio-page] .recharts-cartesian-axis-tick-line {
+    stroke: rgba(255,255,255,0.08);
+  }
+  
+  [data-portfolio-page] .recharts-text {
+    fill: var(--lo-text-subtle) !important;
+    font-size: 11px;
+  }
+  
+  /* Default area stroke/fill mirrors the coin history chart */
+  [data-portfolio-page] .recharts-area path {
+    stroke: var(--lo-soft-blue);
+    stroke-width: 2;
+  }
+  [data-portfolio-page] .recharts-area-area {
+    filter: drop-shadow(0 6px 18px rgba(2,6,23,0.45));
+  }
+  
+  /* Import/Export + tables adopt the same card chrome (without changing markup) */
+  [data-portfolio-page] .import-wrap,
+  [data-portfolio-page] .export-wrap,
+  [data-portfolio-page] .table-wrap {
+    background: var(--lo-card-bg);
+    border-color: var(--lo-card-border);
+    box-shadow: 0 0 0 1px var(--lo-card-ring) inset;
+    border-radius: 1rem;
+  }
+  
+  /* If any legacy hard-coded backgrounds slip in, soften them for parity */
+  [data-portfolio-page] [class*="bg-[#0a162c]"],
+  [data-portfolio-page] [class*="border-[#0b1830]"] {
+    background: var(--lo-card-bg) !important;
+    border-color: var(--lo-card-border) !important;
+  }
+  
+  /* Buttons: subtle glow focus to match coin interactions */
+  [data-portfolio-page] button:focus-visible,
+  [data-portfolio-page] .btn:focus-visible,
+  [data-portfolio-page] [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.12), 0 0 0 1px var(--lo-card-ring) inset; /* emerald-ish glow */
+  }
+  
+  /* Inputs: thin glow focus, consistent radius */
+  [data-portfolio-page] input[type="text"],
+  [data-portfolio-page] input[type="number"],
+  [data-portfolio-page] input[type="file"],
+  [data-portfolio-page] select,
+  [data-portfolio-page] textarea {
+    border-radius: 0.75rem;
+    border: 1px solid var(--lo-card-border);
+    background: rgba(15, 23, 42, 0.30);
+    color: var(--lo-text);
+  }
+  [data-portfolio-page] input:focus,
+  [data-portfolio-page] select:focus,
+  [data-portfolio-page] textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.12), 0 0 0 1px var(--lo-card-ring) inset;
+  }
+  
+  /* Give charts a consistent viewport height if they rely on auto sizing */
+  [data-portfolio-page] .chart-wrap,
+  [data-portfolio-page] .portfolio-chart,
+  [data-portfolio-page] [data-chart],
+  [data-portfolio-page] .recharts-responsive-container {
+    min-height: 18rem; /* h-72 */
+  }
+  
+  /* ───────────────────────────── Alerts Tooltip (scoped) ─────────────────────────────
+     This section styles only the alerts tooltip you added next to the Audit Log.
+     It’s defensive: scroll handling, layering, and subtle glow — without touching
+     any other components. All class hooks are optional; the Tailwind classes you
+     used will work alone, but these polish edge cases.
+  */
+  
+  [data-portfolio-page] .alerts-tooltip {
+    position: relative;
+    z-index: 40; /* above cards but under modals */
+  }
+  
+  /* Let the dropdown pop over any clipped containers */
+  [data-portfolio-page] .alerts-tooltip .popover {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 100%;                     /* drop DOWN, not up */
+    margin-top: 0.75rem;           /* ~mt-3 */
+    width: 18rem;                  /* ~w-72 */
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 200ms ease, transform 200ms ease, visibility 200ms;
+    transform-origin: top center;
+    will-change: transform, opacity;
+    z-index: 50;
+  }
+  
+  /* group-hover substitute if the parent uses :hover logic */
+  [data-portfolio-page] .alerts-tooltip:hover .popover,
+  [data-portfolio-page] .alerts-tooltip:focus-within .popover,
+  [data-portfolio-page] .alerts-tooltip.is-open .popover {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  
+  /* Surface + border + glow consistent with the provided UI */
+  [data-portfolio-page] .alerts-tooltip .popover-inner {
+    position: relative;
+    padding: 1rem;
+    background: linear-gradient(135deg, var(--lo-tip-bg-a), var(--lo-tip-bg-b));
+    backdrop-filter: blur(8px);
+    border-radius: 1rem; /* ~rounded-2xl */
+    border: 1px solid var(--lo-tip-border);
+    box-shadow: var(--lo-tip-shadow);
+  }
+  
+  /* Inner soft gradient glow */
+  [data-portfolio-page] .alerts-tooltip .popover-inner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(99,102,241,0.10), rgba(168,85,247,0.10));
+    filter: blur(12px);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  
+  /* Caret (dropdown) */
+  [data-portfolio-page] .alerts-tooltip .caret {
+    position: absolute;
+    left: 50%;
+    bottom: -0.375rem; /* ~-bottom-1.5 */
+    transform: translateX(-50%) rotate(45deg);
+    width: 0.75rem;
+    height: 0.75rem;
+    background: linear-gradient(135deg, var(--lo-tip-bg-a), var(--lo-tip-bg-b));
+    border-right: 1px solid var(--lo-tip-border);
+    border-bottom: 1px solid var(--lo-tip-border);
+  }
+  
+  /* Scroll handling for long alert lists */
+  [data-portfolio-page] .alerts-tooltip .list {
+    display: grid;
+    gap: 0.25rem;
+    max-height: 14rem;   /* comfortable cap */
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148,163,184,0.3) transparent;
+  }
+  [data-portfolio-page] .alerts-tooltip .list::-webkit-scrollbar {
+    width: 8px;
+  }
+  [data-portfolio-page] .alerts-tooltip .list::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,0.3);
+    border-radius: 9999px;
+  }
+  
+  /* Optional color accents for [Buy]/[Sell] labels if not set inline */
+  [data-portfolio-page] .alerts-tooltip .buy-tag { color: #34d399; }  /* emerald-400 */
+  [data-portfolio-page] .alerts-tooltip .sell-tag { color: #fb7185; } /* rose-400 */
+  
+  /* Prevent layout jumps if placed in tight header stacks */
+  [data-portfolio-page] .alerts-tooltip .button {
+    white-space: nowrap;
+  }
+  
+  /* Slight focus ring for accessibility parity */
+  [data-portfolio-page] .alerts-tooltip .button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.35), 0 0 0 1px var(--lo-tip-border) inset;
+  }
+  
