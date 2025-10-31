@@ -12,7 +12,16 @@ import {
 } from '@/lib/planner'
 import { fmtCurrency } from '@/lib/format'
 import ProgressBar from '@/components/common/ProgressBar'
-import { useLivePrice } from '@/lib/useLivePrice' // live price hook
+// ❌ removed: import { useLivePrice } from '@/lib/useLivePrice'
+
+// Small adapter-aware fetcher: reads from /api/price/<id> and returns a number | null
+const priceFetcher = async (url: string): Promise<number | null> => {
+  const r = await fetch(url, { cache: 'no-store' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const j = await r.json()
+  // legacy adapter returns { price, change_24h_pct, price_24h, captured_at, ... }
+  return typeof j?.price === 'number' ? j.price : null
+}
 
 type ActiveBuyPlanner = {
   id: string
@@ -29,7 +38,16 @@ type ActiveBuyPlanner = {
 
 export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
-  const { price: livePrice } = useLivePrice(coingeckoId, 15000)
+
+  // 🔁 Live price via the legacy single-coin adapter (no /live,<id> anymore)
+  const liveUrl = coingeckoId
+    ? `/api/price/${encodeURIComponent(coingeckoId.toLowerCase())}`
+    : null
+  const { data: livePrice } = useSWR<number | null>(
+    liveUrl,
+    liveUrl ? priceFetcher : null,
+    { revalidateOnFocus: false, dedupingInterval: 15000 }
+  )
 
   // Active Buy planner for this coin
   const { data: planner } = useSWR<ActiveBuyPlanner | null>(
@@ -165,7 +183,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
                 Number(lv.price) > 0 &&
                 ((livePrice as number) <= Number(lv.price))
 
-                const rowCls = full ? 'text-[rgb(115,171,84)]' : yellow ? 'text-[rgb(207,180,45)]' : ''
+              const rowCls = full ? 'text-[rgb(115,171,84)]' : yellow ? 'text-[rgb(207,180,45)]' : ''
 
               return (
                 <tr key={lv.level} className={`border-t border-[rgb(51,52,54)] align-middle ${rowCls}`}>
@@ -185,7 +203,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
             })}
           </tbody>
           <tfoot>
-          <tr className="border-t border-[rgb(51,52,54)]">
+            <tr className="border-t border-[rgb(51,52,54)]">
               <td className="px-3 py-2" />
               <td className="px-3 py-2 font-medium">Totals</td>
               <td className="px-3 py-2">

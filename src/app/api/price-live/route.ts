@@ -1,74 +1,36 @@
 // src/app/api/price-live/route.ts
-import { NextResponse } from 'next/server'
+// Adapter: preserves legacy batched shape while using the new /api/prices core.
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+import { NextResponse } from "next/server";
 
-type Row = { id: string; price: number | null }
-
-/** Small, robust fetch with retry/backoff. Mirrors /api/price/[id] semantics. */
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit = {},
-  tries = 2,
-  timeoutMs = 5000
-) {
-  let lastErr: unknown = null
-  for (let i = 0; i < tries; i++) {
-    const ctrl = new AbortController()
-    const to = setTimeout(() => ctrl.abort(), timeoutMs)
-    try {
-      const r = await fetch(url, { ...init, signal: ctrl.signal, cache: 'no-store' })
-      clearTimeout(to)
-      if (r.status === 429 || (r.status >= 500 && r.status <= 599)) {
-        lastErr = new Error(`Upstream ${r.status}`)
-      } else {
-        return r
-      }
-    } catch (e) {
-      lastErr = e
-    }
-    await new Promise(res => setTimeout(res, 400 + Math.random() * 250))
-  }
-  throw lastErr ?? new Error('Upstream error')
-}
+export const revalidate = 0;
 
 export async function GET(req: Request) {
-  try {
-    const u = new URL(req.url)
-    const idsParam = u.searchParams.get('ids') || ''
-    const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean)
+  const u = new URL(req.url);
 
-    if (ids.length === 0) {
-      return NextResponse.json([], { headers: { 'Cache-Control': 'private, no-store' } })
-    }
+  // Some legacy code used ?id=... multiple times; others used ?ids=comma,list
+  const repeated = u.searchParams.getAll("id");
+  const fromCsv = (u.searchParams.get("ids") || "").split(",").map(s => s.trim()).filter(Boolean);
+  const list = (repeated.length ? repeated : fromCsv).map(s => s.toLowerCase());
+  const q = list.join(",");
 
-    // Fan out to our existing per-coin endpoint with retry
-    const rows: Row[] = await Promise.all(
-      ids.map(async (id) => {
-        try {
-          const r = await fetchWithRetry(`${u.origin}/api/price/${encodeURIComponent(id)}`, { cache: 'no-store' })
-          if (!r.ok) throw new Error(String(r.status))
-          const j: any = await r.json()
-          const price = Number(j?.price ?? j?.current_price ?? j?.v)
-          return { id, price: Number.isFinite(price) ? price : null }
-        } catch {
-          // If one coin fails after retries, return null for that id (never break the whole set)
-          return { id, price: null }
-        }
-      })
-    )
+  const core = await fetch(
+    `http://localhost:3000/api/prices?ids=${encodeURIComponent(q)}&currency=USD`,
+    { cache: "no-store" }
+  ).then(r => r.json());
 
-    return NextResponse.json(rows, {
-      headers: {
-        'Cache-Control': 'private, no-store',
-        'X-Price-Live': 'ok',
-      },
-    })
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: String(err?.message || err) },
-      { status: 500, headers: { 'Cache-Control': 'private, no-store' } }
-    )
-  }
+  // Legacy-style rows (adjust keys only if your UI expects different names)
+  const rows = (core?.rows ?? []).map((r: any) => ({
+    id: r.id,
+    price: r.price,
+    pct24h: r.pct24h ?? null,
+    price_24h: r.price_24h ?? null,
+    source: r.source ?? "consensus",
+    stale: !!r.stale
+  }));
+
+  const payload = { rows, updatedAt: core.updatedAt };
+  const res = NextResponse.json(payload);
+  res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
+  return res;
 }
