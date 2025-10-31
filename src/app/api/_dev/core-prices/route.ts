@@ -1,7 +1,7 @@
 // src/app/api/_dev/core-prices/route.ts
 // TEMP endpoint to smoke-test the core service during migration.
 import { NextResponse } from "next/server";
-import { getConsensusPrices } from "@/server/services/priceService";
+import { getConsensusPrices } from "../../../server/services/priceService";
 
 export const revalidate = 0;
 
