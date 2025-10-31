@@ -1,47 +1,52 @@
-// src/app/api/prices/route.ts
-// Batched prices endpoint for your app + adapters.
-// Consumes the Phase 3 core service; short edge cache headers for snappy UX.
+export const runtime = 'nodejs';
 
 import { NextResponse } from "next/server";
-// Use a RELATIVE import to avoid alias issues during migration.
-// If your @ alias is configured, you can switch to: import { getConsensusPrices } from "@/server/services/priceService";
+// Relative import so it works in both Node runtime and dev
 import { getConsensusPrices } from "../../../server/services/priceService";
 
-export const revalidate = 0;           // don't use Next cache; we control caching via headers
-// export const runtime = "nodejs";    // (implicit) keep Node runtime because Redis/provider libs aren't edge-safe
+export const revalidate = 0;
+
+function parseIds(u: URL): string[] {
+  // Support both ?ids=a,b,c and ?id=a&id=b
+  const idsParam = u.searchParams.get("ids");
+  const listFromIds = idsParam
+    ? idsParam
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  const listFromMulti = u.searchParams
+    .getAll("id")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const out = [...listFromIds, ...listFromMulti];
+  // de-dupe while preserving order
+  return Array.from(new Set(out));
+}
 
 export async function GET(req: Request) {
   try {
     const u = new URL(req.url);
-    const idsParam = u.searchParams.get("ids") ?? "";
-    const currency = (u.searchParams.get("currency") ?? "USD").toUpperCase();
+    const ids = parseIds(u);
+    const currency = (u.searchParams.get("currency") || "USD").toUpperCase();
 
-    // Normalize & validate ids
-    const ids = idsParam
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-
-    // Always return a valid payload (never 4xx on empty ids)
+    // If no ids provided, return empty (don’t throw)
     if (ids.length === 0) {
       const empty = { rows: [], updatedAt: new Date().toISOString() };
-      const res = NextResponse.json(empty, { status: 200 });
-      res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
+      const res = NextResponse.json(empty);
+      res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=20");
       return res;
     }
 
-    const data = await getConsensusPrices(ids, currency);
+    const payload = await getConsensusPrices(ids, currency);
 
-    const res = NextResponse.json(data, { status: 200 });
-    // Short TTL, allow stale-while-revalidate so users see instant data while we refresh
-    res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
+    const res = NextResponse.json(payload);
+    res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=20");
     return res;
-  } catch (err: any) {
-    // Fail-soft contract: return an empty but valid payload to avoid crashing pages
-    const fallback = { rows: [], updatedAt: new Date().toISOString(), error: String(err?.message || err) };
-    const res = NextResponse.json(fallback, { status: 200 });
-    res.headers.set("Cache-Control", "public, s-maxage=2, stale-while-revalidate=15");
+  } catch (_err) {
+    // Fail-soft: never crash pages
+    const res = NextResponse.json({ rows: [], updatedAt: new Date().toISOString() });
+    res.headers.set("Cache-Control", "public, s-maxage=2, stale-while-revalidate=10");
     return res;
   }
 }
-
