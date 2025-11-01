@@ -2,11 +2,16 @@
 // Adapter: preserves legacy JSON for components while using the new /api/prices core.
 
 import { NextResponse } from "next/server";
+// Phase 11: add lightweight observability
+import { logInfo } from "../../../../server/lib/metrics";
 
 export const revalidate = 0;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const id = (params.id || "").toLowerCase();
+
+  // Log adapter usage (lets us know when this legacy route is still called)
+  logInfo("adapter_price_hit", { id });
 
   // Call the new batched endpoint with a single id
   const core = await fetch(

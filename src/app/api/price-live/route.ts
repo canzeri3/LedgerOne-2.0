@@ -2,6 +2,8 @@
 // Adapter: preserves legacy batched shape while using the new /api/prices core.
 
 import { NextResponse } from "next/server";
+// Phase 11: add lightweight observability
+import { logInfo } from "../../../server/lib/metrics";
 
 export const revalidate = 0;
 
@@ -13,6 +15,9 @@ export async function GET(req: Request) {
   const fromCsv = (u.searchParams.get("ids") || "").split(",").map(s => s.trim()).filter(Boolean);
   const list = (repeated.length ? repeated : fromCsv).map(s => s.toLowerCase());
   const q = list.join(",");
+
+  // Log adapter usage (lets us know when this legacy route is still called)
+  logInfo("adapter_pricelive_hit", { ids: list });
 
   const core = await fetch(
     `http://localhost:3000/api/prices?ids=${encodeURIComponent(q)}&currency=USD`,

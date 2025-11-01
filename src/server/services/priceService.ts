@@ -111,6 +111,20 @@ function is24hEnabledFor(id: string, optsWith24h: boolean): boolean {
   return true;
 }
 
+// ---------- Last-good (per-coin) ----------
+
+type LastGood = { price: number; at: number }; // unix ms
+const LAST_GOOD_TTL_SEC = 300;    // store for 5 minutes
+const STALE_BUDGET_MS  = 90_000;  // serve last-good if newer than 90s
+
+async function getLastGood(coinId: string, ccy: string): Promise<LastGood | null> {
+  return await cacheGet<LastGood>(`price:lastgood:${ccy}:${coinId}`);
+}
+
+async function setLastGood(coinId: string, ccy: string, price: number) {
+  await cacheSet<LastGood>(`price:lastgood:${ccy}:${coinId}`, { price, at: Date.now() }, LAST_GOOD_TTL_SEC);
+}
+
 // ---------- Providers ----------
 
 // Coingecko: robust batch with per-id fallbacks if batch result is unusable
@@ -298,15 +312,33 @@ export async function getConsensusPrices(
       const vals = byCoin.get(id) ?? [];
       const { price, quality } = trimmedMedian(vals);
 
+      // --- per-coin last-good fallback within stale budget ---
+      let finalPrice = price;
+      let finalStale = price == null;
+
+      if (finalPrice == null) {
+        const lg = await getLastGood(id, currency);
+        if (lg && (Date.now() - lg.at) <= STALE_BUDGET_MS) {
+          finalPrice = lg.price;
+          finalStale = true; // explicitly mark as stale when using fallback
+        }
+      }
+
+      // If we have a fresh price now, save as last-good for future hiccups
+      if (price != null) {
+        await setLastGood(id, currency, price);
+      }
+
+      // 24h reference / pct: compute from the price we will actually return
       let price_24h: number | null = null;
       let pct24h: number | null = null;
 
       const want24h = is24hEnabledFor(id, with24h);
-      if (want24h && price != null) {
+      if (want24h && finalPrice != null) {
         try {
           price_24h = await getPrice24hReference(id, currency);
           if (price_24h != null && price_24h > 0) {
-            pct24h = ((price - price_24h) / price_24h) * 100;
+            pct24h = ((finalPrice - price_24h) / price_24h) * 100;
           }
         } catch {
           price_24h = null;
@@ -316,11 +348,11 @@ export async function getConsensusPrices(
 
       rows.push({
         id,
-        price,
+        price: finalPrice,
         price_24h,
         pct24h,
         source: "consensus",
-        stale: price == null,
+        stale: finalStale,
         quality,
       });
     }
@@ -357,7 +389,7 @@ export async function getConsensusPrices(
     const payload: ConsensusPayload = { rows, updatedAt: new Date().toISOString() };
 
     // Store short TTL and a longer "last-good" for resilience
-    await cacheSet(batchKey, payload, 10);       // hot cache
+    await cacheSet(batchKey, payload, 10);            // hot cache
     await cacheSet(batchLastGoodKey, payload, 300);   // 5 min last-good
 
     // Per-ID mirrors (hot + last-good) to support internal synth
