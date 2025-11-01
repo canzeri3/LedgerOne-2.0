@@ -2,7 +2,7 @@
 // Adapter: preserves legacy batched shape while using the new /api/prices core.
 
 import { NextResponse } from "next/server";
-// Phase 11: add lightweight observability
+// Observability (Phase 11)
 import { logInfo } from "../../../server/lib/metrics";
 
 export const revalidate = 0;
@@ -16,11 +16,14 @@ export async function GET(req: Request) {
   const list = (repeated.length ? repeated : fromCsv).map(s => s.toLowerCase());
   const q = list.join(",");
 
-  // Log adapter usage (lets us know when this legacy route is still called)
+  // Log adapter usage (see dev terminal or Vercel logs)
   logInfo("adapter_pricelive_hit", { ids: list });
 
+  // Use env-configurable internal base (works in dev/CI/prod)
+  const BASE = process.env.INTERNAL_BASE_URL || "http://localhost:3000";
+
   const core = await fetch(
-    `http://localhost:3000/api/prices?ids=${encodeURIComponent(q)}&currency=USD`,
+    `${BASE}/api/prices?ids=${encodeURIComponent(q)}&currency=USD`,
     { cache: "no-store" }
   ).then(r => r.json());
 

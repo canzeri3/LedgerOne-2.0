@@ -207,8 +207,11 @@ async function fetchCoinbaseBatch(
 // ---------- 24h reference (uses our history route first; simple/price synth fallback) ----------
 
 async function getPrice24hReference(coinId: string, currency: string): Promise<number | null> {
+  // Use env-configurable internal base (works in dev/CI/prod)
+  const BASE = process.env.INTERNAL_BASE_URL || "http://localhost:3000";
+
   const makeHist = async (interval: "minute" | "hourly") => {
-    const url = `http://localhost:3000/api/price-history?id=${encodeURIComponent(
+    const url = `${BASE}/api/price-history?id=${encodeURIComponent(
       coinId
     )}&currency=${encodeURIComponent(currency)}&days=1&interval=${interval}`;
     return robustJsonFetch<any>(url, {}, { timeoutMs: 1500, attempts: 2 });
