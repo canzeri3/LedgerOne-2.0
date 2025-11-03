@@ -8,21 +8,9 @@ import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import { useRouter } from 'next/navigation'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
-import PortfolioHistoryChartCard from '@/components/portfolio/PortfolioHistoryChartCard'
 import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
-
-/* Planner math (unchanged) */
-import {
-  buildBuyLevels,
-  computeBuyFills,
-  computeSellFills,
-  type BuyLevel,
-  type BuyTrade,
-  type SellLevel as PlannerSellLevel,
-  type SellTrade as PlannerSellTrade,
-} from '@/lib/planner'
 
 type TradeRow = {
   coingecko_id: string
@@ -35,21 +23,7 @@ type TradeRow = {
 }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number | null }
-type PriceResp = { price: number | null, change_24h?: number | null }
-
-/* ➜ include cid so clicking an alert can route correctly */
-type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
-type BuyPlannerRow = {
-  coingecko_id: string
-  top_price: number | null
-  budget_usd: number | null
-  total_budget: number | null
-  ladder_depth: number | null
-  growth_per_level: number | null
-  is_active: boolean | null
-}
-type SellPlannerRow = { id: string; coingecko_id: string; is_active: boolean | null }
-type SellLevelRow = { sell_planner_id: string; level: number; price: number; sell_tokens: number | null }
+type SnapshotRow = { id: string; rank?: number | null; market_cap?: number | null }
 
 export default function PortfolioPage() {
   const { user } = useUser()
@@ -146,7 +120,7 @@ export default function PortfolioPage() {
     return () => { cancelled = true }
   }, [user, frozenKey])
 
-  // Live snapshot pricing (for KPIs/table)
+  // Live snapshot pricing (new data core) for KPIs/table
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
 
@@ -155,31 +129,38 @@ export default function PortfolioPage() {
     let cancelled = false
 
     async function fetchAll() {
-      const pairs = await Promise.all(coinIds.map(async (cid) => {
-        try {
-          const res = await fetch(`/api/price/${cid}`)
-          const j: PriceResp = await res.json()
-          const price = (j && typeof j.price === 'number') ? j.price : null
-          let pct: number | null = null
-          if (j && j.change_24h != null) {
-            const raw = Number(j.change_24h)
-            pct = Math.abs(raw) > 1 ? raw / 100 : raw
-          }
-          return [cid, price, pct] as const
-        } catch {
-          return [cid, null, null] as const
+      try {
+        const url = `/api/prices?ids=${encodeURIComponent(coinIds.join(','))}`
+        const res = await fetch(url, { cache: 'no-store' })
+        const j = await res.json() as {
+          rows?: Array<{ id: string; price?: number | null; pct24h?: number | null }>
+          updatedAt?: string
         }
-      }))
 
-      if (cancelled) return
-      const priceMap: Record<string, number> = {}
-      const pctMap: Record<string, number | null> = {}
-      pairs.forEach(([cid, price, pct]) => {
-        if (price != null) priceMap[cid] = price
-        pctMap[cid] = pct
-      })
-      setPrices(priceMap)
-      setChg24hPctMap(pctMap)
+        const priceMap: Record<string, number> = {}
+        const pctMap: Record<string, number | null> = {}
+
+        for (const r of j.rows ?? []) {
+          const id = r.id
+          if (typeof r.price === 'number') priceMap[id] = r.price
+          if (r.pct24h == null) {
+            pctMap[id] = null
+          } else {
+            const raw = Number(r.pct24h)
+            pctMap[id] = Math.abs(raw) > 1 ? raw / 100 : raw
+          }
+        }
+
+        if (!cancelled) {
+          setPrices(priceMap)
+          setChg24hPctMap(pctMap)
+        }
+      } catch {
+        if (!cancelled) {
+          setPrices({})
+          setChg24hPctMap({})
+        }
+      }
     }
 
     fetchAll()
@@ -191,7 +172,6 @@ export default function PortfolioPage() {
     return coins?.find(c => c.coingecko_id === cid)
   }
 
-  // Build per-coin rows
   const rows = useMemo(() => {
     return coinIds.map(cid => {
       const t = tradesByCoin.get(cid) ?? []
@@ -263,14 +243,12 @@ export default function PortfolioPage() {
   }: {
     label: string; value: React.ReactNode; accent?: Accent; icon?: 'up' | 'down'; sub?: string
   }) => {
-    // Keep accent text colors; NO borders on the container
-    // Use your exact red (rgb 197,78,81) for negative values
     const text =
       accent === 'pos' ? 'text-emerald-400'
-      : accent === 'neg' ? 'text-[rgba(189, 45, 50, 1)]'
+      : accent === 'neg' ? 'text-[rgba(189,45,50,1)]'
       : 'text-slate-200'
     const iconUpClass = 'h-4 w-4 text-emerald-400'
-    const iconDownClass = 'h-4 w-4 text-[rgba(189, 45, 50, 1)]'
+    const iconDownClass = 'h-4 w-4 text-[rgba(189,45,50,1)]'
 
     return (
       <div className="h-full rounded-md bg-[rgb(28,29,31)]">
@@ -328,7 +306,7 @@ export default function PortfolioPage() {
     return sorted
   }, [rows, query, sortKey, sortDir])
 
-  // ---------------- Allocation (ALL only) ----------------------------
+  // ---------------- Allocation (donut) ----------------------------
   const coinColor = useCallback((sym: string): string => {
     const s = sym.toUpperCase()
     const map: Record<string,string> = {
@@ -344,7 +322,7 @@ export default function PortfolioPage() {
   }, [])
 
   const allocAll = useMemo(() => {
-    const list = rows.map(r => ({ name: r.symbol, full: r.name, value: r.value }))
+    const list = rows.map(r => ({ name: r.symbol, full: r.name, value: r.value, cid: r.cid }))
     const total = list.reduce((a, x) => a + x.value, 0)
     const withMeta = list
       .sort((a,b) => b.value - a.value)
@@ -369,296 +347,112 @@ export default function PortfolioPage() {
     )
   }
 
-  /* ─────────────────── Alerts Tooltip (logic unchanged; items now clickable) ─────────────────── */
-  function AlertsTooltip({
-    coinIds, tradesByCoin, coins,
-  }: { coinIds: string[]; tradesByCoin: Map<string, TradeRow[]>; coins: CoinMeta[] | undefined }) {
-    const { user } = useUser()
-    const router = useRouter() // local router for click/keyboard nav
+  // ---------------- Exposure & Risk card (updated sector bands) ----------------
+  type ViewMode = 'sector' | 'rank'
 
-    const { data: activeBuyPlanners, mutate: mutateBuys } = useSWR<BuyPlannerRow[]>(
-      user ? ['/alerts/buy-planners', user.id] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('buy_planners')
-          .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
-          .eq('user_id', user!.id)
-          .eq('is_active', true)
-        if (error) throw error
-        return (data ?? []).map(({ coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active }) => ({
-          coingecko_id, top_price, budget_usd, total_budget, ladder_depth, growth_per_level, is_active
-        }))
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
+  const { data: snapshot } = useSWR<{ rows?: { id: string; rank?: number | null }[] }>(
+    coinIds.length ? ['/portfolio/snapshot', coinKey] : null,
+    async () => {
+      // IMPORTANT: request ranks for *exact* holdings to ensure alias mapping and coverage
+      const url = `/api/snapshot?ids=${encodeURIComponent(coinIds.join(','))}`
+      const r = await fetch(url, { cache: 'no-store' })
+      if (!r.ok) throw new Error('snapshot unavailable')
+      return r.json()
+    },
+    { revalidateOnFocus: true, dedupingInterval: 60_000 }
+  )
 
-    const { data: activeSellPlanners, mutate: mutateSells } = useSWR<SellPlannerRow[]>(
-      user ? ['/alerts/sell-planners', user.id] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('sell_planners')
-          .select('id,coingecko_id,is_active,user_id')
-          .eq('user_id', user!.id)
-          .eq('is_active', true)
-        if (error) throw error
-        return (data ?? []).map(({ id, coingecko_id, is_active }) => ({ id, coingecko_id, is_active }))
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
 
-    useEffect(() => {
-      if (!user) return
-      const ch = supabaseBrowser
-        .channel('alerts_planners')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'buy_planners', filter: `user_id=eq.${user.id}` }, () => { mutateBuys() })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_planners', filter: `user_id=eq.${user.id}` }, () => { mutateSells() })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'sell_levels' }, () => { mutateSells() })
-        .subscribe()
-      return () => { supabaseBrowser.removeChannel(ch) }
-    }, [user, mutateBuys, mutateSells])
+  const rankMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const row of snapshot?.rows ?? []) {
+      if (row.id && typeof row.rank === 'number') m.set(row.id, row.rank)
+      if (row.id && (row.rank as any) === null) m.set(row.id, null as any)
+    }
+    return m
+  }, [JSON.stringify(snapshot?.rows ?? [])])
 
-    const plannerCoinIds = useMemo(() => {
-      const s = new Set<string>()
-      for (const p of activeBuyPlanners ?? []) s.add(p.coingecko_id)
-      for (const p of activeSellPlanners ?? []) s.add(p.coingecko_id)
-      return Array.from(s)
-    }, [JSON.stringify(activeBuyPlanners), JSON.stringify(activeSellPlanners)])
+  const [view, setView] = useState<ViewMode>('sector')
 
-    const alertCoinIds = useMemo(() => {
-      const s = new Set<string>(coinIds)
-      for (const id of plannerCoinIds) s.add(id)
-      return Array.from(s)
-    }, [coinIds, plannerCoinIds])
+  const sectorAgg = useMemo(() => {
+    // weights from current holdings
+    const total = allocAll.total
+    const weights = allocAll.data.map(d => ({
+      id: d.cid,
+      symbol: d.name,
+      pct: total > 0 ? d.value / total : 0,
+      rank: rankMap.get(d.cid) ?? null,
+    }))
 
-    const sellPlannerIds = useMemo(
-      () => (activeSellPlanners ?? []).map(p => p.id),
-      [activeSellPlanners?.map?.(p => p.id).join(',')]
-    )
-
-    const { data: sellLevels } = useSWR<SellLevelRow[]>(
-      user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
-      async () => {
-        const { data, error } = await supabaseBrowser
-          .from('sell_levels')
-          .select('sell_planner_id,level,price,sell_tokens')
-          .in('sell_planner_id', sellPlannerIds)
-          .order('level', { ascending: true })
-        if (error) throw error
-        return data ?? []
-      },
-      { revalidateOnFocus: true, dedupingInterval: 10000 }
-    )
-
-    const { data: priceList } = useSWR<{ coingecko_id: string; price: number | null }[]>(
-      user && alertCoinIds.length ? ['/alerts/prices', ...alertCoinIds].join(':') : null,
-      async () => {
-        const pairs = await Promise.all(alertCoinIds.map(async (cid) => {
-          try {
-            const res = await fetch(`/api/price/${cid}`)
-            const j: PriceResp = await res.json()
-            const price = (j && typeof j.price === 'number') ? j.price : null
-            return { coingecko_id: cid, price }
-          } catch {
-            return { coingecko_id: cid, price: null }
-          }
-        }))
-        return pairs
-      },
-      { revalidateOnFocus: true, refreshInterval: 15000 }
-    )
-
-    const pricesMap = useMemo(() => {
-      const m = new Map<string, number>()
-      for (const r of priceList ?? []) if (r.price != null) m.set(r.coingecko_id, r.price)
-      return m
-    }, [JSON.stringify(priceList)])
-
-    const symbolOf = (cid: string) =>
-      coins?.find(c => c.coingecko_id === cid)?.symbol?.toUpperCase() ?? cid.toUpperCase()
-
-    const alertItems: AlertItem[] = useMemo(() => {
-      const out: AlertItem[] = []
-
-      // BUY alerts
-      for (const p of activeBuyPlanners ?? []) {
-        const cid = p.coingecko_id
-        const live = pricesMap.get(cid) ?? 0
-        if (!(live > 0)) continue
-
-        const top = Number(p.top_price ?? 0)
-        const budget = Number(p.budget_usd ?? p.total_budget ?? 0)
-        const depth: 70 | 90 = Number(p.ladder_depth) === 90 ? 90 : 70
-        const growth = Number(p.growth_per_level ?? 0)
-        if (!(top > 0) || !(budget > 0)) continue
-
-        const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
-        const buys: BuyTrade[] = (tradesByCoin.get(cid) ?? [])
-          .filter(t => t.side === 'buy')
-          .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
-
-        const fills = computeBuyFills(plan, buys, 0)
-
-        const hit = plan.some((lv, i) => {
-          const lvl = Number(lv.price)
-          if (!(lvl > 0)) return false
-          const within = live <= lvl * 1.03
-          const notFilled = (fills.fillPct?.[i] ?? 0) < 0.97
-          return within && notFilled
-        })
-        if (hit) out.push({ side: 'Buy', symbol: symbolOf(cid), cid })
-      }
-
-      // SELL alerts
-      const lvlsByPlanner = new Map<string, SellLevelRow[]>()
-      for (const l of sellLevels ?? []) {
-        const arr = lvlsByPlanner.get(l.sell_planner_id) ?? []
-        arr.push(l)
-        lvlsByPlanner.set(l.sell_planner_id, arr)
-      }
-
-      for (const sp of activeSellPlanners ?? []) {
-        const cid = sp.coingecko_id
-        const live = pricesMap.get(cid) ?? 0
-        if (!(live > 0)) continue
-
-        const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a,b)=>a.level-b.level)
-        if (!raw.length) continue
-
-        const levels: PlannerSellLevel[] = raw.map(l => ({
-          target_price: Number(l.price),
-          planned_tokens: Math.max(0, Number(l.sell_tokens ?? 0)),
-        }))
-
-        const sells = (tradesByCoin.get(cid) ?? [])
-          .filter(t => t.side === 'sell')
-          .map<PlannerSellTrade>(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
-
-        const fill = computeSellFills(levels, sells, 0.05)
-
-        const hit = levels.some((lv, i) => {
-          const lvl = Number(lv.target_price)
-          if (!(lvl > 0)) return false
-          const within = live >= lvl * 0.97
-          const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
-          return within && notFilled
-        })
-        if (hit) out.push({ side: 'Sell', symbol: symbolOf(cid), cid })
-      }
-
-      const buys = out.filter(x => x.side === 'Buy').sort((a,b)=>a.symbol.localeCompare(b.symbol))
-      const sells = out.filter(x => x.side === 'Sell').sort((a,b)=>a.symbol.localeCompare(b.symbol))
-      return [...buys, ...sells]
-    }, [
-      JSON.stringify(activeBuyPlanners),
-      JSON.stringify(activeSellPlanners),
-      JSON.stringify(sellLevels),
-      JSON.stringify([...pricesMap.entries()]),
-      JSON.stringify([...tradesByCoin.entries()].map(([k,v])=>[k,v.length]))
-    ])
-
-    const totalAlerts = alertItems.length
-
-    const Badge = ({ kind }: { kind: 'Buy'|'Sell' }) => {
-      const isBuy = kind === 'Buy'
-      return (
-        <span
-          className={[
-            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-            isBuy
-              ? 'bg-emerald-500/15 text-emerald-300'
-              : 'bg-rose-500/15 text-rose-300',
-          ].join(' ')}
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 opacity-90">
-            {isBuy ? <path d="M10 3l5 6h-3v8H8V9H5l5-6z" /> : <path d="M10 17l-5-6h3V3h4v8h3l-5 6z" />}
-          </svg>
-          {kind}
-        </span>
-      )
+    let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
+    for (const w of weights) {
+      const r = w.rank
+      if (r == null) { unranked += w.pct; continue }
+      if (r >= 1 && r <= 2) blue += w.pct            // BlueChip 1–2
+      else if (r >= 3 && r <= 10) large += w.pct      // Large Cap 3–10
+      else if (r >= 11 && r <= 20) medium += w.pct    // Medium Cap 11–20
+      else if (r >= 21 && r <= 50) small += w.pct     // Small Cap 21–50
+      else unranked += w.pct                           // >50 treated as unranked
     }
 
-    // Count pill number-only
-    const CountPill = ({ n }: { n: number }) => {
-      if (!n) return null
-      return (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide bg-indigo-500/20 text-indigo-200">
-          {n}
-        </span>
-      )
-    }
+    // Risk scoring tuned to new bands (transparent weights):
+    // BlueChip 0.8, Large 1.0, Medium 2.0, Small 3.0, Unranked 2.0
+    const score = (blue * 0.8 + large * 1.0 + medium * 2.0 + small * 3.0 + unranked * 2.0) * 100
+    let label: 'Low' | 'Moderate' | 'High' =
+      score <= 120 ? 'Low' : score <= 180 ? 'Moderate' : 'High'
 
-    // Navigate helper for items
-    const openCoin = (cid: string) => router.push(`/coins/${cid}`)
+    return { blue, large, medium, small, unranked, score: Math.round(score), label }
+  }, [allocAll.total, JSON.stringify(allocAll.data), JSON.stringify([...rankMap.entries()])])
 
+  const rankedHoldings = useMemo(() => {
+    const total = allocAll.total
+    const list = allocAll.data.map(d => ({
+      id: d.cid,
+      symbol: d.name,
+      pct: total > 0 ? d.value / total : 0,
+      rank: rankMap.get(d.cid) ?? null,
+      value: d.value,
+    }))
+    return list
+      .sort((a, b) => {
+        const ra = a.rank ?? Number.POSITIVE_INFINITY
+        const rb = b.rank ?? Number.POSITIVE_INFINITY
+        if (ra !== rb) return ra - rb
+        return b.pct - a.pct
+      })
+  }, [allocAll.total, JSON.stringify(allocAll.data), JSON.stringify([...rankMap.entries()])])
+
+  const LegendRow = ({ label, pct }: { label: string; pct: number }) => (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-slate-300">{label}</span>
+      <span className="tabular-nums">{fmtPct(pct)}</span>
+    </div>
+  )
+
+  const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'px-2 py-1 rounded-md text-xs',
+        active ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+
+  const RiskBadge = ({ score, label }: { score: number; label: string }) => {
+    const accent =
+      label === 'Low' ? 'text-emerald-400'
+      : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
+      : 'text-[rgba(189,45,50,1)]'
     return (
-      <div className="alerts-tooltip relative inline-block group">
-        {/* Button: [i] Alerts N */}
-        <button
-          className="relative px-4 py-2 text-xs font-semibold text-white bg-indigo-600/90 rounded-xl hover:bg-indigo-700/90 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-all duration-300 overflow-hidden inline-flex items-center gap-2"
-          type="button"
-          aria-haspopup="true"
-          aria-expanded="false"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 blur-xl group-hover:opacity-75 transition-opacity"></div>
-          <span className="relative flex items-center gap-2">
-            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" className="w-4 h-4">
-              <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"></path>
-            </svg>
-            <span>Alerts</span>
-            <CountPill n={totalAlerts} />
-          </span>
-        </button>
-
-        {/* Dropdown (downwards) */}
-        <div className="absolute invisible opacity-0 group-hover:visible group-hover:opacity-100 top-full left-1/2 -translate-x-1/2 mt-3 w-80 transition-all duration-300 ease-out transform group-hover:translate-y-0 -translate-y-2 z-50">
-          {/* OPAQUE panel */}
-          <div className="relative p-4 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-[0_10px_30px_rgba(2,6,23,0.6)]">
-            {/* Caret at TOP pointing to button */}
-            <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-gradient-to-br from-slate-900 to-slate-800 rotate-45"></div>
-
-            {/* Header: [i] Alerts N */}
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20">
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-indigo-300">
-                  <path clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" fillRule="evenodd"></path>
-                </svg>
-              </div>
-              <h3 className="text-sm font-semibold text-white/95">Alerts</h3>
-              <CountPill n={totalAlerts} />
-            </div>
-
-            {/* List (items clickable & keyboard accessible) */}
-            <div className="mt-2 space-y-1.5">
-              {totalAlerts === 0 && (
-                <p className="text-sm text-slate-300/90">No active alerts right now.</p>
-              )}
-              {alertItems.map((a, idx) => (
-                <div
-                  key={`${a.cid}-${a.side}-${idx}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openCoin(a.cid)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      openCoin(a.cid)
-                    }
-                  }}
-                  className="text-sm text-gray-200 flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-white/5 focus:bg-white/10 focus:outline-none transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge kind={a.side} />
-                    <span className="font-medium tracking-tight">{a.symbol}</span>
-                  </div>
-                  <span className={a.side === 'Buy'
-                    ? 'h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.65)]'
-                    : 'h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.65)]'
-                  } />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      <div className="text-xs">
+        <span className="text-slate-400 mr-2">Risk</span>
+        <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
+        <span className="text-slate-400"> · </span>
+        <span className="tabular-nums">{score}</span>
       </div>
     )
   }
@@ -669,7 +463,7 @@ export default function PortfolioPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
         <div className="flex items-center gap-2">
-          <AlertsTooltip coinIds={coinIds} tradesByCoin={tradesByCoin} coins={coins} />
+          {/* Alerts tooltip removed */}
           <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
             Audit Log
           </a>
@@ -685,20 +479,74 @@ export default function PortfolioPage() {
         <StatCard label="Total P&L" value={fmtCurrency(totals.total)} accent={kpiAccent(totals.total)} icon={kpiAccent(totals.total)==='pos'?'up':kpiAccent(totals.total)==='neg'?'down':undefined} />
         <StatCard
           label="24h Change"
-          value={totals.delta24Pct == null ? `${fmtCurrency(totals.delta24Usd)}` : `${fmtCurrency(totals.delta24Usd)} · ${fmtPct(totals.delta24Pct)}`}
+          value={
+            totals.delta24Pct == null
+              ? `${fmtCurrency(totals.delta24Usd)}`
+              : `${fmtCurrency(totals.delta24Usd)} (${fmtPct(totals.delta24Pct)})`
+          }
           sub={totals.delta24Pct == null ? '24h % unavailable' : 'vs previous 24h value'}
           accent={kpiAccent(totals.delta24Usd)}
           icon={kpiAccent(totals.delta24Usd)==='pos'?'up':kpiAccent(totals.delta24Usd)==='neg'?'down':undefined}
         />
       </div>
 
-      {/* History + Allocation */}
+      {/* Exposure & Risk (left) + Allocation donut (right) */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 chart-wrap">
-          <PortfolioHistoryChartCard trades={trades ?? []} />
+        {/* LEFT: Exposure & Risk card */}
+        <div className="lg:col-span-2">
+          <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between">
+             <div className="text-sm font-medium">Exposure & Risk Metric</div>
+              <div className="flex items-center gap-2">
+                <Pill active={view==='sector'} onClick={()=>setView('sector')}>Risk</Pill>
+                <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {(!snapshot || (snapshot.rows ?? []).length === 0) && (
+                <div className="text-sm text-slate-400">
+                  Market cap ranks unavailable. This card uses <code className="text-slate-300">/api/snapshot</code> when present.
+                </div>
+              )}
+
+              {view === 'sector' ? (
+                <div className="space-y-3">
+                  <LegendRow label="BlueChip (Ranks 1–2)" pct={sectorAgg.blue} />
+                  <LegendRow label="Large Cap (Ranks 3–10)" pct={sectorAgg.large} />
+                  <LegendRow label="Medium Cap (Ranks 11–20)" pct={sectorAgg.medium} />
+                  <LegendRow label="Small Cap (Ranks 21–50)" pct={sectorAgg.small} />
+                  <LegendRow label="Unranked / >50" pct={sectorAgg.unranked} />
+
+                  <div className="border-t border-[rgb(42,43,45)] pt-3 flex items-center justify-between">
+                    <RiskBadge score={sectorAgg.score} label={sectorAgg.label} />
+                    <div className="text-[11px] text-slate-400">
+                      Score = Σ(weight × sector multiplier) × 100
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {rankedHoldings.length === 0 ? (
+                    <div className="text-sm text-slate-400">No holdings to display.</div>
+                  ) : (
+                    rankedHoldings.map((h) => (
+                      <div key={h.id} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-300">{h.symbol}</span>
+                          <span className="text-[11px] text-slate-400">Rank {h.rank ?? '—'}</span>
+                        </div>
+                        <span className="tabular-nums">{fmtPct(h.pct)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Allocation card → NO borders */}
+        {/* RIGHT: Allocation donut */}
         <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="text-sm font-medium">Allocation by Asset</div>
@@ -740,7 +588,7 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* HOLDINGS → NO borders; zebra rows */}
+      {/* HOLDINGS */}
       <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
         <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -802,7 +650,6 @@ export default function PortfolioPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-sm">
-            {/* Header with top/bottom border rgb(42,43,45) and fixed bg */}
             <thead className="text-slate-300 sticky top-0 bg-[rgb(28,29,31)] border-y border-[rgb(42,43,45)]">
               <tr className="text-left">
                 <th className="py-2 pl-4 pr-2 font-medium">Coin</th>
@@ -845,14 +692,14 @@ export default function PortfolioPage() {
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.value)}</td>
                     <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.costBasisRemaining)}</td>
 
-                    {/* NEGATIVE = rgba(189, 45, 50, 1) */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
+                    {/* NEGATIVE = rgba(189,45,50,1) */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
                       {fmtCurrency(r.unrealUsd)}
                     </td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.realizedUsd>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
+                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.realizedUsd>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
                       {fmtCurrency(r.realizedUsd)}
                     </td>
-                    <td className={`${rowPad} pr-4 text-right tabular-nums ${r.totalPnl>=0?'text-emerald-400':'text-[rgba(189, 45, 50, 1)]'}`}>
+                    <td className={`${rowPad} pr-4 text-right tabular-nums ${r.totalPnl>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
                       {fmtCurrency(r.totalPnl)}
                     </td>
                   </tr>
