@@ -51,27 +51,82 @@ function daysParamFor(tf: Timeframe): string {
   }
 }
 
-/* ── fetch helpers ─────────────────────────────────────────── */
+/* ── fetch helpers (NEW DATA CORE, robust 24h detection) ───────────────────── */
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-async function fetchHistories(ids: string[], days: string): Promise<Record<string, Point[]>> {
-  const urls = ids.map(id => `/api/coin-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}`)
-  const settled = await Promise.allSettled(urls.map(async (u) => {
-    const r = await fetch(u, { cache: 'no-store' })
-    if (!r.ok) throw new Error(String(r.status))
-    const arr = await r.json()
-    const series: Point[] = (Array.isArray(arr) ? arr : [])
-      .map((row: any) => ({ t: Number(row.t), v: Number(row.v) }))
-      .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
-      .sort((a: Point, b: Point) => a.t - b.t)
-    return series
-  }))
+type Point = { t: number; v: number }
+
+/** Turns strings like "24h", "1d", "0.5", 1 into a numeric day count. */
+function normalizeDaysToNumber(d: string | number): number | null {
+  if (typeof d === 'number' && Number.isFinite(d)) return d
+  if (typeof d !== 'string') return null
+  const s = d.trim().toLowerCase()
+
+  // "24h", "12h", etc.
+  const hMatch = s.match(/^(\d+(\.\d+)?)h$/)
+  if (hMatch) {
+    const hours = parseFloat(hMatch[1])
+    return hours / 24
+  }
+
+  // "1d", "7d", etc.
+  const dMatch = s.match(/^(\d+(\.\d+)?)d$/)
+  if (dMatch) {
+    return parseFloat(dMatch[1])
+  }
+
+  // plain number as string ("1", "0.5", "30")
+  const num = parseFloat(s)
+  if (Number.isFinite(num)) return num
+
+  // unknown tokens like "max", "ytd" -> return null (let server default)
+  return null
+}
+
+/** Match new /api/price-history contract: returns { id, currency, points:[{t,p}], updatedAt } */
+async function fetchHistories(ids: string[], days: string | number): Promise<Record<string, Point[]>> {
+  const numericDays = normalizeDaysToNumber(days)
+  const isSubOrEqOneDay = numericDays !== null && numericDays <= 1
+
+  const buildUrl = (id: string) => {
+    // use normalized 'days' for the query; if unknown token (e.g., 'max'), pass original through
+    const qDays =
+      numericDays === null
+        ? String(days).toLowerCase()
+        : String(numericDays) // server accepts day count as a number string
+
+    const base = `/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(qDays)}`
+    const hourly = isSubOrEqOneDay ? '&interval=hourly' : '' // force intraday granularity for <= 1d
+    return `${base}${hourly}`
+  }
+
+  const urls = ids.map(buildUrl)
+
+  const settled = await Promise.allSettled(
+    urls.map(async (u) => {
+      const r = await fetch(u, { cache: 'no-store' })
+      if (!r.ok) throw new Error(String(r.status))
+      const body = await r.json()
+      // body.points is [{t,p}]
+      const series: Point[] = Array.isArray(body?.points)
+        ? body.points
+            .map((row: any) => ({ t: Number(row?.t), v: Number(row?.p) }))
+            .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
+            .sort((a: Point, b: Point) => a.t - b.t)
+        : []
+      return series
+    })
+  )
+
   const byId: Record<string, Point[]> = {}
-  settled.forEach((res, i) => {
-    if (res.status === 'fulfilled') byId[ids[i]] = res.value as Point[]
-  })
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    const s = settled[i]
+    byId[id] = s.status === 'fulfilled' ? s.value : []
+  }
   return byId
 }
+
 
 /* ── alignment-based aggregation (smooth) ──────────────────── */
 function buildAlignedPortfolioSeries(
