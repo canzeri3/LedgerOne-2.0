@@ -6,6 +6,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianG
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
+import { useHistory } from '@/lib/dataCore'
 
 type Props = {
   coingeckoId?: string

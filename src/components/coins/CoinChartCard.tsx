@@ -1,8 +1,8 @@
 'use client'
 
-import useSWR from 'swr'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import CoinHistoryChart from '@/components/charts/CoinHistoryChart'
+import { useHistory } from '@/lib/dataCore' // NEW: use the new data core
 
 type TradeLite = { side: 'buy' | 'sell'; trade_time: string }
 
@@ -12,8 +12,6 @@ type Props = {
   trades?: TradeLite[]
   className?: string
 }
-
-const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 const RANGE_OPTS = [
   { key: 'auto', label: 'Since 1st Buy' },
@@ -59,10 +57,17 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
     return range // '1','7',..,'max'
   }, [range, autoDays, ytdDays])
 
-  // Fetch series (ISR cached ~5 min on server; SWR refresh ~2 min here)
-  const { data, isLoading } = useSWR<{ t: number; v: number }[]>(
-    coingeckoId ? `/api/coin-history?id=${encodeURIComponent(coingeckoId)}&days=${effectiveDays}` : null,
-    fetcher,
+  // ---- NEW DATA FETCH (replaces legacy /api/coin-history) ----
+  const maxDays = 3650
+  const daysParam = effectiveDays === 'max' ? maxDays : Number(effectiveDays)
+  const interval: 'minute' | 'hourly' | 'daily' =
+    daysParam === 1 ? 'minute' : daysParam <= 7 ? 'hourly' : 'daily'
+
+  const { points, isLoading } = useHistory(
+    coingeckoId,
+    daysParam,
+    interval,
+    'USD',
     {
       refreshInterval: 120_000,
       revalidateOnFocus: false,
@@ -70,7 +75,8 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
     }
   )
 
-  const series = Array.isArray(data) ? data : []
+  // Map {t,p} -> {t,v} to match CoinHistoryChart input
+  const series = Array.isArray(points) ? points.map(({ t, p }) => ({ t, v: p })) : []
 
   return (
     <div className={['rounded-2xl border border-[#081427] p-4', className].filter(Boolean).join(' ')}>
@@ -98,7 +104,7 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
       </div>
 
       {/* Chart */}
- <div className="min-w-0 h-64">
+      <div className="min-w-0 h-64">
         {isLoading && series.length === 0 ? (
           <div className="h-full w-full animate-pulse rounded-xl bg-white/5" />
         ) : (
@@ -113,4 +119,3 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
     </div>
   )
 }
-
