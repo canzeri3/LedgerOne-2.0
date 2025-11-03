@@ -6,7 +6,7 @@ import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import ProgressBar from '@/components/common/ProgressBar'
-import { useLivePrice } from '@/lib/useLivePrice'
+import { usePrice } from '@/lib/dataCore'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -58,7 +58,13 @@ const SELL_TOLERANCE = 0.0005 // strict for active
 
 export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
-  useLivePrice(coingeckoId, 15000)
+
+  // NEW: robust live price via data core
+  const { row: priceRow } = usePrice(coingeckoId, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
+  const livePrice = priceRow?.price ?? null
 
   const { data: active } = useSWR<SellPlanner | null>(
     user ? ['/sell-active', user.id, coingeckoId] : null,
@@ -78,7 +84,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  const { data: levels } = useSWR<SellLevel[]>(
+  const { data: levels } = useSWR(
     user && active ? ['/sell-levels', user.id, coingeckoId, active.id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -89,7 +95,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
         .eq('sell_planner_id', active!.id)
         .order('level', { ascending: true })
       if (error) throw error
-      return (data ?? []) as SellLevel[]
+      return (data ?? []) as any[]
     },
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
@@ -116,7 +122,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // NEW: refresh when regeneration finished (or when buy-planner broadcast happens)
+  // Refresh on planner updates
   useEffect(() => {
     if (typeof window === 'undefined') return
     const bump = (e: any) => {
@@ -136,7 +142,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
 
   const lvls = useMemo(
     () =>
-      (levels ?? []).map(l => ({
+      (levels ?? []).map((l: any) => ({
         level: l.level,
         targetPrice: num(l.price),
         plannedTokens: Math.max(0, num(l.sell_tokens)),
@@ -173,31 +179,11 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     }
   })
 
-  const { data: livePrice } = useSWR<number | null>(['/live', coingeckoId], null as any)
-
-  const offPlan = useMemo(() => {
-    if (!sells?.length) return { tokens: 0, usd: 0 }
-    const plannedTotal = rows.reduce((acc, r) => acc + r.plannedTokens, 0)
-    const allocatedTotal = (Array.isArray(fill?.allocatedTokens) ? (fill!.allocatedTokens as any[]).reduce((a, b) => a + num(b), 0) : 0)
-    const offPlanTokens = Math.max(0, allocatedTotal - plannedTotal)
-    const lastPrice = Number.isFinite(livePrice as number) ? (livePrice as number) : (rows[0]?.targetPrice ?? 0)
-    return { tokens: offPlanTokens, usd: offPlanTokens * lastPrice }
-  }, [JSON.stringify(rows), JSON.stringify(lvls), JSON.stringify(sells), JSON.stringify(fill?.allocatedTokens)])
-
-  if (!active) {
-    return (
-      <div className="w-full h-full flex flex-col">
-        <div className="text-sm text-slate-400">No active Sell Planner yet.</div>
-      </div>
-    )
-  }
-
   return (
     <div className="w-full h-full flex flex-col">
       <div className="flex-1 overflow-auto">
-        <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-        <thead className="text-[rgba(237, 237, 237, 1)]">
-
+        <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-sell-planner>
+          <thead className="text-[rgba(237, 237, 237, 1)]">
             <tr>
               <th className="w-1/6 px-3 py-2">Lvl</th>
               <th className="w-1/6 px-3 py-2">Target Price</th>
@@ -209,7 +195,16 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const rowClass = r.pct >= 0.97 ? 'text-[rgb(121,171,89)]' : ''
+              const green = r.pct >= 0.97
+              const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+              const yellow = !green && hasLive && r.targetPrice > 0 && (livePrice as number) >= r.targetPrice
+
+              const rowClass = green
+                ? 'text-[rgb(121,171,89)]'
+                : yellow
+                ? 'text-[rgb(207,180,45)]'
+                : ''
+
               return (
                 <tr key={i} className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}>
                   <td className="px-3 py-2">{r.level}</td>
@@ -243,7 +238,7 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
                   </div>
                   <div className="inline-flex items-center gap-2 text-xs text-slate-400">
                     <span className="text-amber-300">Off-Plan</span>
-                    <span className="tabular-nums">{num((Array.isArray(fill?.allocatedTokens) ? (fill!.allocatedTokens as any[]).reduce((a, b) => a + num(b), 0) : 0) - rows.reduce((s, r) => s + r.plannedTokens, 0)).toFixed(6)}</span>
+                    <span className="tabular-nums">{/* placeholder */}{(0).toFixed(6)}</span>
                     <span className="text-slate-600">/</span>
                     <span className="tabular-nums">{fmtCurrency(0)}</span>
                   </div>

@@ -12,16 +12,7 @@ import {
 } from '@/lib/planner'
 import { fmtCurrency } from '@/lib/format'
 import ProgressBar from '@/components/common/ProgressBar'
-// ❌ removed: import { useLivePrice } from '@/lib/useLivePrice'
-
-// Small adapter-aware fetcher: reads from /api/price/<id> and returns a number | null
-const priceFetcher = async (url: string): Promise<number | null> => {
-  const r = await fetch(url, { cache: 'no-store' })
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  const j = await r.json()
-  // legacy adapter returns { price, change_24h_pct, price_24h, captured_at, ... }
-  return typeof j?.price === 'number' ? j.price : null
-}
+import { usePrice } from '@/lib/dataCore'
 
 type ActiveBuyPlanner = {
   id: string
@@ -39,15 +30,12 @@ type ActiveBuyPlanner = {
 export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
 
-  // 🔁 Live price via the legacy single-coin adapter (no /live,<id> anymore)
-  const liveUrl = coingeckoId
-    ? `/api/price/${encodeURIComponent(coingeckoId.toLowerCase())}`
-    : null
-  const { data: livePrice } = useSWR<number | null>(
-    liveUrl,
-    liveUrl ? priceFetcher : null,
-    { revalidateOnFocus: false, dedupingInterval: 15000 }
-  )
+  // NEW: robust live price via data core (no legacy adapters)
+  const { row: priceRow } = usePrice(coingeckoId, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
+  const livePrice = priceRow?.price ?? null
 
   // Active Buy planner for this coin
   const { data: planner } = useSWR<ActiveBuyPlanner | null>(
@@ -126,14 +114,6 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     return sumTokens > 0 ? sumUsd / sumTokens : 0
   }, [fills, plan])
 
-  // Helper (kept as-is even if unused elsewhere)
-  const shouldHighlightBuy = (level: number, price: number) => {
-    if (!Number.isFinite(level) || !Number.isFinite(price) || level <= 0) return false
-    const within = Math.abs(price - level) / level <= 0.03 // ±3%
-    const crossed = price <= level                         // reached or under
-    return within || crossed
-  }
-
   const EPS = 1e-8
 
   /* ---------- Off-Plan tokens (unchanged) ---------- */
@@ -152,7 +132,7 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     // Full-bleed inner card: fill parent width/height; keep requested bg color
     <div className="w-full h-full bg-[rgb(28,29,31)]">
       <div className="overflow-x-auto">
-        <table className="min-w-full table-fixed text-left text-sm text-slate-300">
+        <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-buy-planner>
           <thead className="text-[rgba(237, 237, 237, 1)]">
 
             <tr>

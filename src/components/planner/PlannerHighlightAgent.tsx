@@ -1,13 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import useSWR from 'swr'
 import { usePathname } from 'next/navigation'
-
-type PriceResp = {
-  price?: number | null
-  updatedAt?: number | null
-}
+import { usePrice } from '@/lib/dataCore'
 
 /**
  * PlannerHighlightAgent
@@ -24,11 +19,11 @@ export default function PlannerHighlightAgent() {
   // ex: /coins/bitcoin -> "bitcoin"
   const id = pathname?.match(/\/coins\/([^\/?#]+)/)?.[1] ?? null
 
-  const { data } = useSWR<PriceResp>(
-    id ? `/api/price/${id}` : null,
-    (url: string) => fetch(url).then(r => r.json()),
-    { revalidateOnFocus: false, revalidateOnReconnect: false }
-  )
+  // Use NEW data core (no legacy adapters)
+  const { row } = usePrice(id, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
 
   useEffect(() => {
     // All DOM work must be inside effects and behind guards
@@ -43,16 +38,16 @@ export default function PlannerHighlightAgent() {
 
     if (!root) return
 
-    applyHighlight(root, !!data?.price)
+    applyHighlight(root, !!row?.price)
 
     // Re-apply when DOM mutates (rows added/removed)
     const Obs = typeof MutationObserver !== 'undefined' ? MutationObserver : null
     if (!Obs) return
 
-    const obs = new Obs(() => applyHighlight(root, !!data?.price))
+    const obs = new Obs(() => applyHighlight(root, !!row?.price))
     obs.observe(root, { childList: true, subtree: true })
     return () => obs.disconnect()
-  }, [data?.price, pathname])
+  }, [row?.price, pathname])
 
   return null
 }
@@ -64,7 +59,7 @@ function ensureStyleTag(doc: Document) {
   if (doc.getElementById(id)) return
   const style = doc.createElement('style')
   style.id = id
-  // ⬇️ ONLY CHANGE MADE PREVIOUSLY: set alert font color to rgb(207, 180, 45)
+  // ⬇️ alert font color to rgb(207, 180, 45)
   style.textContent = `.planner-alert-yellow { color: rgb(207, 180, 45) !important; }`
   doc.head.appendChild(style)
 }
