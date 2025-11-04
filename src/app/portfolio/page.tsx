@@ -11,6 +11,7 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
+import { useHistory } from '@/lib/dataCore' // for Layer 2/3 daily BTC history
 
 type TradeRow = {
   coingecko_id: string
@@ -23,7 +24,6 @@ type TradeRow = {
 }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number | null }
-type SnapshotRow = { id: string; rank?: number | null; market_cap?: number | null }
 
 export default function PortfolioPage() {
   const { user } = useUser()
@@ -236,6 +236,31 @@ export default function PortfolioPage() {
     return { value, invested, unreal, realized, total: unreal + realized, delta24Usd, delta24Pct }
   }, [rows])
 
+  // ---- Portfolio-aware L2/L3 from server (/api/portfolio-risk), with safe fallback ----
+  const riskKey = useMemo(() => {
+    if (!rows.length) return null
+    const ids = rows.map(r => r.cid).join(',')
+    const vals = rows.map(r => Math.max(0, r.value)).join(',')
+    return [`/api/portfolio-risk`, coinKey, vals] as const
+  }, [rows, coinKey])
+
+  const { data: prisk, error: priskErr } = useSWR(
+    riskKey,
+    async ([, _keyCoin, _vals]) => {
+      const ids = rows.map(r => r.cid).join(',')
+      const values = rows.map(r => Math.max(0, r.value)).join(',')
+      const url = `/api/portfolio-risk?ids=${encodeURIComponent(ids)}&values=${encodeURIComponent(values)}&days=45&interval=daily&currency=USD`
+      const res = await fetch(url, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`portfolio-risk HTTP ${res.status}`)
+      return res.json()
+    },
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10 * 60 * 1000, // 10m; server caches ~12h by allocHash
+      keepPreviousData: true,
+    }
+  )
+
   // ---------- StatCard ----------
   type Accent = 'pos' | 'neg' | 'neutral'
   const StatCard = ({
@@ -347,13 +372,13 @@ export default function PortfolioPage() {
     )
   }
 
-  // ---------------- Exposure & Risk card (updated sector bands) ----------------
-  type ViewMode = 'sector' | 'rank'
+  // ---------------- Exposure & Risk card (consistent layout for all tabs) ----------------
+  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' // Combined first
+  const [view, setView] = useState<ViewMode>('combined') // Default to Combined
 
   const { data: snapshot } = useSWR<{ rows?: { id: string; rank?: number | null }[] }>(
     coinIds.length ? ['/portfolio/snapshot', coinKey] : null,
     async () => {
-      // IMPORTANT: request ranks for *exact* holdings to ensure alias mapping and coverage
       const url = `/api/snapshot?ids=${encodeURIComponent(coinIds.join(','))}`
       const r = await fetch(url, { cache: 'no-store' })
       if (!r.ok) throw new Error('snapshot unavailable')
@@ -361,7 +386,6 @@ export default function PortfolioPage() {
     },
     { revalidateOnFocus: true, dedupingInterval: 60_000 }
   )
-
 
   const rankMap = useMemo(() => {
     const m = new Map<string, number>()
@@ -372,14 +396,11 @@ export default function PortfolioPage() {
     return m
   }, [JSON.stringify(snapshot?.rows ?? [])])
 
-  const [view, setView] = useState<ViewMode>('sector')
-
+  // Band aggregation + L1 structural factors
   const sectorAgg = useMemo(() => {
-    // weights from current holdings
     const total = allocAll.total
     const weights = allocAll.data.map(d => ({
       id: d.cid,
-      symbol: d.name,
       pct: total > 0 ? d.value / total : 0,
       rank: rankMap.get(d.cid) ?? null,
     }))
@@ -388,61 +409,49 @@ export default function PortfolioPage() {
     for (const w of weights) {
       const r = w.rank
       if (r == null) { unranked += w.pct; continue }
-      if (r >= 1 && r <= 2) blue += w.pct            // BlueChip 1–2
-      else if (r >= 3 && r <= 10) large += w.pct      // Large Cap 3–10
-      else if (r >= 11 && r <= 20) medium += w.pct    // Medium Cap 11–20
-      else if (r >= 21 && r <= 50) small += w.pct     // Small Cap 21–50
-      else unranked += w.pct                           // >50 treated as unranked
+      if (r >= 1 && r <= 2) blue += w.pct
+      else if (r >= 3 && r <= 10) large += w.pct
+      else if (r >= 11 && r <= 20) medium += w.pct
+      else if (r >= 21 && r <= 50) small += w.pct
+      else unranked += w.pct
     }
 
-    // Risk scoring tuned to new bands (transparent weights):
-    // BlueChip 0.8, Large 1.0, Medium 2.0, Small 3.0, Unranked 2.0
-    const score = (blue * 0.8 + large * 1.0 + medium * 2.0 + small * 3.0 + unranked * 2.0) * 100
+    const L1_blue   = 1.00
+    const L1_large  = 1.25
+    const L1_medium = 1.55
+    const L1_small  = 1.85
+    const L1_unrank = 1.85
+
+    const structuralSum =
+      blue    * L1_blue +
+      large   * L1_large +
+      medium  * L1_medium +
+      small   * L1_small +
+      unranked* L1_unrank
+
+    const score = Math.round(structuralSum * 100)
     let label: 'Low' | 'Moderate' | 'High' =
       score <= 120 ? 'Low' : score <= 180 ? 'Moderate' : 'High'
 
-    return { blue, large, medium, small, unranked, score: Math.round(score), label }
+    return { blue, large, medium, small, unranked, score, label, structuralSum }
   }, [allocAll.total, JSON.stringify(allocAll.data), JSON.stringify([...rankMap.entries()])])
 
-  const rankedHoldings = useMemo(() => {
-    const total = allocAll.total
-    const list = allocAll.data.map(d => ({
-      id: d.cid,
-      symbol: d.name,
-      pct: total > 0 ? d.value / total : 0,
-      rank: rankMap.get(d.cid) ?? null,
-      value: d.value,
-    }))
-    return list
-      .sort((a, b) => {
-        const ra = a.rank ?? Number.POSITIVE_INFINITY
-        const rb = b.rank ?? Number.POSITIVE_INFINITY
-        if (ra !== rb) return ra - rb
-        return b.pct - a.pct
-      })
-  }, [allocAll.total, JSON.stringify(allocAll.data), JSON.stringify([...rankMap.entries()])])
-
-  const LegendRow = ({ label, pct }: { label: string; pct: number }) => (
+  // Shared rows / badges
+  const LegendRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex items-center justify-between text-sm">
       <span className="text-slate-300">{label}</span>
-      <span className="tabular-nums">{fmtPct(pct)}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   )
 
-  const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        'px-2 py-1 rounded-md text-xs',
-        active ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
-      ].join(' ')}
-    >
-      {children}
-    </button>
+  const CardFooter = ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
+    <div className="border-t border-[rgb(42,43,45)] pt-3 flex items-center justify-between">
+      <div className="text-xs">{left}</div>
+      <div className="text-[11px] text-slate-400">{right}</div>
+    </div>
   )
 
-  const RiskBadge = ({ score, label }: { score: number; label: string }) => {
+  const RiskBadge = ({ score, label }: { score: number; label: 'Low'|'Moderate'|'High' }) => {
     const accent =
       label === 'Low' ? 'text-emerald-400'
       : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
@@ -457,13 +466,125 @@ export default function PortfolioPage() {
     )
   }
 
+  const LevelBadge = ({ title, level, value }: { title: string; level: 'Low'|'Moderate'|'High'|'Very High'; value: string }) => {
+    const accent =
+      level === 'Low' ? 'text-emerald-400'
+      : level === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
+      : level === 'High' ? 'text-[rgba(189,120,45,1)]'
+      : 'text-[rgba(189,45,50,1)]'
+    return (
+      <div className="text-xs">
+        <span className="text-slate-400 mr-2">{title}</span>
+        <span className={`font-semibold tabular-nums capitalize ${accent}`}>{level}</span>
+        {value !== '' && (
+          <>
+            <span className="text-slate-400"> · </span>
+            <span className="tabular-nums">{value}</span>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // --------- LAYER 2 & 3 helpers (BTC proxy fallback) ----------
+  const { points: btcDailyPts } = useHistory('bitcoin', 45, 'daily', 'USD')
+
+  function annVol30dFromDaily(points: {t:number; p:number}[]): number | null {
+    if (!points || points.length < 31) return null
+    const rets: number[] = []
+    for (let i = 1; i < points.length; i++) {
+      const p0 = points[i-1].p
+      const p1 = points[i].p
+      if (p0 && p1 && p0 > 0) rets.push(Math.log(p1 / p0))
+    }
+    if (rets.length < 20) return null
+    const mean = rets.reduce((a,b)=>a+b,0) / rets.length
+    const varSum = rets.reduce((a,b)=>a + (b-mean)*(b-mean), 0)
+    const stdev = Math.sqrt(varSum / Math.max(1, rets.length - 1))
+    return stdev * Math.sqrt(365)
+  }
+
+  function smaSd20(points: {t:number; p:number}[]) {
+    if (!points || points.length < 20) return { sma: null as number|null, sd: null as number|null }
+    const last20 = points.slice(-20)
+    const prices = last20.map(x => x.p).filter(p => typeof p === 'number') as number[]
+    if (prices.length < 20) return { sma: null, sd: null }
+    const sma = prices.reduce((a,b)=>a+b,0) / prices.length
+    const mean = sma
+    const varSum = prices.reduce((a,b)=>a+(b-mean)*(b-mean),0)
+    const sd = Math.sqrt(varSum / Math.max(1, prices.length - 1))
+    return { sma, sd }
+  }
+
+  // Fallback proxy values
+  const volAnn_proxy = annVol30dFromDaily(btcDailyPts)
+  let volRegime_proxy: 'calm'|'normal'|'high'|'stress' = 'normal'
+  let volMult_proxy = 1.00
+  if (volAnn_proxy != null) {
+    if (volAnn_proxy < 0.55) { volRegime_proxy = 'calm';   volMult_proxy = 0.90 }
+    else if (volAnn_proxy < 0.80) { volRegime_proxy = 'normal'; volMult_proxy = 1.00 }
+    else if (volAnn_proxy <= 1.10) { volRegime_proxy = 'high';   volMult_proxy = 1.25 }
+    else { volRegime_proxy = 'stress'; volMult_proxy = 1.60 }
+  }
+
+  const { sma: sma20, sd: sd20 } = smaSd20(btcDailyPts)
+  const lastPrice = btcDailyPts?.length ? btcDailyPts[btcDailyPts.length-1].p : null
+  const bbLower = (sma20 != null && sd20 != null) ? (sma20 - 2*sd20) : null
+  const tailActive_proxy = (lastPrice != null && bbLower != null && lastPrice < bbLower)
+  const tailFactor_proxy = tailActive_proxy ? 1.35 : 1.00
+
+  // --- Choose portfolio-aware values when available; else fallback to proxy ---
+  const L2_regime = (prisk?.l2?.regime ?? volRegime_proxy) as 'calm'|'normal'|'high'|'stress'
+  const L2_mult   = typeof prisk?.l2?.multiplier === 'number' ? prisk!.l2.multiplier : volMult_proxy
+  const L2_annVol = typeof prisk?.l2?.annVol30d === 'number' ? prisk!.l2.annVol30d : volAnn_proxy
+
+  const L3_share  = typeof prisk?.l3?.activationShare === 'number' ? prisk!.l3.activationShare : (tailActive_proxy ? 1 : 0)
+  const L3_active = typeof prisk?.l3?.weightedTailActive === 'boolean' ? prisk!.l3.weightedTailActive : tailActive_proxy
+  const L3_factor = typeof prisk?.l3?.factor === 'number' ? prisk!.l3.factor : tailFactor_proxy
+
+  // ---- Helpers for levels/visuals (no logic change to calculations) ----
+  const structuralLevel: 'Low'|'Moderate'|'High' =
+    sectorAgg.score <= 120 ? 'Low' : sectorAgg.score <= 180 ? 'Moderate' : 'High'
+
+  const volatilityLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    L2_annVol == null ? 'Moderate'
+    : (L2_annVol < 0.55 ? 'Low' : (L2_annVol < 0.80 ? 'Moderate' : (L2_annVol <= 1.10 ? 'High' : 'Very High')))
+
+  const tailLevel: 'Low'|'Moderate'|'High'|'Very High' = L3_active ? 'High' : 'Low'
+
+  // Combined score + level (portfolio-aware where possible)
+  const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor
+  const combinedLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    combinedScore <= 1.30 ? 'Low'
+    : combinedScore <= 2.00 ? 'Moderate'
+    : combinedScore <= 2.80 ? 'High'
+    : 'Very High'
+
+  // Visual meter position (purely presentational)
+  const clamp = (n:number, min:number, max:number) => Math.max(min, Math.min(max, n))
+  const meterMin = 0.90, meterMax = 3.20
+  const meterPct = ((clamp(combinedScore, meterMin, meterMax) - meterMin) / (meterMax - meterMin)) * 100
+
+  // Pills (tabs)
+  const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'px-2 py-1 rounded-md text-xs',
+        active ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  )
+
   return (
     <div data-portfolio-page className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
       {/* Title */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
         <div className="flex items-center gap-2">
-          {/* Alerts tooltip removed */}
           <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
             Audit Log
           </a>
@@ -494,52 +615,221 @@ export default function PortfolioPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* LEFT: Exposure & Risk card */}
         <div className="lg:col-span-2">
-          <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
+<div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
-             <div className="text-sm font-medium">Exposure & Risk Metric</div>
+              <div className="text-sm font-medium">Exposure & Risk Metric</div>
               <div className="flex items-center gap-2">
-                <Pill active={view==='sector'} onClick={()=>setView('sector')}>Risk</Pill>
+                <Pill active={view==='combined'} onClick={()=>setView('combined')}>Combined Risk</Pill>
+                <Pill active={view==='sector'} onClick={()=>setView('sector')}>Structural</Pill>
                 <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
+                <Pill active={view==='vol'} onClick={()=>setView('vol')}>Volatility</Pill>
+                <Pill active={view==='tail'} onClick={()=>setView('tail')}>Tail Risk</Pill>
               </div>
             </div>
 
             <div className="p-4 space-y-4">
-              {(!snapshot || (snapshot.rows ?? []).length === 0) && (
-                <div className="text-sm text-slate-400">
-                  Market cap ranks unavailable. This card uses <code className="text-slate-300">/api/snapshot</code> when present.
-                </div>
+              {/* SECTOR (Layer 1) */}
+              {view === 'sector' && (
+                <>
+                  <LegendRow label="BlueChip (Ranks 1–2)" value={fmtPct(sectorAgg.blue)} />
+                  <LegendRow label="Large Cap (Ranks 3–10)" value={fmtPct(sectorAgg.large)} />
+                  <LegendRow label="Medium Cap (Ranks 11–20)" value={fmtPct(sectorAgg.medium)} />
+                  <LegendRow label="Small Cap (Ranks 21–50)" value={fmtPct(sectorAgg.small)} />
+                  <LegendRow label="Unranked / >50" value={fmtPct(sectorAgg.unranked)} />
+                  <CardFooter
+                    left={<RiskBadge score={sectorAgg.score} label={sectorAgg.label} />}
+                    right={<>Score = Σ(weight × structural multiplier) × 100</>}
+                  />
+                </>
               )}
 
-              {view === 'sector' ? (
-                <div className="space-y-3">
-                  <LegendRow label="BlueChip (Ranks 1–2)" pct={sectorAgg.blue} />
-                  <LegendRow label="Large Cap (Ranks 3–10)" pct={sectorAgg.large} />
-                  <LegendRow label="Medium Cap (Ranks 11–20)" pct={sectorAgg.medium} />
-                  <LegendRow label="Small Cap (Ranks 21–50)" pct={sectorAgg.small} />
-                  <LegendRow label="Unranked / >50" pct={sectorAgg.unranked} />
-
-                  <div className="border-t border-[rgb(42,43,45)] pt-3 flex items-center justify-between">
-                    <RiskBadge score={sectorAgg.score} label={sectorAgg.label} />
-                    <div className="text-[11px] text-slate-400">
-                      Score = Σ(weight × sector multiplier) × 100
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {rankedHoldings.length === 0 ? (
+              {/* RANK */}
+              {view === 'rank' && (
+                <>
+                  {allocAll.data.length === 0 ? (
                     <div className="text-sm text-slate-400">No holdings to display.</div>
                   ) : (
-                    rankedHoldings.map((h) => (
-                      <div key={h.id} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-300">{h.symbol}</span>
-                          <span className="text-[11px] text-slate-400">Rank {h.rank ?? '—'}</span>
-                        </div>
-                        <span className="tabular-nums">{fmtPct(h.pct)}</span>
-                      </div>
-                    ))
+                    allocAll.data
+                      .map(d => ({
+                        id: d.cid,
+                        symbol: d.name,
+                        pct: allocAll.total > 0 ? d.value / allocAll.total : 0,
+                        rank: rankMap.get(d.cid) ?? null
+                      }))
+                      .sort((a,b) => {
+                        const ra = a.rank ?? Number.POSITIVE_INFINITY
+                        const rb = b.rank ?? Number.POSITIVE_INFINITY
+                        if (ra !== rb) return ra - rb
+                        return (b.pct - a.pct)
+                      })
+                      .map(h => (
+                        <LegendRow key={h.id}
+                          label={`${h.symbol}  ·  Rank ${h.rank ?? '—'}`}
+                          value={fmtPct(h.pct)}
+                        />
+                      ))
                   )}
+                  <CardFooter
+                    left={<span className="text-slate-400">Ranked by market cap</span>}
+                    right={<>Data source: /api/snapshot</>}
+                  />
+                </>
+              )}
+
+              {/* VOLATILITY (shows current proxy; Combined uses portfolio-aware when available) */}
+              {view === 'vol' && (
+                <>
+                  <LegendRow label="30d Annualized Volatility" value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
+                  <LegendRow label="Regime" value={<span className="font-medium capitalize">{L2_regime}</span>} />
+                  <LegendRow label="Multiplier" value={<span className="font-medium">{L2_mult.toFixed(2)}</span>} />
+                  <LegendRow label="Window" value="45 days · daily" />
+                  <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
+                  <CardFooter
+                    left={
+                      <LevelBadge
+                        title="Volatility"
+                        level={volatilityLevel}
+                        value={`×${L2_mult.toFixed(2)}`}
+                      />
+                    }
+                    right={<>Mapping: &lt;55% → 0.90 · 55–80% → 1.00 · 80–110% → 1.25 · &gt;110% → 1.60 {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
+                  />
+                </>
+              )}
+
+              {/* TAIL RISK (shows current proxy; Combined uses portfolio-aware when available) */}
+              {view === 'tail' && (
+                <>
+                  <LegendRow
+                    label="Tail Status"
+                    value={L3_active ? <span className="text-rose-400 font-medium">Active</span> : <span className="text-emerald-400 font-medium">Inactive</span>}
+                  />
+                  <LegendRow label="Tail Factor" value={<span className="font-medium">{L3_factor.toFixed(2)}</span>} />
+                  <LegendRow label="Activation Share (value-weighted)" value={<span className="font-medium">{fmtPct(L3_share)}</span>} />
+                  <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
+                  <CardFooter
+                    left={
+                      <LevelBadge
+                        title="Tail"
+                        level={tailLevel}
+                        value={`×${L3_factor.toFixed(2)}`}
+                      />
+                    }
+                    right={<>{prisk ? 'Weighted by portfolio' : 'Rule: price < (SMA20 − 2×SD20) ⇒ 1.35; else 1.00'} {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
+                  />
+                </>
+              )}
+
+              {/* COMBINED — Redesigned, more pronounced (portfolio-aware when available) */}
+              {view === 'combined' && (
+                <div className="space-y-4">
+                  {/* Header: Big score + level */}
+                  <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Combined Risk</div>
+                        <div className="mt-1 flex items-baseline gap-3">
+                          <div className="text-3xl md:text-4xl font-bold tabular-nums text-slate-100">
+                            {combinedScore.toFixed(3)}
+                          </div>
+                          <LevelBadge title="Level" level={combinedLevel} value={''} />
+                        </div>
+                      </div>
+                      <div className="hidden sm:block text-right">
+                        <div className="text-[11px] text-slate-400">Formula</div>
+                        <div className="text-xs text-slate-300">Σ(weight × structural) × vol × tail</div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          {prisk?.updatedAt
+                            ? `as of ${new Date(prisk.updatedAt).toLocaleString()}`
+                            : priskErr ? 'fallback (BTC proxy)' : 'initializing…'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Smooth meter */}
+                    <div className="mt-3">
+                      <div className="h-2 w-full rounded-full bg-[rgb(36,37,39)] overflow-hidden">
+                        <div
+                          className="h-2 w-full"
+                          style={{
+                            background: 'linear-gradient(90deg, rgba(16,185,129,0.3) 0%, rgba(234,179,8,0.35) 45%, rgba(245,158,11,0.45) 70%, rgba(244,63,94,0.6) 100%)'
+                          }}
+                        />
+                      </div>
+                      <div className="relative -mt-2 h-0" aria-hidden="true">
+                        <div
+                          className="absolute top-0 -translate-y-1/2 h-3 w-3 rounded-full border border-white/40 shadow"
+                          style={{ left: `calc(${meterPct}% - 6px)`, backgroundColor: 'rgba(255,255,255,0.9)' }}
+                          title={`Position: ${(meterPct).toFixed(0)}%`}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Low</span><span>Moderate</span><span>High</span><span>Very High</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Layers grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Structural */}
+                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 1 · Structural</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div className="text-slate-200">
+                          <div className="text-sm">Σ(weight × structural)</div>
+                          <div className="text-xl font-semibold tabular-nums">{sectorAgg.structuralSum.toFixed(3)}</div>
+                        </div>
+                        <LevelBadge title="Level" level={structuralLevel} value={`${sectorAgg.score}`} />
+                      </div>
+                      <div className="mt-2 space-y-1.5 text-[13px]">
+                        <div className="flex justify-between"><span className="text-slate-400">BlueChip</span><span className="tabular-nums">{fmtPct(sectorAgg.blue)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-400">Large</span><span className="tabular-nums">{fmtPct(sectorAgg.large)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-400">Medium</span><span className="tabular-nums">{fmtPct(sectorAgg.medium)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-400">Small</span><span className="tabular-nums">{fmtPct(sectorAgg.small)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-400">Unranked</span><span className="tabular-nums">{fmtPct(sectorAgg.unranked)}</span></div>
+                      </div>
+                    </div>
+
+                    {/* Volatility */}
+                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 2 · Volatility</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div className="text-slate-200">
+                          <div className="text-sm">Multiplier</div>
+                          <div className="text-xl font-semibold tabular-nums">×{L2_mult.toFixed(2)}</div>
+                        </div>
+                        <LevelBadge title="Level" level={volatilityLevel} value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
+                      </div>
+                      <div className="mt-2 text-[13px] text-slate-400">
+                        Regime: <span className="text-slate-200 capitalize">{L2_regime}</span> · Window: 45d daily {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}
+                      </div>
+                    </div>
+
+                    {/* Tail */}
+                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 3 · Tail</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div className="text-slate-200">
+                          <div className="text-sm">Factor</div>
+                          <div className="text-xl font-semibold tabular-nums">×{L3_factor.toFixed(2)}</div>
+                        </div>
+                        <LevelBadge title="Level" level={tailLevel} value={L3_active ? 'Active' : 'Inactive'} />
+                      </div>
+                      <div className="mt-2 text-[13px] text-slate-400">
+                        {prisk ? 'Value-weighted tail activation share is used.' : 'Rule: price < (SMA20 − 2×SD20) ⇒ 1.35 · else 1.00'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <CardFooter
+                    left={<span className="text-slate-400 text-xs">Combined = L1 × L2 × L3</span>}
+                    right={
+                      <span className="text-slate-400 text-[11px]">
+                        {prisk ? 'Source: /api/portfolio-risk' : 'Source: BTC proxy (/api/price-history)'}
+                      </span>
+                    }
+                  />
                 </div>
               )}
             </div>

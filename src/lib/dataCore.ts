@@ -67,6 +67,18 @@ async function safeText(r: Response) {
   }
 }
 
+/**
+ * Decide a sensible default interval if the caller doesn't specify one.
+ * - For long windows (days >= 20), default to 'daily' to ensure ~30–45 points.
+ * - For short windows, default to 'hourly' (preserves existing short-range charts).
+ */
+type Interval = "minute" | "hourly" | "daily";
+function chooseInterval(days: number, interval?: Interval): Interval {
+  if (interval) return interval; // caller explicitly chose
+  if (Number(days) >= 20) return "daily";
+  return "hourly";
+}
+
 // ------------ Server/Client functions (can be used anywhere) ------------
 
 /**
@@ -91,20 +103,21 @@ export async function getPrices(
  * Fetch price history for a coin (new core).
  * @param id canonical coin id (e.g., "bitcoin", "ethereum", "trx")
  * @param days 1, 7, 30, 90, 365...
- * @param interval "minute" | "hourly" | "daily" (supported by your route)
+ * @param interval optional; if omitted we auto-pick based on days (see chooseInterval)
  */
 export async function getHistory(
   id: string,
   days: number = 30,
-  interval: "minute" | "hourly" | "daily" = "hourly",
+  interval?: Interval,
   currency: string = "USD",
   init?: RequestInit
 ): Promise<HistoryPayload> {
   const cid = (id || "").toLowerCase();
+  const chosen = chooseInterval(days, interval);
   const url = `${baseUrl()}/api/price-history?id=${encodeURIComponent(
     cid
   )}&days=${encodeURIComponent(String(days))}&interval=${encodeURIComponent(
-    interval
+    chosen
   )}&currency=${encodeURIComponent(currency.toUpperCase())}`;
   const opts: RequestInit = { cache: "no-store", ...init };
   return jsonFetch<HistoryPayload>(url, opts);
@@ -165,22 +178,27 @@ export function usePrice(
 
 /**
  * Hook for history series of a coin (array of {t,p}).
+ * If interval is omitted, we auto-pick based on days:
+ *  - days >= 20 → 'daily' (ensures ~30–45 points for month+ windows)
+ *  - else → 'hourly'
  */
 export function useHistory(
   id: string | null | undefined,
   days: number = 30,
-  interval: "minute" | "hourly" | "daily" = "hourly",
+  interval?: Interval,
   currency: string = "USD",
   swr?: SWRConfiguration
 ) {
   const cid = (id || "").toLowerCase().trim();
+  const chosen = chooseInterval(days, interval);
+
   const key =
     cid
       ? [
           `/api/price-history`,
           cid,
           String(days),
-          interval,
+          chosen,
           currency.toUpperCase(),
         ]
       : null;
@@ -208,4 +226,3 @@ export function useHistory(
     mutate,
   };
 }
-
