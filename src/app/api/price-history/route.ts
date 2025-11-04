@@ -1,6 +1,8 @@
 // src/app/api/price-history/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getConsensusPrices } from "../../../server/services/priceService";
+// NEW: map canonical id -> provider-specific id (e.g., trx -> tron for CoinGecko)
+import { mapToProvider /*, normalizeCoinId*/ } from "@/server/db/coinRegistry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,13 +99,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ id: "", currency, points: [], error: "missing_id" }, { status: 400 });
   }
 
+  // NEW: resolve provider-specific id for CoinGecko (e.g., trx -> tron). Non-breaking: we still return canonicalId.
+  // If no mapping exists, we simply fall back to canonicalId.
+  const cgId = (await mapToProvider(canonicalId, "coingecko")) ?? canonicalId;
+  if (cgId !== canonicalId) notes.push(`map.coingecko:${canonicalId}->${cgId}`);
+
   let points: Pt[] = [];
 
   try {
     if (interval === "daily") {
       // Primary path for portfolio analytics: get 30–45 daily points
       notes.push(`cg.daily(${days})`);
-      const daily = await fetchCgDaily(canonicalId, currency, days);
+      const daily = await fetchCgDaily(cgId, currency, days); // mapped id here
       if (Array.isArray(daily) && daily.length >= 2) {
         points = daily;
       } else {
@@ -113,7 +120,7 @@ export async function GET(req: NextRequest) {
       // (Optional) For hourly/minute, we still attempt market_chart for <= 7d windows
       const cappedDays = Math.min(days, 7); // CG returns hourly granularity up to 7D reliably
       const url =
-        `${CG_BASE}/coins/${encodeURIComponent(canonicalId)}/market_chart` +
+        `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` + // mapped id here
         `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
         `&days=${encodeURIComponent(String(cappedDays))}`;
       notes.push(`cg.generic(${cappedDays}d)`);
@@ -135,7 +142,7 @@ export async function GET(req: NextRequest) {
   }
 
   const body: any = {
-    id: canonicalId,
+    id: canonicalId, // keep canonical id in the response (unchanged contract)
     currency,
     points,
     updatedAt: new Date().toISOString(),
