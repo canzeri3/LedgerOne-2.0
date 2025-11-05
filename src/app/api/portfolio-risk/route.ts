@@ -1,264 +1,444 @@
 // src/app/api/portfolio-risk/route.ts
-// Portfolio-aware risk (Option A): server compute + caching + bounded concurrency.
-// - Uses ONLY new data core endpoints (/api/price-history) via INTERNAL_BASE_URL on server.
-// - No UI changes here; this adds a clean contract the page can call later.
-// - L2: value-weighted 30d annualized volatility from per-coin daily history.
-// - L3: weighted tail activation (share of portfolio below 20d lower band).
-//
-// Request (GET):
-//   /api/portfolio-risk?currency=USD&days=45&interval=daily&ids=bitcoin,ethereum,trx&values=64000,30000,6000
-// Response (JSON): see bottom of handler for schema.
-
 import { NextRequest, NextResponse } from 'next/server'
 
-const isServer = () => typeof window === 'undefined'
-function baseUrl(): string {
-  if (isServer()) return process.env.INTERNAL_BASE_URL || 'http://localhost:3000'
-  return ''
-}
-function clamp(n: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, n))
-}
-function hashString(s: string) {
-  let h = 2166136261 >>> 0
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return (h >>> 0).toString(16)
+/**
+ * Portfolio Risk API
+ * - L2 (Σ): Portfolio covariance & annualized vol (portfolio-aware)
+ * - L3 (Tail): Value-weighted tail activation share (Bollinger-style)
+ * - L4 (Correlation): Value-weighted 90d correlation vs BTC + factor mapping
+ * - L5 (Liquidity): Rank-tier mix (snapshot) → liquidity factor (proxy)
+ *
+ * NEW DATA CORE ONLY:
+ *   - /api/price-history (server-to-server) via INTERNAL_BASE_URL
+ *   - /api/snapshot (optional, if you have it) for ranks
+ *
+ * Non-breaking for existing UI: we only ADD .l4 and .l5 blocks.
+ */
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+type HistoryPoint = { t: number; p: number | null }
+type HistoryPayload = { id: string; currency: string; points: HistoryPoint[] }
+type SnapshotRow = { id: string; rank?: number | null }
+type SnapshotPayload = { rows?: SnapshotRow[] }
+
+const DEFAULT_DAYS = 90
+const DEFAULT_INTERVAL = 'daily'
+const DEFAULT_CURRENCY = 'USD'
+const ANN_FACTOR_BY_INTERVAL: Record<string, number> = {
+  daily: 365,
+  hourly: 24 * 365,
 }
 
-// tiny p-limit
-function pLimit(concurrency: number) {
-  let activeCount = 0
-  const queue: (() => void)[] = []
-  const next = () => {
-    activeCount--
-    if (queue.length) queue.shift()!()
-  }
-  const run = async <T>(fn: () => Promise<T>) => {
-    if (activeCount >= concurrency) {
-      await new Promise<void>(resolve => queue.push(resolve))
-    }
-    activeCount++
-    try {
-      return await fn()
-    } finally {
-      next()
-    }
-  }
-  return run
-}
+const IMPL_ID = 'portfolio-risk Σ+Tail+Corr+Liq vC1'
+const BTC_ID = 'bitcoin'
 
-// in-memory caches
-type CacheEntry<T> = { value: T; exp: number }
-const coinHistCache = new Map<string, CacheEntry<any>>()      // 6h TTL
-const riskSnapshotCache = new Map<string, CacheEntry<any>>()  // 12h TTL
-function getCache<T>(map: Map<string, CacheEntry<T>>, key: string): T | null {
-  const hit = map.get(key)
-  if (!hit) return null
-  if (Date.now() > hit.exp) { map.delete(key); return null }
-  return hit.value
-}
-function putCache<T>(map: Map<string, CacheEntry<T>>, key: string, value: T, ttlMs: number) {
-  map.set(key, { value, exp: Date.now() + ttlMs })
-}
+const baseUrl = () => (process.env.INTERNAL_BASE_URL?.trim() || 'http://localhost:3000')
 
-// math
-type Pt = { t: number; p: number }
-function annVol30dFromDaily(points: Pt[]): number | null {
-  if (!points || points.length < 31) return null
-  const rets: number[] = []
-  for (let i = 1; i < points.length; i++) {
-    const p0 = points[i - 1].p
-    const p1 = points[i].p
-    if (p0 && p1 && p0 > 0) {
-      const r = Math.log(p1 / p0)
-      if (Number.isFinite(r)) rets.push(r)
-    }
-  }
-  if (rets.length < 20) return null
-  const mean = rets.reduce((a, b) => a + b, 0) / rets.length
-  const varSum = rets.reduce((a, b) => a + (b - mean) * (b - mean), 0)
-  const stdev = Math.sqrt(varSum / Math.max(1, rets.length - 1))
-  return clamp(stdev * Math.sqrt(365), 0, 5) // annualize & clamp
-}
-function smaSd20(points: Pt[]) {
-  if (!points || points.length < 20) return { sma: null as number | null, sd: null as number | null }
-  const last20 = points.slice(-20)
-  const prices = last20.map(x => x.p).filter(p => typeof p === 'number') as number[]
-  if (prices.length < 20) return { sma: null, sd: null }
-  const sma = prices.reduce((a, b) => a + b, 0) / prices.length
-  const mean = sma
-  const varSum = prices.reduce((a, b) => a + (b - mean) * (b - mean), 0)
-  const sd = Math.sqrt(varSum / Math.max(1, prices.length - 1))
-  return { sma, sd }
-}
-function mapRegime(annVol: number | null): { regime: 'calm' | 'normal' | 'high' | 'stress', multiplier: number } {
-  if (annVol == null) return { regime: 'normal', multiplier: 1.00 }
-  if (annVol < 0.55) return { regime: 'calm', multiplier: 0.90 }
-  if (annVol < 0.80) return { regime: 'normal', multiplier: 1.00 }
-  if (annVol <= 1.10) return { regime: 'high', multiplier: 1.25 }
-  return { regime: 'stress', multiplier: 1.60 }
-}
-
-// history fetch (with micro-cache + retries)
-type HistPayload = { id?: string; currency?: string; points: Pt[]; updatedAt?: string }
-async function fetchHistory(id: string, days: number, interval: 'daily' | 'hourly' | 'minute', currency: string): Promise<HistPayload | null> {
-  const key = `hist:${id}:${days}:${interval}:${currency}`
-  const cached = getCache<HistPayload>(coinHistCache, key)
-  if (cached) return cached
-
+async function fetchHistory(id: string, days: number, interval: string, currency: string): Promise<HistoryPayload | null> {
   const url = `${baseUrl()}/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(String(days))}&interval=${encodeURIComponent(interval)}&currency=${encodeURIComponent(currency)}`
-  let lastErr: any = null
-  for (const delay of [0, 250, 500]) {
-    if (delay) await new Promise(r => setTimeout(r, delay))
-    try {
-      const r = await fetch(url, { cache: 'no-store' as RequestCache })
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      const j = (await r.json()) as HistPayload
-      if (!j || !Array.isArray(j.points)) throw new Error('bad payload')
-      putCache(coinHistCache, key, j, 6 * 60 * 60 * 1000) // 6h
-      return j
-    } catch (e) {
-      lastErr = e
+  try {
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return null
+    const j = (await res.json()) as HistoryPayload
+    if (!j?.points?.length) return null
+    return j
+  } catch {
+    return null
+  }
+}
+
+async function fetchSnapshot(ids: string[]): Promise<Map<string, number | null> | null> {
+  if (!ids.length) return new Map()
+  const url = `${baseUrl()}/api/snapshot?ids=${encodeURIComponent(ids.join(','))}`
+  try {
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return null
+    const j = (await res.json()) as SnapshotPayload
+    const m = new Map<string, number | null>()
+    for (const r of j.rows ?? []) m.set(r.id, (typeof r.rank === 'number') ? r.rank : null)
+    return m
+  } catch {
+    return null
+  }
+}
+
+// Intersect timestamps across series; return aligned price matrix [asset][time]
+function alignSeries(series: { id: string; h: HistoryPayload }[]): { ids: string[]; ts: number[]; prices: number[][] } | null {
+  if (!series.length) return null
+  const maps = series.map(s => {
+    const m = new Map<number, number>()
+    for (const pt of s.h.points) if (pt?.p != null && Number.isFinite(pt.p)) m.set(pt.t, Number(pt.p))
+    return m
+  })
+  let keys = Array.from(maps[0].keys())
+  for (let i = 1; i < maps.length; i++) {
+    const si = new Set(maps[i].keys())
+    keys = keys.filter(k => si.has(k))
+  }
+  keys.sort((a, b) => a - b)
+  if (keys.length < 2) return null
+  const prices = maps.map(m => keys.map(k => m.get(k)!))
+  const ids = series.map(s => s.id)
+  return { ids, ts: keys, prices }
+}
+
+// Prices -> log returns [asset][t], drop any column containing NaN
+function toLogReturns(priceRows: number[][]): number[][] | null {
+  if (!priceRows.length) return null
+  const nAssets = priceRows.length
+  const nTime = priceRows[0].length
+  if (nTime < 2) return null
+  const rets: number[][] = Array.from({ length: nAssets }, () => [])
+  for (let i = 0; i < nAssets; i++) {
+    const row = priceRows[i]
+    for (let t = 1; t < nTime; t++) {
+      const p0 = row[t - 1], p1 = row[t]
+      const r = (p0 > 0 && p1 > 0 && Number.isFinite(p0) && Number.isFinite(p1)) ? Math.log(p1 / p0) : Number.NaN
+      rets[i].push(r)
     }
   }
-  console.warn(`[portfolio-risk] history fetch failed for ${id}`, lastErr)
-  return null
+  const T = rets[0].length
+  const keep: number[] = []
+  for (let c = 0; c < T; c++) {
+    let ok = true
+    for (let i = 0; i < nAssets; i++) if (!Number.isFinite(rets[i][c])) { ok = false; break }
+    if (ok) keep.push(c)
+  }
+  if (keep.length < 20) return null
+  return rets.map(row => keep.map(c => row[c]))
+}
+
+// Unbiased sample covariance
+function covarianceMatrix(rets: number[][]): number[][] {
+  const n = rets.length
+  const T = rets[0]?.length ?? 0
+  if (n === 0 || T < 2) return Array.from({ length: Math.max(1, n) }, () => Array(Math.max(1, n)).fill(0))
+  const means = rets.map(r => r.reduce((a, b) => a + b, 0) / T)
+  const cov: number[][] = Array.from({ length: n }, () => Array(n).fill(0))
+  for (let i = 0; i < n; i++) {
+    for (let j = i; j < n; j++) {
+      let sum = 0
+      for (let t = 0; t < T; t++) sum += (rets[i][t] - means[i]) * (rets[j][t] - means[j])
+      const v = sum / (T - 1)
+      cov[i][j] = v
+      cov[j][i] = v
+    }
+  }
+  return cov
+}
+
+// Light shrinkage towards diagonal
+function shrinkDiag(cov: number[][], lambda = 0.05): number[][] {
+  const n = cov.length
+  const out: number[][] = Array.from({ length: n }, () => Array(n).fill(0))
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const target = i === j ? cov[i][i] : 0
+    out[i][j] = (1 - lambda) * cov[i][j] + lambda * target
+  }
+  return out
+}
+
+const dot = (a: number[], b: number[]) => a.reduce((s, ai, i) => s + ai * b[i], 0)
+function matVec(C: number[][], v: number[]): number[] {
+  const n = C.length, out = new Array(n).fill(0)
+  for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < n; j++) s += C[i][j] * v[j]; out[i] = s }
+  return out
+}
+
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+const stdev = (xs: number[]) => {
+  const m = mean(xs)
+  const vs = xs.reduce((a, b) => a + (b - m) * (b - m), 0)
+  return Math.sqrt(vs / Math.max(1, xs.length - 1))
+}
+
+function isFiniteNum(x: unknown): x is number {
+  return typeof x === 'number' && Number.isFinite(x)
 }
 
 export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const currency = (searchParams.get('currency') || 'USD').toUpperCase()
-    const days = Number(searchParams.get('days') || 45)
-    const interval = (searchParams.get('interval') || 'daily') as 'daily' | 'hourly' | 'minute'
-    const idsParam = (searchParams.get('ids') || '').trim()
-    const valuesParam = (searchParams.get('values') || '').trim()
+  const url = new URL(req.url)
+  const idsParam = (url.searchParams.get('ids') || '').trim()
+  const valuesParam = (url.searchParams.get('values') || '').trim()
+  const days = Number(url.searchParams.get('days') || DEFAULT_DAYS)
+  const interval = url.searchParams.get('interval') || DEFAULT_INTERVAL
+  const currency = url.searchParams.get('currency') || DEFAULT_CURRENCY
+  const annFactor = ANN_FACTOR_BY_INTERVAL[interval] ?? ANN_FACTOR_BY_INTERVAL.daily
+  const debug = url.searchParams.get('debug') === '1'
 
-    const ids = idsParam
-      ? idsParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-      : []
+  const ids = idsParam ? idsParam.split(',').map(s => s.trim()).filter(Boolean) : []
+  const values = valuesParam ? valuesParam.split(',').map(s => Number(s.trim())) : []
 
-    if (ids.length === 0) {
-      return NextResponse.json({ error: 'ids are required (comma-separated coin ids)' }, { status: 400 })
-    }
-
-    // parse values → weights (equal-weight fallback)
-    let values: number[] = []
-    if (valuesParam.length) {
-      values = valuesParam.split(',').map(s => Number(s.trim())).map(n => (Number.isFinite(n) && n >= 0 ? n : 0))
-    }
-    if (values.length !== ids.length) {
-      values = Array.from({ length: ids.length }, () => 1)
-    }
-    const totalVal = values.reduce((a, b) => a + b, 0)
-    const weights = ids.map((id, i) => ({ id, w: totalVal > 0 ? values[i] / totalVal : 1 / ids.length }))
-
-    const allocStr = JSON.stringify(weights.map(x => [x.id, Number(x.w.toFixed(8))]))
-    const allocHash = hashString(`${currency}:${days}:${interval}:${allocStr}`)
-
-    // top-level snapshot cache (12h)
-    const riskKey = `risk:v2:${currency}:${days}:${interval}:${allocHash}`
-    const cached = getCache<any>(riskSnapshotCache, riskKey)
-    if (cached) {
-      return NextResponse.json(cached, { headers: { 'Cache-Control': 'max-age=300, stale-while-revalidate=3600' } })
-    }
-
-    // fetch histories with bounded concurrency
-    const run = pLimit(4)
-    const results = await Promise.all(
-      weights.map(w =>
-        run(async () => ({ id: w.id, w: w.w, hist: await fetchHistory(w.id, days, interval, currency) }))
-      )
-    )
-
-    const missing: string[] = []
-    let sumW = 0
-    const avail = results.filter(r => {
-      const ok = !!r.hist && Array.isArray(r.hist!.points) && r.hist!.points.length >= 20
-      if (!ok) missing.push(r.id)
-      return ok
-    })
-    avail.forEach(r => (sumW += r.w))
-    const rows = avail.map(r => ({ id: r.id, w: sumW > 0 ? r.w / sumW : 0, pts: r.hist!.points }))
-
-    // align by common tail (min length)
-    const minLen = rows.reduce((m, r) => Math.min(m, r.pts.length), Infinity)
-    const aligned = rows.map(r => r.pts.slice(-minLen))
-
-    // per-coin daily log returns
-    const coinRets: number[][] = aligned.map(pts => {
-      const rets: number[] = []
-      for (let i = 1; i < pts.length; i++) {
-        const p0 = pts[i - 1].p
-     const p1 = pts[i].p
-        if (p0 && p1 && p0 > 0) {
-          const r = Math.log(p1 / p0)
-          rets.push(Number.isFinite(r) ? r : 0)
-        } else {
-          rets.push(0)
-        }
-      }
-      return rets
-    })
-
-    // portfolio daily returns
-    const W = rows.map(r => r.w)
-    const T = coinRets[0]?.length ?? 0
-    const portRets: number[] = []
-    for (let t = 0; t < T; t++) {
-      let rp = 0
-      for (let i = 0; i < coinRets.length; i++) rp += (W[i] || 0) * (coinRets[i][t] || 0)
-      portRets.push(rp)
-    }
-
-    // L2
-    let annVol30d: number | null = null
-    if (portRets.length >= 30) {
-      const last30 = portRets.slice(-30)
-      const mean = last30.reduce((a, b) => a + b, 0) / last30.length
-      const varSum = last30.reduce((a, b) => a + (b - mean) * (b - mean), 0)
-      const stdev = Math.sqrt(varSum / Math.max(1, last30.length - 1))
-      annVol30d = clamp(stdev * Math.sqrt(365), 0, 5)
-    }
-    const { regime, multiplier } = mapRegime(annVol30d)
-
-    // L3
-    let tailShare = 0
-    for (let i = 0; i < rows.length; i++) {
-      const pts = rows[i].pts
-      const { sma, sd } = smaSd20(pts)
-      const lastP = pts.length ? pts[pts.length - 1].p : null
-      if (sma != null && sd != null && lastP != null) {
-        const lb = sma - 2 * sd
-        const inTail = lastP < lb ? 1 : 0
-        tailShare += rows[i].w * inTail
-      }
-    }
-    tailShare = clamp(tailShare, 0, 1)
-    const weightedTailActive = tailShare >= 0.35
-    const tailFactor = weightedTailActive ? 1.35 : 1.00
-
-    const payload = {
-      updatedAt: new Date().toISOString(),
-      config: { days, interval },
-      l2: { annVol30d, regime, multiplier },
-      l3: { weightedTailActive, activationShare: tailShare, factor: tailFactor },
-      inputs: {
-        ids: rows.map(r => r.id),
-        weights: Object.fromEntries(rows.map(r => [r.id, Number(r.w.toFixed(6))])),
-        allocHash
-      },
-      version: 'risk.v2.1',
-      internals: missing.length ? { missing } : undefined
-    }
-
-    putCache(riskSnapshotCache, riskKey, payload, 12 * 60 * 60 * 1000) // 12h TTL
-    return NextResponse.json(payload, { headers: { 'Cache-Control': 'max-age=300, stale-while-revalidate=3600' } })
-  } catch (e: any) {
-    console.error('[portfolio-risk] error', e)
-    return NextResponse.json({ error: 'internal_error', message: String(e?.message || e) }, { status: 500 })
+  if (ids.length === 0 || ids.length !== values.length) {
+    return NextResponse.json({ status: { ok: false, message: 'ids and values must be provided with equal lengths' }, meta: { impl: IMPL_ID } }, { status: 400 })
   }
+
+  // Normalize value weights
+  const totalValue = values.reduce((a, b) => a + Math.max(0, b), 0)
+  const wInput = totalValue > 0 ? values.map(v => Math.max(0, v) / totalValue) : values.map(() => 0)
+
+  // Histories (NEW core) — include BTC for correlation even if not in ids
+  const uniqIds = Array.from(new Set([...ids, BTC_ID]))
+  const histories = await Promise.all(uniqIds.map(id => fetchHistory(id, days, interval, currency)))
+  const usable: { id: string; h: HistoryPayload }[] = []
+  const missing: string[] = []
+  histories.forEach((h, i) => (h?.points?.length ? usable.push({ id: uniqIds[i], h }) : missing.push(uniqIds[i])))
+
+  // We need ≥ 2 portfolio assets for L2; and BTC history for L4
+  const havePortfolioAssets = usable.filter(u => ids.includes(u.id)).length
+  const haveBTC = usable.some(u => u.id === BTC_ID)
+
+  if (havePortfolioAssets < 1 || !haveBTC) {
+    return NextResponse.json({
+      status: { ok: false, message: 'Insufficient history (need portfolio assets + BTC).', missing },
+      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
+      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
+      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
+      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
+      cov: { ids: usable.map(u => u.id), window: { days, interval } },
+      updatedAt: new Date().toISOString(),
+      meta: { impl: IMPL_ID }
+    }, { status: 200 })
+  }
+
+  const aligned = alignSeries(usable)
+  if (!aligned) {
+    return NextResponse.json({
+      status: { ok: false, message: 'Failed to align series (too few overlapping timestamps).', missing },
+      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
+      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
+      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
+      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
+      cov: { ids: usable.map(u => u.id), window: { days, interval } },
+      updatedAt: new Date().toISOString(),
+      meta: { impl: IMPL_ID }
+    }, { status: 200 })
+  }
+
+  const { ids: alignedIds, prices, ts } = aligned
+  const returns = toLogReturns(prices)
+  if (!returns) {
+    return NextResponse.json({
+      status: { ok: false, message: 'Too few aligned return observations (need ≥20).', missing },
+      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
+      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
+      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
+      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
+      cov: { ids: alignedIds, window: { days, interval } },
+      updatedAt: new Date().toISOString(),
+      meta: { impl: IMPL_ID }
+    }, { status: 200 })
+  }
+
+  // Map original weights to aligned ids and renormalize (portfolio assets only)
+  const idToW = new Map<string, number>()
+  for (let i = 0; i < ids.length; i++) idToW.set(ids[i], wInput[i])
+  const wUsable = alignedIds.map(id => (ids.includes(id) ? (idToW.get(id) ?? 0) : 0))
+  const wSum = wUsable.reduce((a, b) => a + b, 0)
+  const w = (wSum > 0 ? wUsable.map(x => x / wSum) : wUsable).map(Number)
+
+  // ---------- L2 (Σ-based portfolio volatility) ----------
+  let cov = shrinkDiag(covarianceMatrix(returns), 0.05)
+
+  // Per-asset vols (annualized) — use already-declared annFactor
+  const assetAnnVols: Record<string, number> = {}
+  for (let i = 0; i < cov.length; i++) {
+    const dailyVar = Math.max(0, cov[i][i])
+    const dailySd = Math.sqrt(dailyVar)
+    const annVol = dailySd * Math.sqrt(annFactor)
+    assetAnnVols[alignedIds[i]] = Number(annVol)
+  }
+
+  // Portfolio variance (daily) and annualized vol (portfolio assets only)
+  const Cw = matVec(cov, w)
+  const portVarDaily = Math.max(0, dot(w, Cw))
+  const portVolAnn = Math.sqrt(portVarDaily) * Math.sqrt(annFactor)
+
+  if (!isFiniteNum(portVolAnn)) {
+    return NextResponse.json({
+      status: { ok: false, message: 'Numerical issue computing portfolio volatility.', missing },
+      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
+      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
+      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
+      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
+      cov: { ids: alignedIds, window: { days, interval } },
+      updatedAt: new Date().toISOString(),
+      meta: { impl: IMPL_ID, debug: { alignedPoints: returns[0]?.length ?? 0, weightsUsed: w } }
+    }, { status: 200 })
+  }
+
+  // Diversification ratio (annualized)
+  const sumWiSigmaAnn = w.reduce((acc, wi, i) => acc + wi * (Math.sqrt(Math.max(0, cov[i][i])) * Math.sqrt(annFactor)), 0)
+  const diversificationRatio = portVolAnn > 0 ? (sumWiSigmaAnn / portVolAnn) : null
+
+  // Risk contributions (normalized)
+  const mcDaily = portVarDaily > 0 ? Cw.map(x => x / Math.sqrt(portVarDaily)) : Cw.map(() => 0)
+  const rcRaw: Record<string, number> = {}
+  let rcSum = 0
+  for (let i = 0; i < w.length; i++) { const rc = w[i] * mcDaily[i]; rcRaw[alignedIds[i]] = rc; rcSum += rc }
+  const riskContrib: Record<string, number> = {}
+  for (const k of Object.keys(rcRaw)) riskContrib[k] = rcSum > 0 ? rcRaw[k] / rcSum : 0
+
+  // Regime mapping (same bands)
+  let regime: 'calm' | 'normal' | 'high' | 'stress' = 'normal'
+  let multiplier = 1.0
+  if (portVolAnn < 0.55) { regime = 'calm';   multiplier = 0.90 }
+  else if (portVolAnn < 0.80) { regime = 'normal'; multiplier = 1.00 }
+  else if (portVolAnn <= 1.10) { regime = 'high';   multiplier = 1.25 }
+  else { regime = 'stress'; multiplier = 1.60 }
+  multiplier = Math.max(0.7, Math.min(2.0, multiplier))
+
+  // ---------- L3 (Tail: Bollinger-style; value-weighted activation share) ----------
+  const perAssetTail: Record<string, { last: number; sma20: number; sd20: number; bbLower: number; active: boolean }> = {}
+  let activationShare = 0
+  for (let i = 0; i < alignedIds.length; i++) {
+    if (!ids.includes(alignedIds[i])) continue // only portfolio assets contribute to share
+    const row = prices[i]
+    const n = row.length
+    let last = NaN, sma20 = NaN, sd20 = NaN, bbLower = NaN, active = false
+    if (n >= 21) {
+      last = row[n - 1]
+      const slice = row.slice(n - 20)
+      sma20 = mean(slice)
+      sd20 = stdev(slice)
+      bbLower = sma20 - 2 * sd20
+      active = (isFiniteNum(last) && isFiniteNum(bbLower) && last < bbLower)
+    }
+    perAssetTail[alignedIds[i]] = { last: Number(last), sma20: Number(sma20), sd20: Number(sd20), bbLower: Number(bbLower), active }
+    if (active && isFiniteNum(w[alignedIds.indexOf(alignedIds[i])])) {
+      activationShare += w[alignedIds.indexOf(alignedIds[i])]
+    }
+  }
+  activationShare = Math.max(0, Math.min(1, activationShare))
+  const weightedTailActive = activationShare > 0
+  const tailFactor = weightedTailActive ? 1.35 : 1.00
+
+  // ---------- L4 (Correlation: value-weighted corr vs BTC) ----------
+  const btcIdx = alignedIds.indexOf(BTC_ID)
+  let avgCorrVsBtc: number | null = null
+  const perAssetCorr: Record<string, number> = {}
+  if (btcIdx >= 0) {
+    const T = returns[0]?.length ?? 0
+    const muB = mean(returns[btcIdx])
+    const sdB = stdev(returns[btcIdx])
+    for (let i = 0; i < alignedIds.length; i++) {
+      const muI = mean(returns[i])
+      const sdI = stdev(returns[i])
+      let covIB = 0
+      for (let t = 0; t < T; t++) covIB += (returns[i][t] - muI) * (returns[btcIdx][t] - muB)
+      const covAdj = covIB / Math.max(1, T - 1)
+      const corr = (sdI > 0 && sdB > 0) ? (covAdj / (sdI * sdB)) : 0
+      perAssetCorr[alignedIds[i]] = Number(corr)
+    }
+    // value-weighted mean across portfolio assets only
+    let sumW = 0, acc = 0
+    for (let i = 0; i < alignedIds.length; i++) {
+      if (!ids.includes(alignedIds[i])) continue
+      const wi = w[i]
+      if (wi > 0 && Number.isFinite(wi)) { sumW += wi; acc += wi * (perAssetCorr[alignedIds[i]] ?? 0) }
+    }
+    avgCorrVsBtc = (sumW > 0) ? (acc / sumW) : null
+  }
+
+  // Correlation → factor mapping
+  const corrFactor = (c: number | null): number => {
+    if (c == null || !Number.isFinite(c)) return 1.00
+    if (c <= 0.40) return 1.00
+    if (c <= 0.60) return 1.05
+    if (c <= 0.80) return 1.15
+    return 1.25
+  }
+  const l4Factor = corrFactor(avgCorrVsBtc)
+
+  // ---------- L5 (Liquidity: rank-proxy mix → factor) ----------
+  // BlueChip 1–2, Large 3–10, Medium 11–20, Small 21–50, Unranked >50 or null
+  const ranks = await fetchSnapshot(ids) // portfolio assets only
+  let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
+  for (let i = 0; i < alignedIds.length; i++) {
+    const id = alignedIds[i]
+    if (!ids.includes(id)) continue
+    const wi = w[i]
+    const r = ranks?.get(id) ?? null
+    if (r == null) { unranked += wi; continue }
+    if (r >= 1 && r <= 2) blue += wi
+    else if (r >= 3 && r <= 10) large += wi
+    else if (r >= 11 && r <= 20) medium += wi
+    else if (r >= 21 && r <= 50) small += wi
+    else unranked += wi
+  }
+  const sumTiers = blue + large + medium + small + unranked
+  if (sumTiers > 0) {
+    blue /= sumTiers; large /= sumTiers; medium /= sumTiers; small /= sumTiers; unranked /= sumTiers
+  }
+
+  // Smooth additive liquidity penalty
+  const liquidityFactor =
+    1.0
+    + 0.20 * large
+    + 0.35 * medium
+    + 0.55 * small
+    + 0.65 * unranked
+
+  // ---------- Compose response ----------
+  const resp = {
+    status: { ok: true, missing },
+    l2: {
+      annVolPortfolio: Number(portVolAnn),
+      diversificationRatio: diversificationRatio == null ? null : Number(diversificationRatio),
+      assetAnnVols,
+      riskContrib,
+      annVol30d: Number(portVolAnn),
+      regime, multiplier: Number(multiplier)
+    },
+    l3: {
+      activationShare: Number(activationShare),
+      weightedTailActive,
+      factor: Number(tailFactor),
+      perAsset: perAssetTail
+    },
+    l4: {
+      avgCorrVsBtc: (avgCorrVsBtc == null ? null : Number(avgCorrVsBtc)),
+      factor: Number(l4Factor),
+      perAsset: perAssetCorr
+    },
+    l5: {
+      tierWeights: { blue: Number(blue), large: Number(large), medium: Number(medium), small: Number(small), unranked: Number(unranked) },
+      factor: Number(liquidityFactor)
+    },
+    cov: { ids: alignedIds, window: { days, interval } },
+    updatedAt: new Date().toISOString(),
+    meta: {
+      impl: IMPL_ID,
+      debug: debug ? {
+        alignedPoints: returns[0]?.length ?? 0,
+        timestampsKept: (returns[0]?.length ?? 0) + 1,
+        firstTs: ts?.[0], lastTs: ts?.[ts.length - 1],
+        weightsUsed: w,
+        portVarDaily, annFactor, portVolAnn, sumWiSigmaAnn,
+        tail: { activationShare, weightedTailActive, tailFactor },
+        corr: { avgCorrVsBtc, l4Factor },
+        liq: { blue, large, medium, small, unranked, liquidityFactor }
+      } : undefined
+    }
+  }
+
+  // Defensive: never ok:true with non-finite critical numbers
+  const l2 = resp.l2 as any
+  if (!isFiniteNum(l2.annVolPortfolio) || !isFiniteNum(l2.annVol30d) || !isFiniteNum(resp.l2.multiplier) || !isFiniteNum(resp.l3.factor) || !isFiniteNum(resp.l5.factor)) {
+    return NextResponse.json({
+      status: { ok: false, message: 'Post-check failed: non-finite values in L2/L3/L5.', missing },
+      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
+      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
+      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
+      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
+      cov: resp.cov,
+      updatedAt: resp.updatedAt,
+      meta: { impl: IMPL_ID, debug: resp.meta.debug }
+    }, { status: 200 })
+  }
+
+  return NextResponse.json(resp, { status: 200 })
 }

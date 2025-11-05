@@ -11,7 +11,7 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
-import { useHistory } from '@/lib/dataCore' // for Layer 2/3 daily BTC history
+import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 
 type TradeRow = {
   coingecko_id: string
@@ -373,7 +373,7 @@ export default function PortfolioPage() {
   }
 
   // ---------------- Exposure & Risk card (consistent layout for all tabs) ----------------
-  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' // Combined first
+  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq' // added corr + liq
   const [view, setView] = useState<ViewMode>('combined') // Default to Combined
 
   const { data: snapshot } = useSWR<{ rows?: { id: string; rank?: number | null }[] }>(
@@ -542,6 +542,149 @@ export default function PortfolioPage() {
   const L3_active = typeof prisk?.l3?.weightedTailActive === 'boolean' ? prisk!.l3.weightedTailActive : tailActive_proxy
   const L3_factor = typeof prisk?.l3?.factor === 'number' ? prisk!.l3.factor : tailFactor_proxy
 
+  // ---- LAYER 4: Correlation (90d vs BTC) & LAYER 5: Liquidity (rank-proxy) ----
+  // Build a constant-length (8) list of correlation target IDs, padded with 'bitcoin' to keep Hook count/order constant.
+  const corrIds = useMemo(() => {
+    // pick top 8 by value, excluding BTC to avoid self-corr
+    const sorted = [...allocAll.data]
+      .filter(r => r.cid !== 'bitcoin')
+      .sort((a, b) => b.value - a.value)
+      .map(r => r.cid)
+
+    const picked: string[] = sorted.slice(0, 8)
+    while (picked.length < 8) picked.push('bitcoin')
+    return picked
+  }, [JSON.stringify(allocAll.data)])
+
+  // CONSTANT number of hooks (9): one for BTC anchor + 8 slots
+  const hBTC = useHistory('bitcoin', 95, 'daily', 'USD')
+  const hC0  = useHistory(corrIds[0], 95, 'daily', 'USD')
+  const hC1  = useHistory(corrIds[1], 95, 'daily', 'USD')
+  const hC2  = useHistory(corrIds[2], 95, 'daily', 'USD')
+  const hC3  = useHistory(corrIds[3], 95, 'daily', 'USD')
+  const hC4  = useHistory(corrIds[4], 95, 'daily', 'USD')
+  const hC5  = useHistory(corrIds[5], 95, 'daily', 'USD')
+  const hC6  = useHistory(corrIds[6], 95, 'daily', 'USD')
+  const hC7  = useHistory(corrIds[7], 95, 'daily', 'USD')
+
+  type Pts = { t:number; p:number }[] | undefined
+  const corrMap = useMemo(() => {
+    // map id -> points for consistent lookup
+    const m = new Map<string, Pts>()
+    m.set('bitcoin', hBTC.points)
+    m.set(corrIds[0], hC0.points)
+    m.set(corrIds[1], hC1.points)
+    m.set(corrIds[2], hC2.points)
+    m.set(corrIds[3], hC3.points)
+    m.set(corrIds[4], hC4.points)
+    m.set(corrIds[5], hC5.points)
+    m.set(corrIds[6], hC6.points)
+    m.set(corrIds[7], hC7.points)
+    return m
+    // deps: points arrays + corrIds content (length is constant 8)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hBTC.points,
+    hC0.points, hC1.points, hC2.points, hC3.points,
+    hC4.points, hC5.points, hC6.points, hC7.points,
+    ...corrIds
+  ])
+
+  function toLogReturns(points: { t: number; p: number }[]) {
+    const out: { t: number; r: number }[] = []
+    for (let i = 1; i < points.length; i++) {
+      const p0 = points[i - 1]?.p
+      const p1 = points[i]?.p
+      if (typeof p0 === 'number' && typeof p1 === 'number' && p0 > 0 && p1 > 0) {
+        const r = Math.log(p1 / p0)
+        if (Number.isFinite(r)) out.push({ t: points[i].t, r })
+      }
+    }
+    return out
+  }
+  function pearson(a: number[], b: number[]) {
+    const n = Math.min(a.length, b.length)
+    if (n === 0) return NaN
+    let sa = 0, sb = 0, sqa = 0, sqb = 0, sp = 0
+    for (let i = 0; i < n; i++) {
+      const x = a[i], y = b[i]
+      sa += x; sb += y; sqa += x*x; sqb += y*y; sp += x*y
+    }
+    const cov = sp / n - (sa / n) * (sb / n)
+    const va = sqa / n - (sa / n) * (sa / n)
+    const vb = sqb / n - (sb / n) * (sb / n)
+    if (va <= 0 || vb <= 0) return NaN
+    return cov / Math.sqrt(va * vb)
+  }
+
+  function corrToBTC(id: string): number | null {
+    const btcPts = corrMap.get('bitcoin')
+    const tgtPts = corrMap.get(id)
+    if (!btcPts || !tgtPts) return null
+    const br = toLogReturns(btcPts)
+    const tr = toLogReturns(tgtPts)
+    if (br.length < 30 || tr.length < 30) return null
+    const map = new Map<number, number>()
+    for (const b of br) map.set(Math.floor(b.t / 86400000), b.r)
+    const paired: number[] = []
+    const pairedBTC: number[] = []
+    for (const x of tr) {
+      const key = Math.floor(x.t / 86400000)
+      const b = map.get(key)
+      if (typeof b === 'number') { paired.push(x.r); pairedBTC.push(b) }
+    }
+    if (paired.length < 25) return null
+    const c = pearson(paired, pairedBTC)
+    return Number.isFinite(c) ? c : null
+  }
+
+  const corrAgg = useMemo(() => {
+    const total = allocAll.total || 1
+    const weights = allocAll.data.reduce<Record<string, number>>((m, r) => {
+      m[r.cid] = r.value / total
+      return m
+    }, {})
+    let wsum = 0, acc = 0
+    for (const id of corrIds) {
+      if (id === 'bitcoin') continue
+      const c = corrToBTC(id)
+      const w = weights[id] ?? 0
+      if (c != null && w > 0) { acc += c * w; wsum += w }
+    }
+    const avg = wsum > 0 ? (acc / wsum) : null
+    let factor = 1.00
+    let level: 'Diversifier' | 'Neutral' | 'BTC-beta' | 'Ultra-beta'
+    if (avg == null) { factor = 1.00; level = 'Neutral' }
+    else if (avg < 0.40) { factor = 0.85; level = 'Diversifier' }
+    else if (avg < 0.65) { factor = 1.00; level = 'Neutral' }
+    else if (avg < 0.85) { factor = 1.15; level = 'BTC-beta' }
+    else { factor = 1.30; level = 'Ultra-beta' }
+    return { avg, factor, level }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(allocAll.data), ...corrIds, hBTC.points, hC0.points, hC1.points, hC2.points, hC3.points, hC4.points, hC5.points, hC6.points, hC7.points])
+
+  const liquidityAgg = useMemo(() => {
+    const total = allocAll.total || 1
+    let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
+    for (const r of allocAll.data) {
+      const pct = r.value / total
+      const rank = rankMap.get(r.cid) ?? null
+      if (rank == null) { unranked += pct; continue }
+      if (rank >= 1 && rank <= 2) blue += pct
+      else if (rank >= 3 && rank <= 10) large += pct
+      else if (rank >= 11 && rank <= 20) medium += pct
+      else if (rank >= 21 && rank <= 50) small += pct
+      else unranked += pct
+    }
+    const factor = (blue * 1.00) + (large * 1.20) + (medium * 1.40) + ((small + unranked) * 1.80)
+    const level =
+      factor <= 1.05 ? ('High' as const)
+      : factor <= 1.25 ? ('Good' as const)
+      : factor <= 1.55 ? ('Fair' as const)
+      : ('Low' as const)
+    return { factor, bands: { blue, large, medium, small, unranked }, level }
+  }, [JSON.stringify(allocAll.data), JSON.stringify(Array.from(rankMap.entries()))])
+
   // ---- Helpers for levels/visuals (no logic change to calculations) ----
   const structuralLevel: 'Low'|'Moderate'|'High' =
     sectorAgg.score <= 120 ? 'Low' : sectorAgg.score <= 180 ? 'Moderate' : 'High'
@@ -552,8 +695,10 @@ export default function PortfolioPage() {
 
   const tailLevel: 'Low'|'Moderate'|'High'|'Very High' = L3_active ? 'High' : 'Low'
 
-  // Combined score + level (portfolio-aware where possible)
-  const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor
+  // Combined score + level (now includes Corr & Liquidity factors)
+  const L4_mult = corrAgg.factor
+  const L5_mult = liquidityAgg.factor
+  const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor * L4_mult * L5_mult
   const combinedLevel: 'Low'|'Moderate'|'High'|'Very High' =
     combinedScore <= 1.30 ? 'Low'
     : combinedScore <= 2.00 ? 'Moderate'
@@ -615,7 +760,7 @@ export default function PortfolioPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* LEFT: Exposure & Risk card */}
         <div className="lg:col-span-2">
-<div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+          <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
               <div className="flex items-center gap-2">
@@ -624,6 +769,8 @@ export default function PortfolioPage() {
                 <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
                 <Pill active={view==='vol'} onClick={()=>setView('vol')}>Volatility</Pill>
                 <Pill active={view==='tail'} onClick={()=>setView('tail')}>Tail Risk</Pill>
+                <Pill active={view==='corr'} onClick={()=>setView('corr')}>Correlation</Pill>
+                <Pill active={view==='liq'} onClick={()=>setView('liq')}>Liquidity</Pill>
               </div>
             </div>
 
@@ -676,12 +823,12 @@ export default function PortfolioPage() {
                 </>
               )}
 
-              {/* VOLATILITY (shows current proxy; Combined uses portfolio-aware when available) */}
+              {/* VOLATILITY */}
               {view === 'vol' && (
                 <>
                   <LegendRow label="30d Annualized Volatility" value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
                   <LegendRow label="Regime" value={<span className="font-medium capitalize">{L2_regime}</span>} />
-                  <LegendRow label="Multiplier" value={<span className="font-medium">{L2_mult.toFixed(2)}</span>} />
+                  <LegendRow label="Multiplier" value={<span className="font-medium">×{L2_mult.toFixed(2)}</span>} />
                   <LegendRow label="Window" value="45 days · daily" />
                   <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
                   <CardFooter
@@ -697,14 +844,14 @@ export default function PortfolioPage() {
                 </>
               )}
 
-              {/* TAIL RISK (shows current proxy; Combined uses portfolio-aware when available) */}
+              {/* TAIL RISK */}
               {view === 'tail' && (
                 <>
                   <LegendRow
                     label="Tail Status"
                     value={L3_active ? <span className="text-rose-400 font-medium">Active</span> : <span className="text-emerald-400 font-medium">Inactive</span>}
                   />
-                  <LegendRow label="Tail Factor" value={<span className="font-medium">{L3_factor.toFixed(2)}</span>} />
+                  <LegendRow label="Tail Factor" value={<span className="font-medium">×{L3_factor.toFixed(2)}</span>} />
                   <LegendRow label="Activation Share (value-weighted)" value={<span className="font-medium">{fmtPct(L3_share)}</span>} />
                   <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
                   <CardFooter
@@ -720,7 +867,40 @@ export default function PortfolioPage() {
                 </>
               )}
 
-              {/* COMBINED — Redesigned, more pronounced (portfolio-aware when available) */}
+              {/* CORRELATION */}
+              {view === 'corr' && (
+                <>
+                  <LegendRow
+                    label="Average 90d correlation vs BTC (value-weighted)"
+                    value={corrAgg.avg == null ? '—' : corrAgg.avg.toFixed(2)}
+                  />
+                  <LegendRow label="Correlation Factor" value={<span className="font-medium">×{L4_mult.toFixed(2)}</span>} />
+                  <LegendRow label="Profile" value={<span className="font-medium">{corrAgg.avg == null ? 'Neutral' : corrAgg.level}</span>} />
+                  <LegendRow label="Window" value="90 days · daily (useHistory)" />
+                  <CardFooter
+                    left={<span className="text-slate-400 text-xs">Lower correlation improves diversification (0.85 → ×0.85)</span>}
+                    right={<span className="text-slate-400 text-[11px]">Source: new data core /api/price-history via useHistory</span>}
+                  />
+                </>
+              )}
+
+              {/* LIQUIDITY */}
+              {view === 'liq' && (
+                <>
+                  <LegendRow label="Liquidity Factor (rank-proxy)" value={<span className="font-medium">×{L5_mult.toFixed(2)}</span>} />
+                  <LegendRow label="BlueChip (1–2)" value={fmtPct(liquidityAgg.bands.blue)} />
+                  <LegendRow label="Large (3–10)" value={fmtPct(liquidityAgg.bands.large)} />
+                  <LegendRow label="Medium (11–20)" value={fmtPct(liquidityAgg.bands.medium)} />
+                  <LegendRow label="Small (21–50)" value={fmtPct(liquidityAgg.bands.small)} />
+                  <LegendRow label="Unranked / >50" value={fmtPct(liquidityAgg.bands.unranked)} />
+                  <CardFooter
+                    left={<span className="text-slate-400 text-xs">Proxy for exit depth by cap tier</span>}
+                    right={<span className="text-slate-400 text-[11px]">No extra API; uses snapshot ranks</span>}
+                  />
+                </>
+              )}
+
+              {/* COMBINED — includes L4 & L5 */}
               {view === 'combined' && (
                 <div className="space-y-4">
                   {/* Header: Big score + level */}
@@ -737,7 +917,7 @@ export default function PortfolioPage() {
                       </div>
                       <div className="hidden sm:block text-right">
                         <div className="text-[11px] text-slate-400">Formula</div>
-                        <div className="text-xs text-slate-300">Σ(weight × structural) × vol × tail</div>
+                        <div className="text-xs text-slate-300">Σ(weight × structural) × vol × tail × corr × liq</div>
                         <div className="mt-1 text-[11px] text-slate-400">
                           {prisk?.updatedAt
                             ? `as of ${new Date(prisk.updatedAt).toLocaleString()}`
@@ -770,7 +950,7 @@ export default function PortfolioPage() {
                   </div>
 
                   {/* Layers grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     {/* Structural */}
                     <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
                       <div className="text-xs uppercase tracking-wide text-slate-400">Layer 1 · Structural</div>
@@ -819,14 +999,46 @@ export default function PortfolioPage() {
                         {prisk ? 'Value-weighted tail activation share is used.' : 'Rule: price < (SMA20 − 2×SD20) ⇒ 1.35 · else 1.00'}
                       </div>
                     </div>
+
+                    {/* Correlation */}
+                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 4 · Correlation</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div className="text-slate-200">
+                          <div className="text-sm">Factor</div>
+                          <div className="text-xl font-semibold tabular-nums">×{L4_mult.toFixed(2)}</div>
+                        </div>
+                        <LevelBadge title="Level" level={'Moderate'} value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`} />
+                      </div>
+                      <div className="mt-2 text-[13px] text-slate-400">
+                        Weighted average of top holdings’ 90d daily-return correlation vs BTC.
+                      </div>
+                    </div>
+
+                    {/* Liquidity */}
+                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 5 · Liquidity</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div className="text-slate-200">
+                          <div className="text-sm">Factor</div>
+                          <div className="text-xl font-semibold tabular-nums">×{L5_mult.toFixed(2)}</div>
+                        </div>
+                        <div className="text-[13px] text-slate-400">
+                          Blue {fmtPct(liquidityAgg.bands.blue)} · Large {fmtPct(liquidityAgg.bands.large)} · Mid {fmtPct(liquidityAgg.bands.medium)}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[13px] text-slate-400">
+                        Rank-proxy for exit depth (snapshot ranks).
+                      </div>
+                    </div>
                   </div>
 
                   {/* Footer */}
                   <CardFooter
-                    left={<span className="text-slate-400 text-xs">Combined = L1 × L2 × L3</span>}
+                    left={<span className="text-slate-400 text-xs">Combined = L1 × L2 × L3 × L4 × L5</span>}
                     right={
                       <span className="text-slate-400 text-[11px]">
-                        {prisk ? 'Source: /api/portfolio-risk' : 'Source: BTC proxy (/api/price-history)'}
+                        {prisk ? 'Source: /api/portfolio-risk + new data core histories' : 'Source: BTC proxy + new data core histories'}
                       </span>
                     }
                   />
