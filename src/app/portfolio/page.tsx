@@ -8,7 +8,7 @@ import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import { useRouter } from 'next/navigation'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
-import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
@@ -373,8 +373,8 @@ export default function PortfolioPage() {
   }
 
   // ---------------- Exposure & Risk card (consistent layout for all tabs) ----------------
-  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq' // added corr + liq
-  const [view, setView] = useState<ViewMode>('combined') // Default to Combined
+  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq'
+  const [view, setView] = useState<ViewMode>('combined')
 
   const { data: snapshot } = useSWR<{ rows?: { id: string; rank?: number | null }[] }>(
     coinIds.length ? ['/portfolio/snapshot', coinKey] : null,
@@ -451,21 +451,6 @@ export default function PortfolioPage() {
     </div>
   )
 
-  const RiskBadge = ({ score, label }: { score: number; label: 'Low'|'Moderate'|'High' }) => {
-    const accent =
-      label === 'Low' ? 'text-emerald-400'
-      : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
-      : 'text-[rgba(189,45,50,1)]'
-    return (
-      <div className="text-xs">
-        <span className="text-slate-400 mr-2">Risk</span>
-        <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
-        <span className="text-slate-400"> · </span>
-        <span className="tabular-nums">{score}</span>
-      </div>
-    )
-  }
-
   const LevelBadge = ({ title, level, value }: { title: string; level: 'Low'|'Moderate'|'High'|'Very High'; value: string }) => {
     const accent =
       level === 'Low' ? 'text-emerald-400'
@@ -482,6 +467,21 @@ export default function PortfolioPage() {
             <span className="tabular-nums">{value}</span>
           </>
         )}
+      </div>
+    )
+  }
+
+  const RiskBadge = ({ score, label }: { score: number; label: 'Low'|'Moderate'|'High' }) => {
+    const accent =
+      label === 'Low' ? 'text-emerald-400'
+      : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
+      : 'text-[rgba(189,45,50,1)]'
+    return (
+      <div className="text-xs">
+        <span className="text-slate-400 mr-2">Risk</span>
+        <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
+        <span className="text-slate-400"> · </span>
+        <span className="tabular-nums">{score}</span>
       </div>
     )
   }
@@ -543,14 +543,11 @@ export default function PortfolioPage() {
   const L3_factor = typeof prisk?.l3?.factor === 'number' ? prisk!.l3.factor : tailFactor_proxy
 
   // ---- LAYER 4: Correlation (90d vs BTC) & LAYER 5: Liquidity (rank-proxy) ----
-  // Build a constant-length (8) list of correlation target IDs, padded with 'bitcoin' to keep Hook count/order constant.
   const corrIds = useMemo(() => {
-    // pick top 8 by value, excluding BTC to avoid self-corr
     const sorted = [...allocAll.data]
       .filter(r => r.cid !== 'bitcoin')
       .sort((a, b) => b.value - a.value)
       .map(r => r.cid)
-
     const picked: string[] = sorted.slice(0, 8)
     while (picked.length < 8) picked.push('bitcoin')
     return picked
@@ -569,7 +566,6 @@ export default function PortfolioPage() {
 
   type Pts = { t:number; p:number }[] | undefined
   const corrMap = useMemo(() => {
-    // map id -> points for consistent lookup
     const m = new Map<string, Pts>()
     m.set('bitcoin', hBTC.points)
     m.set(corrIds[0], hC0.points)
@@ -581,7 +577,6 @@ export default function PortfolioPage() {
     m.set(corrIds[6], hC6.points)
     m.set(corrIds[7], hC7.points)
     return m
-    // deps: points arrays + corrIds content (length is constant 8)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     hBTC.points,
@@ -669,7 +664,7 @@ export default function PortfolioPage() {
     for (const r of allocAll.data) {
       const pct = r.value / total
       const rank = rankMap.get(r.cid) ?? null
-      if (rank == null) { unranked += pct; continue }
+    if (rank == null) { unranked += pct; continue }
       if (rank >= 1 && rank <= 2) blue += pct
       else if (rank >= 3 && rank <= 10) large += pct
       else if (rank >= 11 && rank <= 20) medium += pct
@@ -695,7 +690,22 @@ export default function PortfolioPage() {
 
   const tailLevel: 'Low'|'Moderate'|'High'|'Very High' = L3_active ? 'High' : 'Low'
 
-  // Combined score + level (now includes Corr & Liquidity factors)
+  // Map correlation to standard Low/Moderate/High/Very High buckets (for the colored badge)
+  const corrRiskLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    corrAgg.avg == null ? 'Moderate'
+    : corrAgg.avg < 0.40 ? 'Low'
+    : corrAgg.avg < 0.65 ? 'Moderate'
+    : corrAgg.avg < 0.85 ? 'High'
+    : 'Very High'
+
+  // Liquidity → risk level (higher factor = worse liquidity ⇒ higher risk)
+  const liquidityRiskLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    liquidityAgg.factor <= 1.05 ? 'Low'
+    : liquidityAgg.factor <= 1.25 ? 'Moderate'
+    : liquidityAgg.factor <= 1.55 ? 'High'
+    : 'Very High'
+
+  // Combined score + level (includes Corr & Liquidity)
   const L4_mult = corrAgg.factor
   const L5_mult = liquidityAgg.factor
   const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor * L4_mult * L5_mult
@@ -705,7 +715,7 @@ export default function PortfolioPage() {
     : combinedScore <= 2.80 ? 'High'
     : 'Very High'
 
-  // Visual meter position (purely presentational)
+  // Visual meter (presentational)
   const clamp = (n:number, min:number, max:number) => Math.max(min, Math.min(max, n))
   const meterMin = 0.90, meterMax = 3.20
   const meterPct = ((clamp(combinedScore, meterMin, meterMax) - meterMin) / (meterMax - meterMin)) * 100
@@ -723,6 +733,55 @@ export default function PortfolioPage() {
       {children}
     </button>
   )
+
+  // ────────────────────────────────────────────────────────────────────────────────
+  // Compact stat tile for bottom 5 boxes in Combined view — now with footer slot
+  function StatTile({
+    label,
+    value,
+    rightHint,
+    footer,
+    className = '',
+  }: {
+    label: string
+    value: React.ReactNode
+    rightHint?: React.ReactNode
+    footer?: React.ReactNode
+    className?: string
+  }) {
+    return (
+      <div
+        className={
+          "rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgb(28,29,31)]/60 p-3 sm:p-4 shadow-sm " +
+          "flex flex-col gap-2 min-h-[108px] " + className
+        }
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-[11px] uppercase tracking-wide text-[rgba(255,255,255,0.55)]">
+            {label}
+          </div>
+          {rightHint ? (
+            <div className="text-[11px] text-[rgba(255,255,255,0.45)] whitespace-nowrap">
+              {rightHint}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-lg sm:text-xl font-semibold tabular-nums">
+            {value}
+          </div>
+        </div>
+
+        {footer ? (
+          <div className="pt-1">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+  // ────────────────────────────────────────────────────────────────────────────────
 
   return (
     <div data-portfolio-page className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
@@ -760,7 +819,7 @@ export default function PortfolioPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* LEFT: Exposure & Risk card */}
         <div className="lg:col-span-2">
-          <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+<div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
               <div className="flex items-center gap-2">
@@ -773,6 +832,14 @@ export default function PortfolioPage() {
                 <Pill active={view==='liq'} onClick={()=>setView('liq')}>Liquidity</Pill>
               </div>
             </div>
+{/* Global info tooltip — bottom-right of the whole Exposure & Risk Metric card (LARGER) */}
+<div className="group/ermtip pointer-events-auto absolute bottom-2 right-2">
+  <Info className="h-5 w-5 text-slate-400 hover:text-slate-200" aria-label="Exposure & Risk info" />
+  <div className="pointer-events-none absolute bottom-7 right-0 z-10 max-w-[85vw] w-[26rem] md:w-[28rem] rounded-md border border-[rgb(42,43,45)] bg-[rgb(24,25,27)] px-4 py-3 text-sm leading-relaxed text-slate-100 shadow-xl opacity-0 transition-opacity group-hover/ermtip:opacity-100">
+    A professional-grade crypto risk score based on market structure, volatility, correlation, tail-events, and liquidity — benchmarked against real Bitcoin regimes and crypto liquidity tiers.
+  </div>
+</div>
+
 
             <div className="p-4 space-y-4">
               {/* SECTOR (Layer 1) */}
@@ -900,11 +967,11 @@ export default function PortfolioPage() {
                 </>
               )}
 
-              {/* COMBINED — includes L4 & L5 */}
+              {/* COMBINED — unchanged header/meter; updated bottom 5 tiles */}
               {view === 'combined' && (
                 <div className="space-y-4">
                   {/* Header: Big score + level */}
-                  <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
+<div className="relative rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Combined Risk</div>
@@ -949,88 +1016,70 @@ export default function PortfolioPage() {
                     </div>
                   </div>
 
-                  {/* Layers grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  {/* Bottom 5 tiles (no sublabels; each shows its own colored level) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                     {/* Structural */}
-                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 1 · Structural</div>
-                      <div className="mt-1 flex items-end justify-between">
-                        <div className="text-slate-200">
-                          <div className="text-sm">Σ(weight × structural)</div>
-                          <div className="text-xl font-semibold tabular-nums">{sectorAgg.structuralSum.toFixed(3)}</div>
-                        </div>
+                    <StatTile
+                      label="Structural"
+                      value={sectorAgg.structuralSum.toFixed(3)}
+                      footer={
                         <LevelBadge title="Level" level={structuralLevel} value={`${sectorAgg.score}`} />
-                      </div>
-                      <div className="mt-2 space-y-1.5 text-[13px]">
-                        <div className="flex justify-between"><span className="text-slate-400">BlueChip</span><span className="tabular-nums">{fmtPct(sectorAgg.blue)}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-400">Large</span><span className="tabular-nums">{fmtPct(sectorAgg.large)}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-400">Medium</span><span className="tabular-nums">{fmtPct(sectorAgg.medium)}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-400">Small</span><span className="tabular-nums">{fmtPct(sectorAgg.small)}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-400">Unranked</span><span className="tabular-nums">{fmtPct(sectorAgg.unranked)}</span></div>
-                      </div>
-                    </div>
+                      }
+                    />
 
                     {/* Volatility */}
-                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 2 · Volatility</div>
-                      <div className="mt-1 flex items-end justify-between">
-                        <div className="text-slate-200">
-                          <div className="text-sm">Multiplier</div>
-                          <div className="text-xl font-semibold tabular-nums">×{L2_mult.toFixed(2)}</div>
-                        </div>
-                        <LevelBadge title="Level" level={volatilityLevel} value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
-                      </div>
-                      <div className="mt-2 text-[13px] text-slate-400">
-                        Regime: <span className="text-slate-200 capitalize">{L2_regime}</span> · Window: 45d daily {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}
-                      </div>
-                    </div>
+                    <StatTile
+                      label="Volatility"
+                      value={`×${L2_mult.toFixed(2)}`}
+                      rightHint="σ"
+                      footer={
+                        <LevelBadge
+                          title="Level"
+                          level={volatilityLevel}
+                          value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'}
+                        />
+                      }
+                    />
 
-                    {/* Tail */}
-                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 3 · Tail</div>
-                      <div className="mt-1 flex items-end justify-between">
-                        <div className="text-slate-200">
-                          <div className="text-sm">Factor</div>
-                          <div className="text-xl font-semibold tabular-nums">×{L3_factor.toFixed(2)}</div>
-                        </div>
-                        <LevelBadge title="Level" level={tailLevel} value={L3_active ? 'Active' : 'Inactive'} />
-                      </div>
-                      <div className="mt-2 text-[13px] text-slate-400">
-                        {prisk ? 'Value-weighted tail activation share is used.' : 'Rule: price < (SMA20 − 2×SD20) ⇒ 1.35 · else 1.00'}
-                      </div>
-                    </div>
+                    {/* Tail Factor */}
+                    <StatTile
+                      label="Tail Factor"
+                      value={`×${L3_factor.toFixed(2)}`}
+                      footer={
+                        <LevelBadge
+                          title="Level"
+                          level={tailLevel}
+                          value={L3_active ? 'Active' : 'Inactive'}
+                        />
+                      }
+                    />
 
                     {/* Correlation */}
-                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 4 · Correlation</div>
-                      <div className="mt-1 flex items-end justify-between">
-                        <div className="text-slate-200">
-                          <div className="text-sm">Factor</div>
-                          <div className="text-xl font-semibold tabular-nums">×{L4_mult.toFixed(2)}</div>
-                        </div>
-                        <LevelBadge title="Level" level={'Moderate'} value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`} />
-                      </div>
-                      <div className="mt-2 text-[13px] text-slate-400">
-                        Weighted average of top holdings’ 90d daily-return correlation vs BTC.
-                      </div>
-                    </div>
+                    <StatTile
+                      label="Correlation"
+                      value={`×${L4_mult.toFixed(2)}`}
+                      rightHint="ρ"
+                      footer={
+                        <LevelBadge
+                          title="Level"
+                          level={corrRiskLevel}
+                          value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`}
+                        />
+                      }
+                    />
 
                     {/* Liquidity */}
-                    <div className="rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-400">Layer 5 · Liquidity</div>
-                      <div className="mt-1 flex items-end justify-between">
-                        <div className="text-slate-200">
-                          <div className="text-sm">Factor</div>
-                          <div className="text-xl font-semibold tabular-nums">×{L5_mult.toFixed(2)}</div>
-                        </div>
-                        <div className="text-[13px] text-slate-400">
-                          Blue {fmtPct(liquidityAgg.bands.blue)} · Large {fmtPct(liquidityAgg.bands.large)} · Mid {fmtPct(liquidityAgg.bands.medium)}
-                        </div>
-                      </div>
-                      <div className="mt-2 text-[13px] text-slate-400">
-                        Rank-proxy for exit depth (snapshot ranks).
-                      </div>
-                    </div>
+                    <StatTile
+                      label="Liquidity"
+                      value={`×${L5_mult.toFixed(2)}`}
+                      footer={
+                        <LevelBadge
+                          title="Level"
+                          level={liquidityRiskLevel}
+                          value={''}
+                        />
+                      }
+                    />
                   </div>
 
                   {/* Footer */}
