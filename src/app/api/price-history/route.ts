@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConsensusPrices } from "../../../server/services/priceService";
 // NEW: map canonical id -> provider-specific id (e.g., trx -> tron for CoinGecko)
 import { mapToProvider /*, normalizeCoinId*/ } from "@/server/db/coinRegistry";
+import { z } from "zod";
+import { CoinId, Currency, Interval, IntRange, badRequest } from "@/server/schemas/common";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,111 +43,104 @@ async function robustJsonFetch(url: string, init?: RequestInit, attempts = 3): P
  */
 async function fetchCgDaily(id: string, currency: string, days: number): Promise<Pt[]> {
   // Coingecko supports interval=daily to compress to one point per day
-  const url =
-    `${CG_BASE}/coins/${encodeURIComponent(id)}/market_chart` +
-    `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
-    `&days=${encodeURIComponent(String(days))}&interval=daily`;
+  const url = `${CG_BASE}/coins/${encodeURIComponent(id)}/market_chart?vs_currency=${encodeURIComponent(
+    currency.toLowerCase()
+  )}&days=${encodeURIComponent(String(days))}&interval=daily`;
   const j = await robustJsonFetch(url);
-  const prices: [number, number][] = Array.isArray(j?.prices) ? j.prices : [];
-  // map [ms, price] → { t, p }
-  return prices.map(([t, p]) => ({ t, p }));
+  const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
+  return prices
+    .filter((p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    .map(([t, v]) => ({ t, p: Number(v) as number }));
 }
 
-/**
- * Fallback: synthesize two points from consensus live price and 24h price if available.
- */
-async function synthFromConsensus(id: string, currency: string): Promise<Pt[] | null> {
-  try {
-    const { rows, updatedAt } = await getConsensusPrices([id], currency, { with24h: true });
-    const r = rows?.[0];
-    if (!r) return null;
-    const now = Date.now();
-    const lastMs = Date.parse(updatedAt || new Date().toISOString());
-    const pNow = r.price ?? null;
-    const p24 = r.price_24h ?? null;
-
-    const pts: Pt[] = [];
-    if (p24 != null) pts.push({ t: lastMs - 24 * 3600 * 1000, p: p24 });
-    if (pNow != null) pts.push({ t: lastMs, p: pNow });
-    return pts.length >= 2 ? pts : null;
-  } catch {
-    return null;
-  }
+async function fetchCgRange(id: string, currency: string, fromSec: number, toSec: number): Promise<Pt[]> {
+  const url = `${CG_BASE}/coins/${encodeURIComponent(id)}/market_chart/range?vs_currency=${encodeURIComponent(
+    currency.toLowerCase()
+  )}&from=${fromSec}&to=${toSec}`;
+  const j = await robustJsonFetch(url);
+  const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
+  return prices
+    .filter((p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    .map(([t, v]) => ({ t, p: Number(v) as number }));
 }
+
+const Query = z.object({
+  id: CoinId,
+  days: z
+    .union([z.literal("max"), IntRange(1, 3650)]) // generous upper bound; UI picks sane windows
+    .transform((v) => (typeof v === "string" ? v : Number(v))),
+  interval: Interval.optional(),
+  currency: Currency.default("USD"),
+  debug: z.enum(["0", "1"]).optional(),
+});
 
 export async function GET(req: NextRequest) {
-  const begin = Date.now();
   const u = new URL(req.url);
 
-  const idRaw = u.searchParams.get("id") || "";
-  const canonicalId = idRaw.trim().toLowerCase();
-  const daysParam = u.searchParams.get("days");
-  const intervalParam = (u.searchParams.get("interval") || "").toLowerCase() as "minute" | "hourly" | "daily" | "";
-  const currency = (u.searchParams.get("currency") || "USD").toUpperCase();
-  const debug = u.searchParams.get("debug") === "1";
+  const idRaw = u.searchParams.get("id") ?? "";
+  const daysParam = u.searchParams.get("days") ?? "30";
+  const intervalParam = (u.searchParams.get("interval") || "").toLowerCase();
+  const currencyParam = u.searchParams.get("currency") ?? "USD";
+  const debugParam = u.searchParams.get("debug") ?? "0";
 
-  // Default handling: if days >= 20 and no interval specified, assume 'daily'
-  const days = Math.max(1, Number(daysParam || "30"));
+  const parsed = Query.safeParse({
+    id: idRaw,
+    days: daysParam === "max" ? "max" : daysParam,
+    interval: intervalParam || undefined,
+    currency: currencyParam,
+    debug: debugParam,
+  });
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      badRequest(parsed.error.errors.map(e => e.message).join("; ")),
+      { status: 400 }
+    );
+  }
+
+  const canonicalId = parsed.data.id;
+  const daysVal = parsed.data.days;
   const interval: "minute" | "hourly" | "daily" =
-    intervalParam === "minute" || intervalParam === "hourly" || intervalParam === "daily"
-      ? intervalParam
-      : days >= 20
-      ? "daily"
-      : "hourly";
+    parsed.data.interval ??
+    (typeof daysVal === "number" && daysVal >= 20 ? "daily" : "hourly");
+  const currency = parsed.data.currency;
+  const debug = parsed.data.debug === "1";
 
   const notes: string[] = [];
 
-  if (!canonicalId) {
-    return NextResponse.json({ id: "", currency, points: [], error: "missing_id" }, { status: 400 });
-  }
-
-  // NEW: resolve provider-specific id for CoinGecko (e.g., trx -> tron). Non-breaking: we still return canonicalId.
-  // If no mapping exists, we simply fall back to canonicalId.
+  // Provider id mapping (non-breaking; response id stays canonical)
   const cgId = (await mapToProvider(canonicalId, "coingecko")) ?? canonicalId;
   if (cgId !== canonicalId) notes.push(`map.coingecko:${canonicalId}->${cgId}`);
 
   let points: Pt[] = [];
+  const begin = Date.now();
 
-  try {
+  if (typeof daysVal === "number") {
     if (interval === "daily") {
-      // Primary path for portfolio analytics: get 30–45 daily points
-      notes.push(`cg.daily(${days})`);
-      const daily = await fetchCgDaily(cgId, currency, days); // mapped id here
-      if (Array.isArray(daily) && daily.length >= 2) {
-        points = daily;
-      } else {
-        notes.push("cg.daily.empty");
-      }
+      points = await fetchCgDaily(cgId, currency, daysVal);
     } else {
-      // (Optional) For hourly/minute, we still attempt market_chart for <= 7d windows
-      const cappedDays = Math.min(days, 7); // CG returns hourly granularity up to 7D reliably
-      const url =
-        `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` + // mapped id here
-        `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
-        `&days=${encodeURIComponent(String(cappedDays))}`;
-      notes.push(`cg.generic(${cappedDays}d)`);
-      const j = await robustJsonFetch(url);
-      const prices: [number, number][] = Array.isArray(j?.prices) ? j.prices : [];
-      points = prices.map(([t, p]) => ({ t, p }));
+      // hourly/minute -> use range (approximate: past N days to now)
+      const to = Math.floor(Date.now() / 1000);
+      const from = Math.max(0, to - Math.floor(daysVal * 86400));
+      const range = await fetchCgRange(cgId, currency, from, to);
+      points = range;
     }
-  } catch (e: any) {
-    notes.push(`cg.error:${String(e?.message || e)}`);
-  }
-
-  // Fallback: synthesize 2 points from consensus (now + 24h-ago)
-  if (points.length < 2) {
-    notes.push("consensus.synth");
-    const synth = await synthFromConsensus(canonicalId, currency);
+  } else {
+    // days=max path: fall back to range far back in time (e.g., 10y)
+    const to = Math.floor(Date.now() / 1000);
+    const from = Math.max(0, to - 3650 * 86400);
+    const synth = await fetchCgRange(cgId, currency, from, to);
     if (Array.isArray(synth) && synth.length >= 2) {
       points = synth;
     }
   }
 
   const body: any = {
-    id: canonicalId, // keep canonical id in the response (unchanged contract)
+    id: canonicalId,
     currency,
     points,
     updatedAt: new Date().toISOString(),
+    meta: { apiVersion: "v1" },
   };
   if (debug) body.debug = { dt: Date.now() - begin, notes, n: points.length };
 
