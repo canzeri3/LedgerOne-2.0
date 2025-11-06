@@ -261,6 +261,12 @@ export default function PortfolioPage() {
     }
   )
 
+  // --- NEW: MCR (risk share) map from /api/portfolio-risk (non-breaking) ---
+  const mcrById = useMemo<Record<string, number>>(
+    () => (prisk?.l2?.riskContrib ?? {}) as Record<string, number>,
+    [prisk]
+  )
+
   // ---------- StatCard ----------
   type Accent = 'pos' | 'neg' | 'neutral'
   const StatCard = ({
@@ -664,7 +670,7 @@ export default function PortfolioPage() {
     for (const r of allocAll.data) {
       const pct = r.value / total
       const rank = rankMap.get(r.cid) ?? null
-    if (rank == null) { unranked += pct; continue }
+      if (rank == null) { unranked += pct; continue }
       if (rank >= 1 && rank <= 2) blue += pct
       else if (rank >= 3 && rank <= 10) large += pct
       else if (rank >= 11 && rank <= 20) medium += pct
@@ -819,7 +825,7 @@ export default function PortfolioPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* LEFT: Exposure & Risk card */}
         <div className="lg:col-span-2">
-<div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+          <div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
               <div className="flex items-center gap-2">
@@ -832,14 +838,14 @@ export default function PortfolioPage() {
                 <Pill active={view==='liq'} onClick={()=>setView('liq')}>Liquidity</Pill>
               </div>
             </div>
-{/* Global info tooltip — bottom-right of the whole Exposure & Risk Metric card (LARGER) */}
-<div className="group/ermtip pointer-events-auto absolute bottom-2 right-2">
-  <Info className="h-5 w-5 text-slate-400 hover:text-slate-200" aria-label="Exposure & Risk info" />
-  <div className="pointer-events-none absolute bottom-7 right-0 z-10 max-w-[85vw] w-[26rem] md:w-[28rem] rounded-md border border-[rgb(42,43,45)] bg-[rgb(24,25,27)] px-4 py-3 text-sm leading-relaxed text-slate-100 shadow-xl opacity-0 transition-opacity group-hover/ermtip:opacity-100">
-    A professional-grade crypto risk score based on market structure, volatility, correlation, tail-events, and liquidity — benchmarked against real Bitcoin regimes and crypto liquidity tiers.
-  </div>
-</div>
 
+            {/* Global info tooltip — bottom-right of the whole Exposure & Risk Metric card (LARGER) */}
+            <div className="group/ermtip pointer-events-auto absolute bottom-2 right-2">
+              <Info className="h-5 w-5 text-slate-400 hover:text-slate-200" aria-label="Exposure & Risk info" />
+              <div className="pointer-events-none absolute bottom-7 right-0 z-10 max-w-[85vw] w-[26rem] md:w-[28rem] rounded-md border border-[rgb(42,43,45)] bg-[rgb(24,25,27)] px-4 py-3 text-sm leading-relaxed text-slate-100 shadow-xl opacity-0 transition-opacity group-hover/ermtip:opacity-100">
+                A professional-grade crypto risk score based on market structure, volatility, correlation, tail-events, and liquidity — benchmarked against real Bitcoin regimes and crypto liquidity tiers.
+              </div>
+            </div>
 
             <div className="p-4 space-y-4">
               {/* SECTOR (Layer 1) */}
@@ -877,15 +883,22 @@ export default function PortfolioPage() {
                         return (b.pct - a.pct)
                       })
                       .map(h => (
-                        <LegendRow key={h.id}
+                        <LegendRow
+                          key={h.id}
                           label={`${h.symbol}  ·  Rank ${h.rank ?? '—'}`}
-                          value={fmtPct(h.pct)}
+                          value={
+                            <span>
+                              {fmtPct(h.pct)}
+                              <span className="text-slate-400"> · </span>
+                              <span title="Marginal Contribution to Risk">MCR {fmtPct(mcrById[h.id] ?? NaN)}</span>
+                            </span>
+                          }
                         />
                       ))
                   )}
                   <CardFooter
                     left={<span className="text-slate-400">Ranked by market cap</span>}
-                    right={<>Data source: /api/snapshot</>}
+                    right={<>Data source: /api/snapshot · MCR from /api/portfolio-risk</>}
                   />
                 </>
               )}
@@ -971,7 +984,7 @@ export default function PortfolioPage() {
               {view === 'combined' && (
                 <div className="space-y-4">
                   {/* Header: Big score + level */}
-<div className="relative rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
+                  <div className="relative rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Combined Risk</div>

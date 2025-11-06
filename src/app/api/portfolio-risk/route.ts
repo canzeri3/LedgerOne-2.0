@@ -4,15 +4,16 @@ import { NextRequest, NextResponse } from 'next/server'
 /**
  * Portfolio Risk API
  * - L2 (Σ): Portfolio covariance & annualized vol (portfolio-aware)
- * - L3 (Tail): Value-weighted tail activation share (Bollinger-style)
- * - L4 (Correlation): Value-weighted 90d correlation vs BTC + factor mapping
- * - L5 (Liquidity): Rank-tier mix (snapshot) → liquidity factor (proxy)
+ * - L3 (Tail): Value-weighted tail activation share (Bollinger-style) + crash-day sensitivity (blended)
+ * - L4 (Correlation): Value-weighted 90d correlation vs BTC + factor mapping (uses last 90 obs)
+ * - L5 (Liquidity): Rank-tier mix (snapshot) → liquidity factor (proxy) blended with market-cap^0.8 depth proxy
  *
  * NEW DATA CORE ONLY:
  *   - /api/price-history (server-to-server) via INTERNAL_BASE_URL
- *   - /api/snapshot (optional, if you have it) for ranks
+ *   - /api/snapshot (optional, if you have it) for ranks/market_caps
  *
- * Non-breaking for existing UI: we only ADD .l4 and .l5 blocks.
+ * Non-breaking for existing UI: we keep the same blocks/fields; any extras live in meta.debug or
+ * additional non-breaking subfields.
  */
 
 export const runtime = 'nodejs'
@@ -21,7 +22,9 @@ export const revalidate = 0
 
 type HistoryPoint = { t: number; p: number | null }
 type HistoryPayload = { id: string; currency: string; points: HistoryPoint[] }
-type SnapshotRow = { id: string; rank?: number | null }
+
+// snapshot may carry rank and market_cap; both are optional and we must be resilient
+type SnapshotRow = { id: string; rank?: number | null; market_cap?: number | null }
 type SnapshotPayload = { rows?: SnapshotRow[] }
 
 const DEFAULT_DAYS = 90
@@ -32,7 +35,7 @@ const ANN_FACTOR_BY_INTERVAL: Record<string, number> = {
   hourly: 24 * 365,
 }
 
-const IMPL_ID = 'portfolio-risk Σ+Tail+Corr+Liq vC1'
+const IMPL_ID = 'portfolio-risk Σ+Tail+Corr+Liq vC1.2'
 const BTC_ID = 'bitcoin'
 
 const baseUrl = () => (process.env.INTERNAL_BASE_URL?.trim() || 'http://localhost:3000')
@@ -50,16 +53,26 @@ async function fetchHistory(id: string, days: number, interval: string, currency
   }
 }
 
-async function fetchSnapshot(ids: string[]): Promise<Map<string, number | null> | null> {
-  if (!ids.length) return new Map()
+type SnapshotRich = {
+  rank: Map<string, number | null>
+  marketCap: Map<string, number | null>
+}
+
+async function fetchSnapshot(ids: string[]): Promise<SnapshotRich | null> {
+  if (!ids.length) return { rank: new Map(), marketCap: new Map() }
   const url = `${baseUrl()}/api/snapshot?ids=${encodeURIComponent(ids.join(','))}`
   try {
     const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) return null
-    const j = (await res.json()) as SnapshotPayload
-    const m = new Map<string, number | null>()
-    for (const r of j.rows ?? []) m.set(r.id, (typeof r.rank === 'number') ? r.rank : null)
-    return m
+    const j = (await res.json()) as SnapshotPayload | SnapshotRow[]
+    const rows: SnapshotRow[] = Array.isArray(j) ? j as SnapshotRow[] : (j.rows ?? [])
+    const rank = new Map<string, number | null>()
+    const marketCap = new Map<string, number | null>()
+    for (const r of rows) {
+      rank.set(r.id, (typeof r.rank === 'number') ? r.rank : null)
+      marketCap.set(r.id, (typeof r.market_cap === 'number') ? r.market_cap : null)
+    }
+    return { rank, marketCap }
   } catch {
     return null
   }
@@ -159,11 +172,99 @@ function isFiniteNum(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x)
 }
 
+/* ---------- factor mappers for the refinements (conservative brackets) --- */
+
+// correlation → factor (unchanged bands, but source now last-90 obs)
+const corrFactor = (c: number | null): number => {
+  if (c == null || !Number.isFinite(c)) return 1.00
+  if (c <= 0.40) return 1.00
+  if (c <= 0.60) return 1.05
+  if (c <= 0.80) return 1.15
+  return 1.25
+}
+
+// crash-day median drop → tail factor
+function tailFactorFromCrashMedian(medianDrop: number): number {
+  // medianDrop is coin return on BTC<=-5% days (decimal)
+  if (medianDrop > -0.04) return 0.95   // slightly defensive if coin drops less than -4%
+  if (medianDrop > -0.07) return 1.00   // inline with BTC-ish
+  if (medianDrop > -0.12) return 1.18   // amplified but not extreme
+  return 1.35                            // highly tail-sensitive
+}
+
+// depth proxy via market_cap^0.8 as % of BTC depth → factor
+function liqFactorFromPctOfBTCDepth(p: number): number {
+  // p is ratio (e.g., 0.5 means 50% of BTC's depth proxy)
+  if (p >= 0.50) return 1.00
+  if (p >= 0.25) return 1.20
+  if (p >= 0.10) return 1.40
+  return 1.80
+}
+
+/* ----------------------- Auto-fallback window helper ---------------------- */
+/**
+ * Try requested days first; if alignment is insufficient OR BTC is missing,
+ * retry with smaller windows until success.
+ * Success criteria:
+ *  - BTC is present in aligned ids
+ *  - aligned return rows >= 20 (for stable L2/L3)
+ */
+async function getAlignedWithFallback(
+  idsPortfolio: string[],
+  daysRequested: number,
+  interval: string,
+  currency: string
+): Promise<{
+  aligned: { ids: string[]; ts: number[]; prices: number[][] } | null
+  historiesUsed: { id: string; h: HistoryPayload }[]
+  triedDays: number[]
+  usedDays: number | null
+  missing: string[]
+}> {
+  const uniqIds = Array.from(new Set([...idsPortfolio, BTC_ID]))
+  const fallbacksRaw = [daysRequested, 720, 540, 365, 270, 180, 120, 90]
+  const triedDays: number[] = []
+  const missing: string[] = []
+
+  for (const d of fallbacksRaw) {
+    const days = Number.isFinite(d) && d > 0 ? d : DEFAULT_DAYS
+    if (triedDays.includes(days)) continue
+    triedDays.push(days)
+
+    const histories = await Promise.all(uniqIds.map(id => fetchHistory(id, days, interval, currency)))
+    const usable: { id: string; h: HistoryPayload }[] = []
+    const miss: string[] = []
+    histories.forEach((h, i) => (h?.points?.length ? usable.push({ id: uniqIds[i], h }) : miss.push(uniqIds[i])))
+
+    // if too many missing, try next days
+    if (!usable.length || miss.includes(BTC_ID)) {
+      missing.push(...miss.filter(x => !missing.includes(x)))
+      continue
+    }
+
+    const aligned = alignSeries(usable)
+    if (!aligned) {
+      // failed intersection, try smaller window
+      continue
+    }
+
+    const returns = toLogReturns(aligned.prices)
+    const btcPresent = aligned.ids.includes(BTC_ID)
+    const enoughObs = !!returns && returns[0].length >= 20
+    if (btcPresent && enoughObs) {
+      return { aligned, historiesUsed: usable, triedDays, usedDays: days, missing }
+    }
+  }
+
+  // final failure
+  return { aligned: null, historiesUsed: [], triedDays, usedDays: null, missing }
+}
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const idsParam = (url.searchParams.get('ids') || '').trim()
   const valuesParam = (url.searchParams.get('values') || '').trim()
-  const days = Number(url.searchParams.get('days') || DEFAULT_DAYS)
+  const daysReq = Number(url.searchParams.get('days') || DEFAULT_DAYS)
   const interval = url.searchParams.get('interval') || DEFAULT_INTERVAL
   const currency = url.searchParams.get('currency') || DEFAULT_CURRENCY
   const annFactor = ANN_FACTOR_BY_INTERVAL[interval] ?? ANN_FACTOR_BY_INTERVAL.daily
@@ -176,43 +277,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status: { ok: false, message: 'ids and values must be provided with equal lengths' }, meta: { impl: IMPL_ID } }, { status: 400 })
   }
 
-  // Normalize value weights
+  // Normalize value weights (refinement stays)
   const totalValue = values.reduce((a, b) => a + Math.max(0, b), 0)
   const wInput = totalValue > 0 ? values.map(v => Math.max(0, v) / totalValue) : values.map(() => 0)
 
-  // Histories (NEW core) — include BTC for correlation even if not in ids
-  const uniqIds = Array.from(new Set([...ids, BTC_ID]))
-  const histories = await Promise.all(uniqIds.map(id => fetchHistory(id, days, interval, currency)))
-  const usable: { id: string; h: HistoryPayload }[] = []
-  const missing: string[] = []
-  histories.forEach((h, i) => (h?.points?.length ? usable.push({ id: uniqIds[i], h }) : missing.push(uniqIds[i])))
+  // -------- Fetch + align with auto fallback --------
+  const { aligned, historiesUsed, triedDays, usedDays, missing } =
+    await getAlignedWithFallback(ids, daysReq, interval, currency)
 
   // We need ≥ 2 portfolio assets for L2; and BTC history for L4
-  const havePortfolioAssets = usable.filter(u => ids.includes(u.id)).length
-  const haveBTC = usable.some(u => u.id === BTC_ID)
-
-  if (havePortfolioAssets < 1 || !haveBTC) {
-    return NextResponse.json({
-      status: { ok: false, message: 'Insufficient history (need portfolio assets + BTC).', missing },
-      l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
-      l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
-      l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
-      l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
-      cov: { ids: usable.map(u => u.id), window: { days, interval } },
-      updatedAt: new Date().toISOString(),
-      meta: { impl: IMPL_ID }
-    }, { status: 200 })
-  }
-
-  const aligned = alignSeries(usable)
   if (!aligned) {
     return NextResponse.json({
-      status: { ok: false, message: 'Failed to align series (too few overlapping timestamps).', missing },
+      status: { ok: false, message: 'Insufficient aligned history after fallbacks (need portfolio assets + BTC).', missing, triedDays, usedDays },
       l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
       l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
       l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
       l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
-      cov: { ids: usable.map(u => u.id), window: { days, interval } },
+      cov: { ids: [], window: { days: daysReq, interval } },
       updatedAt: new Date().toISOString(),
       meta: { impl: IMPL_ID }
     }, { status: 200 })
@@ -222,12 +303,12 @@ export async function GET(req: NextRequest) {
   const returns = toLogReturns(prices)
   if (!returns) {
     return NextResponse.json({
-      status: { ok: false, message: 'Too few aligned return observations (need ≥20).', missing },
+      status: { ok: false, message: 'Too few aligned return observations (need ≥20).', missing, triedDays, usedDays },
       l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
       l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
       l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
       l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
-      cov: { ids: alignedIds, window: { days, interval } },
+      cov: { ids: alignedIds, window: { days: usedDays ?? daysReq, interval } },
       updatedAt: new Date().toISOString(),
       meta: { impl: IMPL_ID }
     }, { status: 200 })
@@ -259,14 +340,14 @@ export async function GET(req: NextRequest) {
 
   if (!isFiniteNum(portVolAnn)) {
     return NextResponse.json({
-      status: { ok: false, message: 'Numerical issue computing portfolio volatility.', missing },
+      status: { ok: false, message: 'Numerical issue computing portfolio volatility.', missing, triedDays, usedDays },
       l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
       l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
       l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
       l5: { tierWeights: { blue: 0, large: 0, medium: 0, small: 0, unranked: 1 }, factor: 1.0 },
-      cov: { ids: alignedIds, window: { days, interval } },
+      cov: { ids: alignedIds, window: { days: usedDays ?? daysReq, interval } },
       updatedAt: new Date().toISOString(),
-      meta: { impl: IMPL_ID, debug: { alignedPoints: returns[0]?.length ?? 0, weightsUsed: w } }
+      meta: { impl: IMPL_ID, debug: { alignedPoints: returns[0]?.length ?? 0, weightsUsed: w, triedDays, usedDays } }
     }, { status: 200 })
   }
 
@@ -291,8 +372,11 @@ export async function GET(req: NextRequest) {
   else { regime = 'stress'; multiplier = 1.60 }
   multiplier = Math.max(0.7, Math.min(2.0, multiplier))
 
-  // ---------- L3 (Tail: Bollinger-style; value-weighted activation share) ----------
-  const perAssetTail: Record<string, { last: number; sma20: number; sd20: number; bbLower: number; active: boolean }> = {}
+  // ---------- L3 (Tail): Bollinger activation share + crash-day sensitivity ----------
+  const perAssetTail: Record<string, {
+    last: number; sma20: number; sd20: number; bbLower: number; active: boolean;
+    crashMedian?: number; crashFactor?: number;
+  }> = {}
   let activationShare = 0
   for (let i = 0; i < alignedIds.length; i++) {
     if (!ids.includes(alignedIds[i])) continue // only portfolio assets contribute to share
@@ -314,22 +398,49 @@ export async function GET(req: NextRequest) {
   }
   activationShare = Math.max(0, Math.min(1, activationShare))
   const weightedTailActive = activationShare > 0
-  const tailFactor = weightedTailActive ? 1.35 : 1.00
+  const tailFactorBoll = weightedTailActive ? 1.35 : 1.00
 
-  // ---------- L4 (Correlation: value-weighted corr vs BTC) ----------
+  // Crash-day median (BTC <= -5%) per asset
   const btcIdx = alignedIds.indexOf(BTC_ID)
+  let tailCrashWeighted = 1.0
+  if (btcIdx >= 0) {
+    const T = returns[0]?.length ?? 0
+    const btcR = returns[btcIdx]
+    const crashIndex: number[] = []
+    for (let t = 0; t < T; t++) if (btcR[t] <= -0.05) crashIndex.push(t)
+    let sumW = 0, accFactor = 0
+    for (let i = 0; i < alignedIds.length; i++) {
+      if (!ids.includes(alignedIds[i])) continue
+      const ri = returns[i]
+      const drops: number[] = crashIndex.map(t => ri[t]).filter(x => Number.isFinite(x))
+      const med = drops.length ? (drops.sort((a,b)=>a-b)[Math.floor(drops.length/2)]) : 0
+      const f = tailFactorFromCrashMedian(med)
+      perAssetTail[alignedIds[i]].crashMedian = Number(med)
+      perAssetTail[alignedIds[i]].crashFactor = Number(f)
+      const wi = w[i]
+      if (wi > 0) { sumW += wi; accFactor += wi * f }
+    }
+    if (sumW > 0) tailCrashWeighted = accFactor / sumW
+  }
+  // Blend (geometric mean) so UI number remains stable but richer
+  const tailFactor = Math.sqrt(tailFactorBoll * tailCrashWeighted)
+
+  // ---------- L4 (Correlation: value-weighted corr vs BTC, last 90 obs) ----------
   let avgCorrVsBtc: number | null = null
   const perAssetCorr: Record<string, number> = {}
   if (btcIdx >= 0) {
     const T = returns[0]?.length ?? 0
-    const muB = mean(returns[btcIdx])
-    const sdB = stdev(returns[btcIdx])
+    const K = Math.min(90, T) // refinement: last 90 obs
+    const rb = returns[btcIdx].slice(T - K)
+    const muB = mean(rb)
+    const sdB = stdev(rb)
     for (let i = 0; i < alignedIds.length; i++) {
-      const muI = mean(returns[i])
-      const sdI = stdev(returns[i])
+      const ri = returns[i].slice(T - K)
+      const muI = mean(ri)
+      const sdI = stdev(ri)
       let covIB = 0
-      for (let t = 0; t < T; t++) covIB += (returns[i][t] - muI) * (returns[btcIdx][t] - muB)
-      const covAdj = covIB / Math.max(1, T - 1)
+      for (let t = 0; t < K; t++) covIB += (ri[t] - muI) * (rb[t] - muB)
+      const covAdj = covIB / Math.max(1, K - 1)
       const corr = (sdI > 0 && sdB > 0) ? (covAdj / (sdI * sdB)) : 0
       perAssetCorr[alignedIds[i]] = Number(corr)
     }
@@ -342,26 +453,20 @@ export async function GET(req: NextRequest) {
     }
     avgCorrVsBtc = (sumW > 0) ? (acc / sumW) : null
   }
-
-  // Correlation → factor mapping
-  const corrFactor = (c: number | null): number => {
-    if (c == null || !Number.isFinite(c)) return 1.00
-    if (c <= 0.40) return 1.00
-    if (c <= 0.60) return 1.05
-    if (c <= 0.80) return 1.15
-    return 1.25
-  }
   const l4Factor = corrFactor(avgCorrVsBtc)
 
-  // ---------- L5 (Liquidity: rank-proxy mix → factor) ----------
-  // BlueChip 1–2, Large 3–10, Medium 11–20, Small 21–50, Unranked >50 or null
-  const ranks = await fetchSnapshot(ids) // portfolio assets only
+  // ---------- L5 (Liquidity): rank-tier mix + market_cap^0.8 depth proxy ----------
+  const snapshot = await fetchSnapshot(Array.from(new Set([...ids, BTC_ID])))
+  const ranks = snapshot?.rank ?? new Map<string, number | null>()
+  const marketCap = snapshot?.marketCap ?? new Map<string, number | null>()
+
+  // Tier mix from ranks (existing approach, unchanged)
   let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
   for (let i = 0; i < alignedIds.length; i++) {
     const id = alignedIds[i]
     if (!ids.includes(id)) continue
     const wi = w[i]
-    const r = ranks?.get(id) ?? null
+    const r = ranks.get(id) ?? null
     if (r == null) { unranked += wi; continue }
     if (r >= 1 && r <= 2) blue += wi
     else if (r >= 3 && r <= 10) large += wi
@@ -373,14 +478,36 @@ export async function GET(req: NextRequest) {
   if (sumTiers > 0) {
     blue /= sumTiers; large /= sumTiers; medium /= sumTiers; small /= sumTiers; unranked /= sumTiers
   }
-
-  // Smooth additive liquidity penalty
-  const liquidityFactor =
+  const liquidityFactorTier =
     1.0
     + 0.20 * large
     + 0.35 * medium
     + 0.55 * small
     + 0.65 * unranked
+
+  // Depth proxy: market_cap^0.8 vs BTC → per-asset factor, then weighted avg
+  const btcCap = marketCap.get(BTC_ID)
+  let liqDepthWeighted = 1.2 // safe middle default
+  if (typeof btcCap === 'number' && btcCap > 0) {
+    let sumW = 0, acc = 0
+    const depthBtc = Math.pow(btcCap, 0.8)
+    for (let i = 0; i < alignedIds.length; i++) {
+      const id = alignedIds[i]
+      if (!ids.includes(id)) continue
+      const cap = marketCap.get(id)
+      const wi = w[i]
+      if (typeof cap === 'number' && cap > 0 && wi > 0) {
+        const depthCoin = Math.pow(cap, 0.8)
+        const pct = Math.max(0, Math.min(5, depthCoin / depthBtc))
+        const f = liqFactorFromPctOfBTCDepth(pct)
+        sumW += wi; acc += wi * f
+      }
+    }
+    if (sumW > 0) liqDepthWeighted = acc / sumW
+  }
+
+  // Blend rank-tier factor with depth-proxy factor (geometric mean for stability)
+  const liquidityFactor = Math.sqrt(liquidityFactorTier * liqDepthWeighted)
 
   // ---------- Compose response ----------
   const resp = {
@@ -408,7 +535,7 @@ export async function GET(req: NextRequest) {
       tierWeights: { blue: Number(blue), large: Number(large), medium: Number(medium), small: Number(small), unranked: Number(unranked) },
       factor: Number(liquidityFactor)
     },
-    cov: { ids: alignedIds, window: { days, interval } },
+    cov: { ids: alignedIds, window: { days: (usedDays ?? daysReq), interval } },
     updatedAt: new Date().toISOString(),
     meta: {
       impl: IMPL_ID,
@@ -417,10 +544,13 @@ export async function GET(req: NextRequest) {
         timestampsKept: (returns[0]?.length ?? 0) + 1,
         firstTs: ts?.[0], lastTs: ts?.[ts.length - 1],
         weightsUsed: w,
+        triedDays, usedDays,
         portVarDaily, annFactor, portVolAnn, sumWiSigmaAnn,
-        tail: { activationShare, weightedTailActive, tailFactor },
-        corr: { avgCorrVsBtc, l4Factor },
-        liq: { blue, large, medium, small, unranked, liquidityFactor }
+        tail: {
+          activationShare, weightedTailActive, tailFactorBoll, tailCrashWeighted, final: tailFactor
+        },
+        corr: { windowObs: Math.min(90, returns[0]?.length ?? 0), avgCorrVsBtc, l4Factor },
+        liq: { liquidityFactorTier, liqDepthWeighted, blended: liquidityFactor }
       } : undefined
     }
   }
@@ -429,7 +559,7 @@ export async function GET(req: NextRequest) {
   const l2 = resp.l2 as any
   if (!isFiniteNum(l2.annVolPortfolio) || !isFiniteNum(l2.annVol30d) || !isFiniteNum(resp.l2.multiplier) || !isFiniteNum(resp.l3.factor) || !isFiniteNum(resp.l5.factor)) {
     return NextResponse.json({
-      status: { ok: false, message: 'Post-check failed: non-finite values in L2/L3/L5.', missing },
+      status: { ok: false, message: 'Post-check failed: non-finite values in L2/L3/L5.', missing, triedDays, usedDays },
       l2: { annVolPortfolio: null, annVol30d: null, diversificationRatio: null, assetAnnVols: {}, riskContrib: {}, regime: 'normal', multiplier: 1.0 },
       l3: { activationShare: 0, weightedTailActive: false, factor: 1.0, perAsset: {} },
       l4: { avgCorrVsBtc: null, factor: 1.0, perAsset: {} },
