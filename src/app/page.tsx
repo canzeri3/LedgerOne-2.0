@@ -77,15 +77,27 @@ function daysParamFor(tf: Timeframe): string {
 }
 
 /* ── fetch helpers ─────────────────────────────────────────── */
+// Choose a sensible interval for /api/price-history based on days
+function intervalForDays(days: string): 'minute' | 'hourly' | 'daily' {
+  if (days === '1') return 'minute'
+  if (days === '7' || days === '30' || days === '90') return 'hourly'
+  return 'daily'
+}
+
 async function fetchHistories(ids: string[], days: string): Promise<Record<string, Point[]>> {
-  const urls = ids.map(id => `/api/coin-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}`)
+  const interval = intervalForDays(days)
+  const urls = ids.map(
+    id => `/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}&interval=${interval}`
+  )
   const settled = await Promise.allSettled(
     urls.map(async (u) => {
       const r = await fetch(u, { cache: 'no-store' })
       if (!r.ok) throw new Error(String(r.status))
-      const arr = await r.json()
-      const series: Point[] = (Array.isArray(arr) ? arr : [])
-        .map((row: any) => ({ t: Number(row.t), v: Number(row.v) }))
+      // NEW CORE SHAPE: { id, currency, points:[{t,p}], updatedAt }
+      const j = await r.json()
+      const pts = Array.isArray(j?.points) ? j.points : []
+      const series: Point[] = pts
+        .map((row: any) => ({ t: Number(row.t), v: Number(row.p) })) // map p -> v for chart
         .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
         .sort((a: Point, b: Point) => a.t - b.t)
       return series
@@ -367,57 +379,26 @@ function AlertsTooltip({
     return Array.from(s).sort() // sorted for stable SWR key below
   }, [activeBuyPlanners, activeSellPlanners])
 
-  // Price fetch (unchanged UI; robust key + fail-soft)
-  function toPriceMap(payload: unknown, fallbackIds: string[]): Map<string, number> {
-    const m = new Map<string, number>()
-    if (Array.isArray(payload)) {
-      for (const row of payload) {
-        const cid = (row as any)?.id ?? (row as any)?.coingecko_id ?? (row as any)?.symbol
-        const price = Number((row as any)?.price ?? (row as any)?.current_price ?? (row as any)?.v)
-        if (cid && Number.isFinite(price)) m.set(String(cid), price)
-      }
-    } else if (payload && typeof payload === 'object') {
-      const bag: any = (payload as any)?.prices ?? (payload as any)?.data ?? payload
-      if (bag && typeof bag === 'object') {
-        for (const [k, v] of Object.entries(bag)) {
-          const price = Number((v as any)?.price ?? v)
-          if (Number.isFinite(price)) m.set(k, price)
-        }
-      }
-    }
-    if (m.size === 0) fallbackIds.forEach(id => m.set(id, NaN))
-    return m
-  }
+  // Canonicalize ids for the new core
+  const alertCoinIdsCanon = useMemo(
+    () => alertCoinIds.map(x => String(x || '').toLowerCase().trim()).filter(Boolean),
+    [alertCoinIds]
+  )
 
   const { data: pricesMap } = useSWR<Map<string, number>>(
-    user && alertCoinIds.length ? ['/alerts/prices', ...alertCoinIds].join(':') : null, // stable because alertCoinIds is sorted
+    user && alertCoinIdsCanon.length ? ['/alerts/prices', ...alertCoinIdsCanon].join(':') : null, // stable key
     async () => {
-      try {
-        const multi = await fetch(`/api/price-live?ids=${encodeURIComponent(alertCoinIds.join(','))}`, { cache: 'no-store' })
-        if (multi.ok) {
-          const j = await multi.json()
-          const map1 = toPriceMap(j, alertCoinIds)
-          if ([...map1.values()].some(Number.isFinite)) return map1
-        }
-      } catch { /* fall through */ }
-      try {
-        const pairs = await Promise.all(alertCoinIds.map(async (cid) => {
-          try {
-            const r = await fetch(`/api/price/${cid}`, { cache: 'no-store' })
-            if (!r.ok) throw new Error(String(r.status))
-            const j = await r.json()
-            const price = Number((j as any)?.price ?? (j as any)?.current_price ?? (j as any)?.v)
-            return { cid, price: Number.isFinite(price) ? price : NaN }
-          } catch {
-            return { cid, price: NaN }
-          }
-        }))
-        const m = new Map<string, number>()
-        for (const { cid, price } of pairs) if (Number.isFinite(price)) m.set(cid, price)
-        return m
-      } catch {
-        return new Map<string, number>()
+      // Single call to new core → Map<id, price>
+      const res = await fetch(`/api/prices?ids=${encodeURIComponent(alertCoinIdsCanon.join(','))}&currency=USD`, { cache: 'no-store' })
+      if (!res.ok) return new Map<string, number>()
+      const j: any = await res.json() // { rows, updatedAt }
+      const m = new Map<string, number>()
+      for (const r of (j?.rows ?? [])) {
+        const id = String(r?.id || '')
+        const price = Number(r?.price)
+        if (id && Number.isFinite(price)) m.set(id, price)
       }
+      return m
     },
     {
       revalidateOnMount: true,
@@ -485,7 +466,7 @@ function AlertsTooltip({
     // BUY alerts
     for (const p of activeBuyPlanners ?? []) {
       const cid = p.coingecko_id
-      const live = pricesMap instanceof Map ? (pricesMap.get(cid) ?? 0) : 0
+      const live = pricesMap instanceof Map ? (pricesMap.get(cid.toLowerCase()) ?? 0) : 0
       if (!(live > 0)) continue
 
       const top = Number(p.top_price ?? 0)
@@ -521,7 +502,7 @@ function AlertsTooltip({
 
     for (const sp of activeSellPlanners ?? []) {
       const cid = sp.coingecko_id
-      const live = pricesMap instanceof Map ? (pricesMap.get(cid) ?? 0) : 0
+      const live = pricesMap instanceof Map ? (pricesMap.get(cid.toLowerCase()) ?? 0) : 0
       if (!(live > 0)) continue
 
       const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a,b)=>a.level-b.level)

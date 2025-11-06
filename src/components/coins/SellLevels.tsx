@@ -1,10 +1,10 @@
 'use client'
 
-import useSWR from 'swr'
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency, fmtPct } from '@/lib/format'
+import { usePrice } from '@/lib/dataCore'
 
 type Level = {
   id: string
@@ -28,7 +28,7 @@ type Epoch = {
 
 export default function SellLevels({ id }: { id: string }) {
   const { user } = useUser()
-  const { data: priceData } = useSWR<{ id: string; price: number | null }>(`/api/price/${id}`)
+  const { data: priceRow } = usePrice(id)
   const [levels, setLevels] = useState<Level[] | null>(null)
   const [activeEpoch, setActiveEpoch] = useState<Epoch | null>(null)
   const [loading, setLoading] = useState(true)
@@ -68,7 +68,7 @@ export default function SellLevels({ id }: { id: string }) {
   useEffect(() => { load() }, [user, id])
 
   const withinTol = (target: number, tol = 0.05) => {
-    const p = priceData?.price
+    const p = priceRow?.price
     if (!p || !target) return false
     const diff = Math.abs(p - target) / target
     return diff <= tol
@@ -89,7 +89,7 @@ export default function SellLevels({ id }: { id: string }) {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-medium">Take-Profit Ladder</h2>
           <div className="text-xs text-slate-400">
-            Live price: {priceData?.price ? fmtCurrency(priceData.price) : '…'}
+            Live price: {priceRow?.price ? fmtCurrency(priceRow.price) : '…'}
           </div>
         </div>
 
@@ -230,4 +230,3 @@ function AddLevel({ id, onAdded, activeEpochId }: { id: string; onAdded: () => v
     </div>
   )
 }
-
