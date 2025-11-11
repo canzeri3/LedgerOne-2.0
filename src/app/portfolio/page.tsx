@@ -60,20 +60,19 @@ function SortSelect(props: {
     btnRef.current?.focus()
   }
 
-  // Exact values to mirror your Search input (see the input a few lines below):
+  // Visual constants (match Holdings toolbar controls)
   const CARD_BG = 'rgb(42,43,44)'
-  const CARD_BORDER = 'rgba(255,255,255,0.06)'
-  const CARD_RADIUS = '0.375rem' // Tailwind rounded-md
+  const CARD_RADIUS = '0.375rem' // rounded-md
 
   return (
-    // Wrapper: owns bg/border/radius so the visible shape matches the Search input
     <div
       className="lo-select relative inline-block align-middle"
       style={{
         background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
+        border: 'none',                     // ← wrapper border removed
         borderRadius: CARD_RADIUS,
-        height: 38, // match Search input height
+        height: 38,                         // match other controls
+        minWidth: 120,                      // align with Direction/Comfort
       }}
       data-sort-select=""
     >
@@ -84,8 +83,15 @@ function SortSelect(props: {
         aria-expanded={open}
         aria-label={ariaLabel}
         title={title}
-className="lo-select-trigger inline-flex items-center justify-between gap-1 px-2 h-12 text-xs"        // Transparent trigger so wrapper’s radius is what you see
-        style={{ background: 'transparent', border: 0, borderRadius: 'inherit', color: 'inherit' }}
+className="lo-select-trigger inline-flex items-center justify-between gap-1 px-2 text-sm"
+        style={{
+          height: 38,
+          width: '100%',
+          background: 'transparent',
+          border: 0,                        // trigger border already 0 in CSS (kept here for durability)
+          borderRadius: 'inherit',
+          color: 'inherit',
+        }}
         onClick={() => setOpen(o => !o)}
       >
         <span className="truncate">{selected}</span>
@@ -101,8 +107,9 @@ className="lo-select-trigger inline-flex items-center justify-between gap-1 px-2
           className="lo-select-menu absolute right-0 mt-2 min-w-[12rem]"
           style={{
             background: CARD_BG,
-            border: `1px solid ${CARD_BORDER}`,
-            borderRadius: CARD_RADIUS, // menu corners track the input card corners
+            // Intentionally keep a subtle border on the popout menu (nice affordance)
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: CARD_RADIUS,
             zIndex: 60,
           }}
         >
@@ -114,22 +121,14 @@ className="lo-select-trigger inline-flex items-center justify-between gap-1 px-2
                 aria-selected={active}
                 key={opt.value}
                 tabIndex={0}
-                className={`lo-select-item ${active ? 'is-selected' : ''}`}
+                className={`
+                  lo-select-item cursor-pointer select-none
+                  ${active ? 'bg-white/10 text-white' : 'hover:bg-white/5'}
+                `}
                 onClick={() => pick(opt.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault(); pick(opt.value)
-                  }
-                }}
-                style={{
-                  padding: '8px 10px',
-                  borderRadius: '0.5rem',
-                  lineHeight: '1.25rem',
-                  cursor: 'pointer',
-                }}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && pick(opt.value)}
               >
-                <span className="truncate">{opt.label}</span>
-                {active ? <span className="ml-2 opacity-80">✓</span> : null}
+                {opt.label}
               </div>
             )
           })}
@@ -1268,7 +1267,7 @@ export default function PortfolioPage() {
         <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-md font-medium">Holdings</div>
+              <div className="text-lg font-medium">Holdings</div>
               <span className="hidden sm:inline text-xs text-slate-400">• {filteredSorted.length} shown</span>
             </div>
 
@@ -1280,6 +1279,7 @@ export default function PortfolioPage() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search coin or symbol…"
                   className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
+                    style={{ height: 38 }}   // ← add this
                 />
               </div>
 
@@ -1300,25 +1300,29 @@ export default function PortfolioPage() {
                 ]}
               />
 
-              <button
-                type="button"
-                onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
-                title={`Direction: ${sortDir}`}
-              >
-                <ArrowUpDown className="h-4 w-4" />
-                {sortDir.toUpperCase()}
-              </button>
+             <button
+  type="button"
+  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+  title={`Direction: ${sortDir}`}
+  style={{ height: 38, minWidth: 120 }}   // ← add this
+>
+  <ArrowUpDown className="h-4 w-4" />
+  {sortDir.toUpperCase()}
+</button>
 
-              <button
-                type="button"
-                onClick={() => setDense(d => !d)}
-                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
-                title={dense ? 'Comfortable rows' : 'Compact rows'}
-              >
-                {dense ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                {dense ? 'Compact' : 'Comfort'}
-              </button>
+
+            <button
+  type="button"
+  onClick={() => setDense(d => !d)}
+className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+  title={dense ? 'Comfortable rows' : 'Compact rows'}
+  style={{ height: 38, minWidth: 120 }}   // ← add this
+>
+  {dense ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+  {dense ? 'Compact' : 'Comfort'}
+</button>
+
             </div>
           </div>
         </div>
