@@ -274,4 +274,248 @@
     outline: none;
     box-shadow: 0 0 0 2px rgba(99,102,241,0.35), 0 0 0 1px var(--lo-tip-border) inset;
   }
-  
+  /* ──────────────────────────────────────────────────────────────
+   Holdings → Sort: integrated dropdown skin (no library)
+   ────────────────────────────────────────────────────────────── */
+
+[data-portfolio-page] .lo-select-trigger {
+  background: var(--lo-card-bg);
+  color: var(--lo-text);
+  border: 1px solid var(--lo-card-border);
+  border-radius: 1rem;
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.02),
+    0 1px 2px rgba(0,0,0,0.25);
+}
+[data-portfolio-page] .lo-select-trigger:hover {
+  border-color: rgba(148,163,184,0.45); /* slate-400/45 */
+}
+[data-portfolio-page] .lo-select-trigger:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--lo-card-ring),
+    0 8px 24px rgba(0,0,0,0.35);
+}
+
+/* Popout menu matching the card chrome */
+[data-portfolio-page] .lo-select-menu {
+  z-index: 60;
+  background: var(--lo-card-bg-strong);
+  color: var(--lo-text);
+  border: 1px solid var(--lo-card-border);
+  border-radius: 0.875rem;
+  padding: 6px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.02);
+  background-image: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.01),
+    rgba(255,255,255,0)
+  );
+}
+
+/* Items */
+[data-portfolio-page] .lo-select-item {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: 0.5rem;
+  line-height: 1.25rem;
+  color: var(--lo-text);
+  cursor: pointer;
+}
+[data-portfolio-page] .lo-select-item:hover,
+[data-portfolio-page] .lo-select-item:focus {
+  background: rgba(51,65,85,0.28);
+}
+[data-portfolio-page] .lo-select-item.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  box-shadow: inset 0 0 0 1px rgba(148,163,184,0.25);
+}
+
+/* Enter animation */
+[data-portfolio-page] .lo-select-menu {
+  animation: loSelectIn 120ms ease-out;
+}
+@keyframes loSelectIn {
+  from { opacity: 0; transform: translateY(-2px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+/* ──────────────────────────────────────────────────────────────
+   Holdings → Sort: force exact search-card look & color
+   - Exact background: rgb(42,43,44)
+   - Same rounded shape as search card (rounded-2xl feel)
+   - No logic changes; CSS-only
+   ────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Safety: create a token that hard-codes the requested color */
+  --lo-search-bg-exact: rgb(42, 43, 44);
+  --lo-search-border: rgba(255, 255, 255, 0.06);
+  --lo-search-ring: rgba(148, 163, 184, 0.35); /* subtle slate ring */
+}
+
+/* Trigger looks/feels like the Search card input */
+[data-portfolio-page] .lo-select-trigger {
+  background: var(--lo-search-bg-exact) !important;
+  color: var(--lo-text);
+  border: 0px solid var(--lo-search-border);
+  /* Match search-card shape: use large radius (rounded-2xl style) */
+  border-radius: 1rem; /* 16px */
+  /* Typical search input vertical rhythm */
+  height: 38px;
+  padding: 0 12px !important;
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.02),
+    0 1px 2px rgba(0,0,0,0.25);
+}
+
+/* Keep the chevron consistent */
+[data-portfolio-page] .lo-select-trigger svg path {
+  fill: currentColor;
+  opacity: 0.9;
+}
+
+[data-portfolio-page] .lo-select-trigger:hover {
+  border-color: rgba(148,163,184,0.38);
+}
+
+[data-portfolio-page] .lo-select-trigger:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--lo-search-ring),
+    0 8px 24px rgba(0,0,0,0.35);
+}
+
+/* Popout menu visually part of the same card */
+[data-portfolio-page] .lo-select-menu {
+  z-index: 60;
+  background: var(--lo-search-bg-exact) !important; /* same color */
+  color: var(--lo-text);
+  border: 1px solid var(--lo-search-border);
+  border-radius: 1rem; /* match trigger radius */
+  padding: 6px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+/* Items—keep compact and professional */
+[data-portfolio-page] .lo-select-item {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: 0.5rem; /* inner corners slightly tighter */
+  line-height: 1.25rem;
+  color: var(--lo-text);
+  cursor: pointer;
+}
+[data-portfolio-page] .lo-select-item:hover,
+[data-portfolio-page] .lo-select-item:focus {
+  background: rgba(255,255,255,0.04);
+}
+[data-portfolio-page] .lo-select-item.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1 rem;
+  box-shadow: inset 0 0 0 1px rgba(148,163,184,0.25);
+}
+
+/* Entry motion */
+[data-portfolio-page] .lo-select-menu {
+  animation: loSelectInExact 120ms ease-out;
+}
+@keyframes loSelectInExact {
+  from { opacity: 0; transform: translateY(-2px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Holdings → Sort: corners must match the Search card exactly
+   - Define a single radius token for the page and make both
+     the Sort trigger and its menu inherit it.
+   - No component/logic changes.
+   ────────────────────────────────────────────────────────────── */
+
+/* 0) Page-scoped “source of truth” for input/search corner radius */
+[data-portfolio-page] {
+  /* Default to rounded-2xl (Tailwind ~ 1rem). 
+     If your Search card uses another value, change ONLY this line. */
+  --lo-search-radius: 1rem;
+}
+
+/* If your Search card has a specific wrapper, capture its true radius here.
+   These lines DO NOT change the look; they just expose the real value.
+   Keep the selectors that exist in your project; remove any that don’t. */
+[data-portfolio-page] .search-card,
+[data-portfolio-page] .search-input,
+[data-portfolio-page] .searchbar,
+[data-portfolio-page] .search {
+  /* Uncomment and set to the real value if different from 1rem:
+     --lo-search-radius: 0.875rem;  or  1.25rem;  etc. */
+  /* --lo-search-radius: 1rem; */
+}
+
+/* 1) Sort trigger: inherit the exact same corner radius as the Search card */
+[data-portfolio-page] .lo-select-trigger {
+  border-radius: var(--lo-search-radius) !important;
+}
+
+/* 2) Sort menu (popout): inherit the same corner radius as well */
+[data-portfolio-page] .lo-select-menu {
+  border-radius: var(--lo-search-radius) !important;
+}
+
+/* (Keep the rest of your previous color/spacing styles.
+   If you followed earlier steps, these rules will only adjust CORNERS.) */
+
+   /* ──────────────────────────────────────────────────────────────
+   Sort input card: ensure wrapper’s radius wins over groups
+   ────────────────────────────────────────────────────────────── */
+[data-portfolio-page] .lo-select[data-sort-select] {
+  overflow: visible;              /* avoid parent masks */
+  isolation: isolate;             /* own stacking context */
+}
+
+/* The trigger is transparent; inherit the wrapper’s radius */
+[data-portfolio-page] .lo-select[data-sort-select] .lo-select-trigger {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+}
+
+/* Menu chrome (matches Search card) – if you want different corners, change in TSX inline style */
+[data-portfolio-page] .lo-select-menu {
+  padding: 6px;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+/* Items */
+[data-portfolio-page] .lo-select-item {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: 0.5rem;
+  line-height: 1.25rem;
+  color: var(--lo-text);
+  cursor: pointer;
+}
+[data-portfolio-page] .lo-select-item:hover,
+[data-portfolio-page] .lo-select-item:focus {
+  background: rgba(255,255,255,0.04);
+}
+[data-portfolio-page] .lo-select-item.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  box-shadow: inset 0 0 0 1px rgba(148,163,184,0.25);
+}

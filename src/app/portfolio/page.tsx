@@ -12,6 +12,132 @@ import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, 
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
+import * as React from 'react'
+
+/* ── SortSelect: wrapper owns the card chrome so shape/color match Search input ──
+   - Background: rgb(42,43,44) (same as your Search input)
+   - Border: 1px rgba(255,255,255,0.06)
+   - Radius: 0.375rem (Tailwind rounded-md) to exactly match your Search input shape
+   - Button is transparent; wrapper defines the visible corners.
+*/
+function SortSelect(props: {
+  value: string
+  onChange: (v: string) => void
+  options: Array<{ value: string; label: string }>
+  ariaLabel?: string
+  title?: string
+}) {
+  const { value, onChange, options, ariaLabel, title } = props
+  const [open, setOpen] = React.useState(false)
+  const btnRef = React.useRef<HTMLButtonElement | null>(null)
+  const menuRef = React.useRef<HTMLDivElement | null>(null)
+
+  // Close on outside click / ESC
+  React.useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (!open) return
+      const t = e.target as Node
+      if (menuRef.current && !menuRef.current.contains(t) && btnRef.current && !btnRef.current.contains(t)) {
+        setOpen(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const selected = options.find(o => o.value === value)?.label ?? 'Select'
+
+  function pick(v: string) {
+    onChange(v)
+    setOpen(false)
+    btnRef.current?.focus()
+  }
+
+  // Exact values to mirror your Search input (see the input a few lines below):
+  const CARD_BG = 'rgb(42,43,44)'
+  const CARD_BORDER = 'rgba(255,255,255,0.06)'
+  const CARD_RADIUS = '0.375rem' // Tailwind rounded-md
+
+  return (
+    // Wrapper: owns bg/border/radius so the visible shape matches the Search input
+    <div
+      className="lo-select relative inline-block align-middle"
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: CARD_RADIUS,
+        height: 38, // match Search input height
+      }}
+      data-sort-select=""
+    >
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        title={title}
+className="lo-select-trigger inline-flex items-center justify-between gap-1 px-2 h-12 text-xs"        // Transparent trigger so wrapper’s radius is what you see
+        style={{ background: 'transparent', border: 0, borderRadius: 'inherit', color: 'inherit' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="truncate">{selected}</span>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 20 20" className="shrink-0">
+          <path d="M5 7l5 6 5-6H5z" fill="currentColor" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          ref={menuRef}
+          role="listbox"
+          className="lo-select-menu absolute right-0 mt-2 min-w-[12rem]"
+          style={{
+            background: CARD_BG,
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: CARD_RADIUS, // menu corners track the input card corners
+            zIndex: 60,
+          }}
+        >
+          {options.map(opt => {
+            const active = opt.value === value
+            return (
+              <div
+                role="option"
+                aria-selected={active}
+                key={opt.value}
+                tabIndex={0}
+                className={`lo-select-item ${active ? 'is-selected' : ''}`}
+                onClick={() => pick(opt.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault(); pick(opt.value)
+                  }
+                }}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: '0.5rem',
+                  lineHeight: '1.25rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <span className="truncate">{opt.label}</span>
+                {active ? <span className="ml-2 opacity-80">✓</span> : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type TradeRow = {
   coingecko_id: string
@@ -365,7 +491,7 @@ export default function PortfolioPage() {
     return { total, data: withMeta }
   }, [rows, coinColor])
 
-    const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload || !payload.length) return null
     const p = payload[0]
     const d = p?.payload as { full: string; name: string; value: number; pct: number }
@@ -386,8 +512,7 @@ export default function PortfolioPage() {
     )
   }
 
-
-  // ---------------- Exposure & Risk card (consistent layout for all tabs) ----------------
+  // ---------------- Exposure & Risk card ----------------
   type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq'
   const [view, setView] = useState<ViewMode>('combined')
 
@@ -689,9 +814,9 @@ export default function PortfolioPage() {
     const factor = (blue * 1.00) + (large * 1.20) + (medium * 1.40) + ((small + unranked) * 1.80)
     const level =
       factor <= 1.05 ? ('High' as const)
-      : factor <= 1.25 ? ('Good' as const)
-      : factor <= 1.55 ? ('Fair' as const)
-      : ('Low' as const)
+      : factor <= 1.25 ? ('Moderate' as const)
+      : factor <= 1.55 ? ('High' as const)
+      : ('Very High' as const)
     return { factor, bands: { blue, large, medium, small, unranked }, level }
   }, [JSON.stringify(allocAll.data), JSON.stringify(Array.from(rankMap.entries()))])
 
@@ -705,7 +830,7 @@ export default function PortfolioPage() {
 
   const tailLevel: 'Low'|'Moderate'|'High'|'Very High' = L3_active ? 'High' : 'Low'
 
-  // Map correlation to standard Low/Moderate/High/Very High buckets (for the colored badge)
+  // Map correlation to standard Low/Moderate/High/Very High buckets
   const corrRiskLevel: 'Low'|'Moderate'|'High'|'Very High' =
     corrAgg.avg == null ? 'Moderate'
     : corrAgg.avg < 0.40 ? 'Low'
@@ -720,7 +845,7 @@ export default function PortfolioPage() {
     : liquidityAgg.factor <= 1.55 ? 'High'
     : 'Very High'
 
-  // Combined score + level (includes Corr & Liquidity)
+  // Combined score (includes Corr & Liquidity)
   const L4_mult = corrAgg.factor
   const L5_mult = liquidityAgg.factor
   const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor * L4_mult * L5_mult
@@ -837,7 +962,7 @@ export default function PortfolioPage() {
           <div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
-                           <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Pill active={view==='combined'} onClick={()=>setView('combined')}>Portfolio Risk</Pill>
                 <Pill active={view==='sector'} onClick={()=>setView('sector')}>Structural</Pill>
                 <Pill active={view==='vol'} onClick={()=>setView('vol')}>Volatility</Pill>
@@ -966,7 +1091,7 @@ export default function PortfolioPage() {
                   <LegendRow label="Correlation Factor" value={<span className="font-medium">×{L4_mult.toFixed(2)}</span>} />
                   <LegendRow label="Profile" value={<span className="font-medium">{corrAgg.avg == null ? 'Neutral' : corrAgg.level}</span>} />
                   <LegendRow label="Window" value="90 days · daily (useHistory)" />
-                                 <CardFooter
+                  <CardFooter
                     left={
                       <LevelBadge
                         title="Correlation"
@@ -976,7 +1101,6 @@ export default function PortfolioPage() {
                     }
                     right={<span className="text-slate-400 text-[11px]">Source: new data core /api/price-history via useHistory</span>}
                   />
-
                 </>
               )}
 
@@ -989,7 +1113,7 @@ export default function PortfolioPage() {
                   <LegendRow label="Medium (11–20)" value={fmtPct(liquidityAgg.bands.medium)} />
                   <LegendRow label="Small (21–50)" value={fmtPct(liquidityAgg.bands.small)} />
                   <LegendRow label="Unranked / >50" value={fmtPct(liquidityAgg.bands.unranked)} />
-                                    <CardFooter
+                  <CardFooter
                     left={
                       <LevelBadge
                         title="Liquidity"
@@ -999,14 +1123,12 @@ export default function PortfolioPage() {
                     }
                     right={<span className="text-slate-400 text-[11px]">Proxy for exit depth by cap tier · No extra API; uses snapshot ranks</span>}
                   />
-
                 </>
               )}
 
-              {/* COMBINED — unchanged header/meter; updated bottom 5 tiles */}
+              {/* COMBINED */}
               {view === 'combined' && (
                 <div className="space-y-4">
-                  {/* Header: Big score + level */}
                   <div className="relative rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -1052,73 +1174,39 @@ export default function PortfolioPage() {
                     </div>
                   </div>
 
-                  {/* Bottom 5 tiles (no sublabels; each shows its own colored level) */}
+                  {/* Bottom 5 tiles */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-                    {/* Structural */}
                     <StatTile
                       label="Structural"
                       value={sectorAgg.structuralSum.toFixed(3)}
-                      footer={
-                        <LevelBadge title="Level" level={structuralLevel} value={`${sectorAgg.score}`} />
-                      }
+                      footer={<LevelBadge title="Level" level={structuralLevel} value={`${sectorAgg.score}`} />}
                     />
-
-                    {/* Volatility */}
                     <StatTile
                       label="Volatility"
                       value={`×${L2_mult.toFixed(2)}`}
                       rightHint="σ"
                       footer={
-                        <LevelBadge
-                          title="Level"
-                          level={volatilityLevel}
-                          value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'}
-                        />
+                        <LevelBadge title="Level" level={volatilityLevel} value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
                       }
                     />
-
-                    {/* Tail Factor */}
                     <StatTile
                       label="Tail Factor"
                       value={`×${L3_factor.toFixed(2)}`}
-                      footer={
-                        <LevelBadge
-                          title="Level"
-                          level={tailLevel}
-                          value={L3_active ? 'Active' : 'Inactive'}
-                        />
-                      }
+                      footer={<LevelBadge title="Level" level={tailLevel} value={L3_active ? 'Active' : 'Inactive'} />}
                     />
-
-                    {/* Correlation */}
                     <StatTile
                       label="Correlation"
                       value={`×${L4_mult.toFixed(2)}`}
                       rightHint="ρ"
-                      footer={
-                        <LevelBadge
-                          title="Level"
-                          level={corrRiskLevel}
-                          value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`}
-                        />
-                      }
+                      footer={<LevelBadge title="Level" level={corrRiskLevel} value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`} />}
                     />
-
-                    {/* Liquidity */}
                     <StatTile
                       label="Liquidity"
                       value={`×${L5_mult.toFixed(2)}`}
-                      footer={
-                        <LevelBadge
-                          title="Level"
-                          level={liquidityRiskLevel}
-                          value={''}
-                        />
-                      }
+                      footer={<LevelBadge title="Level" level={liquidityRiskLevel} value={''} />}
                     />
                   </div>
 
-                  {/* Footer */}
                   <CardFooter
                     left={<span className="text-slate-400 text-xs">Combined = L1 × L2 × L3 × L4 × L5</span>}
                     right={
@@ -1160,11 +1248,11 @@ export default function PortfolioPage() {
                       <Cell key={d.name + i} fill={d.color} />
                     ))}
                   </Pie>
-<Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none', zIndex: 60 }} />
+                  <Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none', zIndex: 60 }} />
                 </PieChart>
               </ResponsiveContainer>
 
-<div className="pointer-events-none absolute inset-0 grid place-items-center z-0">
+              <div className="pointer-events-none absolute inset-0 grid place-items-center z-0">
                 <div className="text-center">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
                   <div className="text-lg font-semibold tabular-nums text-slate-100">{fmtCurrency(allocAll.total)}</div>
@@ -1180,55 +1268,52 @@ export default function PortfolioPage() {
         <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-sm font-medium">Holdings</div>
+              <div className="text-md font-medium">Holdings</div>
               <span className="hidden sm:inline text-xs text-slate-400">• {filteredSorted.length} shown</span>
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto">
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-             <input
-  value={query}
-  onChange={(e) => setQuery(e.target.value)}
-  placeholder="Search coin or symbol…"
-  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
-/>
-
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search coin or symbol…"
+                  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
+                />
               </div>
 
-                     <select
+              <SortSelect
                 value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as any)}
-                className="px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs outline-none focus:ring-2 focus:ring-slate-600/40"
-                aria-label="Sort by"
+                onChange={(v) => setSortKey(v as any)}
+                ariaLabel="Sort by"
                 title="Sort by"
+                options={[
+                  { value: 'value',    label: 'Sort: Value' },
+                  { value: 'total',    label: 'Sort: Total P&L' },
+                  { value: 'unreal',   label: 'Sort: Unrealized' },
+                  { value: 'realized', label: 'Sort: Realized' },
+                  { value: 'invested', label: 'Sort: Money Invested' },
+                  { value: 'qty',      label: 'Sort: Qty' },
+                  { value: 'avg',      label: 'Sort: Avg Cost' },
+                  { value: 'name',     label: 'Sort: Name' },
+                ]}
+              />
+
+              <button
+                type="button"
+                onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
+                title={`Direction: ${sortDir}`}
               >
-                <option value="value">Sort: Value</option>
-                <option value="total">Sort: Total P&L</option>
-                <option value="unreal">Sort: Unrealized</option>
-                <option value="realized">Sort: Realized</option>
-                <option value="invested">Sort: Money Invested</option>
-                <option value="qty">Sort: Qty</option>
-                <option value="avg">Sort: Avg Cost</option>
-                <option value="name">Sort: Name</option>
-              </select>
-
-
-          <button
-  type="button"
-  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-  className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
-  title={`Direction: ${sortDir}`}
->
-  <ArrowUpDown className="h-4 w-4" />
-  {sortDir.toUpperCase()}
-</button>
-
+                <ArrowUpDown className="h-4 w-4" />
+                {sortDir.toUpperCase()}
+              </button>
 
               <button
                 type="button"
                 onClick={() => setDense(d => !d)}
-  className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
+                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
                 title={dense ? 'Comfortable rows' : 'Compact rows'}
               >
                 {dense ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
