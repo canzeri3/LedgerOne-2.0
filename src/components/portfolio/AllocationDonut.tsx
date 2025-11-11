@@ -53,25 +53,25 @@ export default function AllocationDonut({ data }: { data: Datum[] }) {
 
         {/* Smaller, neutral-grey tooltip (not white) for better contrast */}
         <Tooltip
-          wrapperStyle={{ outline: 'none' }}
+          wrapperStyle={{ outline: 'none', zIndex: 60 }}
           contentStyle={{
-            background: 'rgba(229,231,235,0.96)',           // gray-200 w/ slight opacity
-            color: '#0f172a',                                // slate-900 text for crisp legibility
-            border: '1px solid rgba(148,163,184,0.5)',       // slate-400 border
+            background: 'rgb(24,25,27)',
+            color: '#e5e7eb',
+            border: '1px solid rgb(42,43,45)',
             borderRadius: 8,
-            boxShadow: '0 6px 18px rgba(2,6,23,0.18)',
-            padding: '6px 8px',                              // smaller padding
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            padding: '8px 10px',
           }}
           labelStyle={{
-            color: '#0f172a',
+            color: '#e5e7eb',
             fontWeight: 600,
-            fontSize: 11,                                    // smaller text
+            fontSize: 11,
             marginBottom: 2,
           }}
           itemStyle={{
-            color: '#0f172a',
+            color: '#e5e7eb',
             fontWeight: 500,
-            fontSize: 11,                                    // smaller text
+            fontSize: 11,
             lineHeight: '14px',
             margin: 0,
           }}
@@ -84,6 +84,8 @@ export default function AllocationDonut({ data }: { data: Datum[] }) {
           }}
           labelFormatter={() => 'Allocation'}
         />
+
+
       </PieChart>
     </ResponsiveContainer>
   )

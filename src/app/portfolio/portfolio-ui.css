@@ -144,16 +144,17 @@
   }
   
   /* Inputs: thin glow focus, consistent radius */
-  [data-portfolio-page] input[type="text"],
-  [data-portfolio-page] input[type="number"],
-  [data-portfolio-page] input[type="file"],
-  [data-portfolio-page] select,
-  [data-portfolio-page] textarea {
-    border-radius: 0.75rem;
-    border: 1px solid var(--lo-card-border);
-    background: rgba(15, 23, 42, 0.30);
-    color: var(--lo-text);
-  }
+[data-portfolio-page] input[type="text"],
+[data-portfolio-page] input[type="number"],
+[data-portfolio-page] input[type="file"],
+[data-portfolio-page] select,
+[data-portfolio-page] textarea {
+  border-radius: 1 rem;
+  border: 1px solid rgb(42,43,45);
+  background: rgb(42,43,44);          /* <-- exact color you want */
+  color: var(--lo-text);
+}
+
   [data-portfolio-page] input:focus,
   [data-portfolio-page] select:focus,
   [data-portfolio-page] textarea:focus {

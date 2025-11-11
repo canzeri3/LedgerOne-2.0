@@ -365,18 +365,27 @@ export default function PortfolioPage() {
     return { total, data: withMeta }
   }, [rows, coinColor])
 
-  const CustomTooltip = ({ active, payload }: any) => {
+    const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload || !payload.length) return null
     const p = payload[0]
     const d = p?.payload as { full: string; name: string; value: number; pct: number }
     return (
-      <div className="rounded-md bg-slate-900/90 text-slate-100 text-xs p-2 shadow-xl">
-        <div className="font-medium">{d.full}</div>
-        <div className="text-[11px] text-slate-300">{d.name}</div>
-        <div className="mt-0.5 tabular-nums">{fmtCurrency(d.value)} · {fmtPct(d.pct)}</div>
+      <div className="rounded-md bg-[rgb(24,25,27)] text-slate-100 shadow-xl border border-[rgb(42,43,45)] px-3 py-2 min-w-[180px]">
+        {/* Primary line: Name + % */}
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="font-semibold text-sm leading-tight truncate">{d.full ?? d.name}</div>
+          <div className="font-bold tabular-nums text-base">{fmtPct(d.pct)}</div>
+        </div>
+
+        {/* Secondary info: value and symbol */}
+        <div className="mt-1 text-[11px] text-slate-300 flex items-center justify-between">
+          <span className="tabular-nums">{fmtCurrency(d.value)}</span>
+          <span className="uppercase tracking-wide">{d.name}</span>
+        </div>
       </div>
     )
   }
+
 
   // ---------------- Exposure & Risk card (consistent layout for all tabs) ----------------
   type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq'
@@ -484,7 +493,7 @@ export default function PortfolioPage() {
       : 'text-[rgba(189,45,50,1)]'
     return (
       <div className="text-xs">
-        <span className="text-slate-400 mr-2">Risk</span>
+        <span className="text-slate-400 mr-2">Structure</span>
         <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
         <span className="text-slate-400"> · </span>
         <span className="tabular-nums">{score}</span>
@@ -828,14 +837,14 @@ export default function PortfolioPage() {
           <div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
-              <div className="flex items-center gap-2">
-                <Pill active={view==='combined'} onClick={()=>setView('combined')}>Combined Risk</Pill>
+                           <div className="flex items-center gap-2">
+                <Pill active={view==='combined'} onClick={()=>setView('combined')}>Portfolio Risk</Pill>
                 <Pill active={view==='sector'} onClick={()=>setView('sector')}>Structural</Pill>
-                <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
                 <Pill active={view==='vol'} onClick={()=>setView('vol')}>Volatility</Pill>
                 <Pill active={view==='tail'} onClick={()=>setView('tail')}>Tail Risk</Pill>
                 <Pill active={view==='corr'} onClick={()=>setView('corr')}>Correlation</Pill>
                 <Pill active={view==='liq'} onClick={()=>setView('liq')}>Liquidity</Pill>
+                <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
               </div>
             </div>
 
@@ -957,10 +966,17 @@ export default function PortfolioPage() {
                   <LegendRow label="Correlation Factor" value={<span className="font-medium">×{L4_mult.toFixed(2)}</span>} />
                   <LegendRow label="Profile" value={<span className="font-medium">{corrAgg.avg == null ? 'Neutral' : corrAgg.level}</span>} />
                   <LegendRow label="Window" value="90 days · daily (useHistory)" />
-                  <CardFooter
-                    left={<span className="text-slate-400 text-xs">Lower correlation improves diversification (0.85 → ×0.85)</span>}
+                                 <CardFooter
+                    left={
+                      <LevelBadge
+                        title="Correlation"
+                        level={corrRiskLevel}
+                        value={`×${L4_mult.toFixed(2)}`}
+                      />
+                    }
                     right={<span className="text-slate-400 text-[11px]">Source: new data core /api/price-history via useHistory</span>}
                   />
+
                 </>
               )}
 
@@ -973,10 +989,17 @@ export default function PortfolioPage() {
                   <LegendRow label="Medium (11–20)" value={fmtPct(liquidityAgg.bands.medium)} />
                   <LegendRow label="Small (21–50)" value={fmtPct(liquidityAgg.bands.small)} />
                   <LegendRow label="Unranked / >50" value={fmtPct(liquidityAgg.bands.unranked)} />
-                  <CardFooter
-                    left={<span className="text-slate-400 text-xs">Proxy for exit depth by cap tier</span>}
-                    right={<span className="text-slate-400 text-[11px]">No extra API; uses snapshot ranks</span>}
+                                    <CardFooter
+                    left={
+                      <LevelBadge
+                        title="Liquidity"
+                        level={liquidityRiskLevel}
+                        value={`×${L5_mult.toFixed(2)}`}
+                      />
+                    }
+                    right={<span className="text-slate-400 text-[11px]">Proxy for exit depth by cap tier · No extra API; uses snapshot ranks</span>}
                   />
+
                 </>
               )}
 
@@ -1137,11 +1160,11 @@ export default function PortfolioPage() {
                       <Cell key={d.name + i} fill={d.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none' }} />
+<Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none', zIndex: 60 }} />
                 </PieChart>
               </ResponsiveContainer>
 
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
+<div className="pointer-events-none absolute inset-0 grid place-items-center z-0">
                 <div className="text-center">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
                   <div className="text-lg font-semibold tabular-nums text-slate-100">{fmtCurrency(allocAll.total)}</div>
@@ -1164,18 +1187,19 @@ export default function PortfolioPage() {
             <div className="flex items-center gap-2 w-full md:w-auto">
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search coin or symbol…"
-                  className="w-full pl-8 pr-2 py-2 rounded-md border border-slate-700/40 bg-slate-900/40 text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
-                />
+             <input
+  value={query}
+  onChange={(e) => setQuery(e.target.value)}
+  placeholder="Search coin or symbol…"
+  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
+/>
+
               </div>
 
-              <select
+                     <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as any)}
-                className="px-2 py-2 rounded-md border border-slate-700/40 bg-slate-900/40 text-xs"
+                className="px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs outline-none focus:ring-2 focus:ring-slate-600/40"
                 aria-label="Sort by"
                 title="Sort by"
               >
@@ -1189,20 +1213,22 @@ export default function PortfolioPage() {
                 <option value="name">Sort: Name</option>
               </select>
 
-              <button
-                type="button"
-                onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-slate-700/40 bg-slate-900/40 text-xs hover:bg-slate-900/60"
-                title={`Direction: ${sortDir}`}
-              >
-                <ArrowUpDown className="h-4 w-4" />
-                {sortDir.toUpperCase()}
-              </button>
+
+          <button
+  type="button"
+  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+  className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
+  title={`Direction: ${sortDir}`}
+>
+  <ArrowUpDown className="h-4 w-4" />
+  {sortDir.toUpperCase()}
+</button>
+
 
               <button
                 type="button"
                 onClick={() => setDense(d => !d)}
-                className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-slate-700/40 bg-slate-900/40 text-xs hover:bg-slate-900/60"
+  className="inline-flex items-center gap-1 px-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-xs hover:bg-[rgb(42,43,44)]/90"
                 title={dense ? 'Comfortable rows' : 'Compact rows'}
               >
                 {dense ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
