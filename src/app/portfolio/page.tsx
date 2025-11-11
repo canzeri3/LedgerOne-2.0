@@ -1221,7 +1221,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* RIGHT: Allocation donut */}
-        <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
+<div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="text-sm font-medium">Allocation by Asset</div>
             <span className="text-[11px] text-slate-400">All assets</span>
@@ -1263,15 +1263,14 @@ export default function PortfolioPage() {
       </div>
 
       {/* HOLDINGS */}
-      <div className="rounded-md bg-[rgb(28,29,31)] overflow-hidden">
-        <div className="px-4 py-3">
+<div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">        <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <div className="text-lg font-medium">Holdings</div>
               <span className="hidden sm:inline text-xs text-slate-400">• {filteredSorted.length} shown</span>
             </div>
 
-            <div className="flex items-center gap-2 w-full md:w-auto">
+<div className="relative z-[70] flex items-center gap-2 w-full md:w-auto lo-dropdown-layer">
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
