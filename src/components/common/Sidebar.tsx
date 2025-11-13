@@ -14,7 +14,9 @@ import {
   ScrollText,
   FileSpreadsheet,
   Coins as CoinsIcon,
+  HelpCircle,
 } from 'lucide-react'
+
 import { useFavorites } from '@/lib/useFavorites'
 
 type Coin = {
@@ -149,6 +151,13 @@ export default function Sidebar() {
             />
           </li>
         </ul>
+          <li>
+            <NavLink
+              href="/how-to"
+              label="How to Use"
+              icon={<HelpCircle className="h-4 w-4 opacity-80" />}
+            />
+          </li>
 
         {/* Coins dropdown */}
         <div className="mt-6">

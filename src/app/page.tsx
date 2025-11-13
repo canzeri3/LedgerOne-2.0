@@ -846,11 +846,16 @@ export default function Page() {
               <span className="text-slate-200 text-base md:text-lg font-medium">y</span>
             </div>
           </div>
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
+               <Link
+            href="/how-to"
+            prefetch
+            className="rounded-md border border-transparent ring-0 focus:ring-2 focus:ring-[rgba(51,65,85,0.35)] focus:outline-none bg-[rgb(28,29,31)] hover:bg-[rgba(28,29,31,0.9)] transition block"
+          >
             <div className="p-3 h-16 flex items-center justify-center">
               <span className="text-slate-200 text-base md:text-lg font-medium">How to Use</span>
             </div>
-          </div>
+          </Link>
+
         </div>
       </div>
 
