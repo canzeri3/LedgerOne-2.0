@@ -3,10 +3,17 @@
 import { SelectHTMLAttributes } from 'react'
 import clsx from 'clsx'
 
-type Props = SelectHTMLAttributes<HTMLSelectElement> & {
+import React from 'react'
+
+type BaseProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'>
+
+type Props = BaseProps & {
   size?: 'sm' | 'md'
   fullWidth?: boolean
 }
+
+
+
 
 export default function Select({ className, size = 'md', fullWidth = false, ...props }: Props) {
   const sizes = {

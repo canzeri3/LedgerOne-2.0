@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 
 // create a server-side Supabase client that reads/writes the auth cookies
 function getServerSupabase() {
-  const cookieStore = cookies()
+  const cookieStore: any = cookies()
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -26,6 +26,7 @@ function getServerSupabase() {
     }
   )
 }
+
 
 // helper: sort level indices by price desc (shallow -> deep)
 function byPriceDescIdx(levels: BuyLevel[]) {

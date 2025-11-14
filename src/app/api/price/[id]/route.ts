@@ -7,8 +7,10 @@ import { logInfo } from "../../../../server/lib/metrics";
 
 export const revalidate = 0;
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const id = (params.id || "").toLowerCase();
+export async function GET(
+  req: Request,
+  { params }: any
+) {  const id = (params.id || "").toLowerCase();
 
   // Log adapter usage (see dev terminal or Vercel logs)
   logInfo("adapter_price_hit", { id });

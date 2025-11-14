@@ -14,11 +14,12 @@ type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 
 // Build an absolute base URL for server-side fetches (works locally and in prod)
 function getBaseUrl() {
-  const h = headers()
+  const h: any = headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? 'http'
   return `${proto}://${host}`
 }
+
 
 export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
   const { id } = use(params)

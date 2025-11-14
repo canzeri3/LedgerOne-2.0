@@ -263,10 +263,11 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     if (!planner) return
     const t = planner.top_price ?? ''
     const b = (planner.budget_usd ?? planner.total_budget) ?? ''
-    setTop(t === '' ? '' : formatWithCommas(String(t)))
+    setTop((t as any) === '' ? '' : formatWithCommas(String(t)))
     setBudget(b === '' ? '' : formatWithCommas(String(b)))
     setDepth(String(planner.ladder_depth) === '90' ? '90' : '70')
     setGrowth(String(planner.growth_per_level ?? '1.25'))
+
   }, [planner?.id])
 
   const validate = () => {

@@ -139,10 +139,19 @@ export default function TradesPanel({ id }: Props) {
   const qtyRef = useRef<HTMLInputElement>(null)
   const feeRef = useRef<HTMLInputElement>(null)
 
-  // live-format handlers
-  const onPriceChange = makeLiveNumericChangeHandler(priceRef, setPrice)
-  const onQtyChange = makeLiveNumericChangeHandler(qtyRef, setQty)
-  const onFeeChange = makeLiveNumericChangeHandler(feeRef, setFee)
+// live-format handlers
+const onPriceChange = makeLiveNumericChangeHandler(
+  priceRef as React.RefObject<HTMLInputElement>,
+  setPrice,
+)
+const onQtyChange = makeLiveNumericChangeHandler(
+  qtyRef as React.RefObject<HTMLInputElement>,
+  setQty,
+)
+const onFeeChange = makeLiveNumericChangeHandler(
+  feeRef as React.RefObject<HTMLInputElement>,
+  setFee,
+)
 
   // planners
   const [activeBuy, setActiveBuy] = useState<BuyPlanner | null>(null)

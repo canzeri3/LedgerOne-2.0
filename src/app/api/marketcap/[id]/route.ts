@@ -11,7 +11,7 @@ async function fetchJson(url: string) {
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: any
 ) {
   try {
     const u = new URL(req.url)

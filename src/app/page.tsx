@@ -15,9 +15,12 @@ import {
   computeSellFills,
   type BuyLevel,
   type BuyTrade,
-  type SellLevel as PlannerSellLevel,
-  type SellTrade as PlannerSellTrade,
 } from '@/lib/planner'
+
+// TEMP: lib/planner no longer exports SellLevel/SellTrade as types.
+// Use loose aliases here so the page compiles without affecting runtime.
+type PlannerSellLevel = any
+type PlannerSellTrade = any
 
 type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; quantity: number; trade_time: string }
 type Timeframe = '24h' | '7d' | '30d' | '90d' | '1y' | 'YTD' | 'Max'

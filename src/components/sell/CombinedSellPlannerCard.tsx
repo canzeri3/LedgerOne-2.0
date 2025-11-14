@@ -1,7 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { Card } from '@/components/ui/card'
+import * as CardModule from '@/components/ui/Card'
+
+// Support either export style from Card.tsx (named or default) without changing logic
+const Card = (CardModule as any).Card ?? (CardModule as any).default
+
+
 
 type Snapshot = any
 

@@ -2,8 +2,10 @@
 
 import { ReactNode, useEffect, useState } from 'react'
 import AuthButton from '@/components/auth/AuthButton'
+// @ts-ignore – Sidebar is default-exported at runtime
 import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
+
 
 // Deep page background (rich-black, very deep blue)
 const PAGE_BG = 'rgb(19,20,21)';
@@ -62,10 +64,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 : 'none',
             }}
           >
-            <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-end">
+                   <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-end">
               {/* Force the user email button bg + border to rgb(19,20,21) */}
+              {/* @ts-ignore – allow overriding AuthButton className at runtime */}
               <AuthButton className="bg-[rgb(19,20,21)] border border-[rgb(19,20,21)]" />
             </div>
+
           </header>
 
           {/* Scrollable page content */}

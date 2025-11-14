@@ -195,7 +195,10 @@ export default function CoinStatsGrid({ id }: Props) {
     }
   )
 
-  const stats = useMemo(() => computeStats(trades ?? [], livePrice), [trades, livePrice])
+const stats = useMemo(
+  () => computeStats((trades ?? []) as any, livePrice),
+  [trades, livePrice]
+)
 
   const unrealAccent = stats.unrealizedPL > 0 ? 'pos' : stats.unrealizedPL < 0 ? 'neg' : 'neutral'
   const realAccent = stats.realizedPL > 0 ? 'pos' : stats.realizedPL < 0 ? 'neg' : 'neutral'

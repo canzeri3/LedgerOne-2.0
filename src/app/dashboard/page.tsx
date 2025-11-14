@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
-import PortfolioGrowthChart, { type Point } from '@/components/dashboard/PortfolioGrowthChart'
+import PortfolioGrowthChart from '@/components/dashboard/PortfolioGrowthChart'
 
 type TradeLite = { coingecko_id: string; side: 'buy'|'sell'; quantity: number; trade_time: string }
 type Timeframe = '24h'|'7d'|'30d'|'90d'|'1y'|'YTD'|'Max'

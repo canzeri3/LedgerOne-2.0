@@ -223,7 +223,7 @@ function CoinLogo({ symbol, name }: { symbol: string; name: string }) {
 
 export default function CoinOverview({ id, name, symbol }: Props) {
   // Favorites (optimistic)
-  const { favorites, toggle, isLoading: favLoading } = useFavorites()
+const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
   const isFavFromStore = useMemo(
     () => !!favorites?.some((f: any) => f?.coingecko_id === id || f?.id === id || f?.slug === id),
     [favorites, id]

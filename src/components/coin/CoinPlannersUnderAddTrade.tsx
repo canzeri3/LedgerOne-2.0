@@ -281,7 +281,7 @@ export default function CoinPlannersUnderAddTrade() {
   }
 
   /** Helper: returns true when the direct child section + header + body exist */
-  function hasCardStructure(host: HTMLElement | null): section is HTMLElement {
+  function hasCardStructure(host: HTMLElement | null): host is HTMLElement {
     if (!host) return false as any
     const section = host.querySelector(':scope > section') as HTMLElement | null
     if (!section) return false as any

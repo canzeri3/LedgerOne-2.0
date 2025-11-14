@@ -117,10 +117,11 @@ export default function SellPlannerCombinedCardPlanner({
     if (attrEl) return attrEl.getAttribute('data-coingecko-id')
     if (typeof document !== 'undefined') {
       const metaEl = document.querySelector('meta[name="coingecko-id"]') as HTMLMetaElement | null
-      return attrEl?.getAttribute('data-coingecko-id') || metaEl?.content || null
+      return (attrEl as any)?.getAttribute('data-coingecko-id') || metaEl?.content || null
     }
     return null
   }, [coinIdFromPath])
+
 
   const { data: priceData } = useSWR(
     coinId ? `/api/price/${coinId}` : null,

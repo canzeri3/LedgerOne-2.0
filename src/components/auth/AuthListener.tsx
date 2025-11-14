@@ -20,10 +20,11 @@ export default function AuthListener() {
   useEffect(() => {
     if (!supabase) return
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        try {
-          await fetch('/auth/callback', {
-            method: 'POST',
+  async (_event: any, session: any) => {
+    try {
+      await fetch('/auth/callback', {
+        method: 'POST',
+
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ event: _event, session }),
             keepalive: true,

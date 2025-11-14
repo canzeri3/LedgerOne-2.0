@@ -83,12 +83,18 @@ export default function SellPlannerCombinedCard({
       ? document.querySelector('[data-coingecko-id]')
       : null
     if (attrEl) return attrEl.getAttribute('data-coingecko-id')
-    if (typeof document !== 'undefined') {
+      if (typeof document !== 'undefined') {
       const metaEl = document.querySelector('meta[name="coingecko-id"]') as HTMLMetaElement | null
-      return attrEl?.getAttribute('data-coingecko-id') || metaEl?.content || null
+      const attrEl = document.querySelector('[data-coingecko-id]') as HTMLElement | null
+
+      const fromAttr = attrEl?.getAttribute('data-coingecko-id')
+      if (fromAttr) return fromAttr
+      if (metaEl?.content) return metaEl.content
+      return null
     }
     return null
   }, [coinIdFromPath])
+
 
   const { data: priceData } = useSWR(
     coinId ? `/api/price/${coinId}` : null,
