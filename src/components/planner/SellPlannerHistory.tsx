@@ -7,6 +7,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import ProgressBar from '@/components/common/ProgressBar'
 import { useLivePrice } from '@/lib/useLivePrice'
+import { usePrice } from '@/lib/dataCore'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -61,6 +62,13 @@ function num(n: any): number {
 export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
   useLivePrice(coingeckoId, 15000)
+
+  // NEW: live price from NEW data core (for row highlight)
+  const { row: priceRow } = usePrice(coingeckoId, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
+  const livePrice = priceRow?.price ?? null
 
   // Frozen (history) planners for this coin
   const { data: planners } = useSWR<FrozenSellPlanner[]>(
@@ -215,8 +223,22 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
                 </tr>
               </thead>
               <tbody>
-                {v.rows.map((r, i) => {
-                  const rowClass = r.pct >= 0.97 ? 'text-[rgb(121,171,89)]' : ''
+                        {v.rows.map((r, i) => {
+                  const green = r.pct >= 0.97
+                  const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+                  // YELLOW when live price is anywhere from 1.5% below the level or anything above it
+                  const yellow =
+                    !green &&
+                    hasLive &&
+                    r.targetPrice > 0 &&
+                    (livePrice as number) >= r.targetPrice * 0.985
+
+                  const rowClass = green
+                    ? 'text-[rgb(121,171,89)]'
+                    : yellow
+                    ? 'text-[rgb(207,180,45)]'
+                    : ''
+
                   return (
                     <tr key={i} className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}>
                       <td className="px-3 py-2">{r.level}</td>

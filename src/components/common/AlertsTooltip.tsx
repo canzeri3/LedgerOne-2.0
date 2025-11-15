@@ -37,6 +37,7 @@ type TradeLite = {
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 
 type BuyPlannerRow = {
+  id: string
   coingecko_id: string
   top_price: number | null
   budget_usd: number | null
@@ -53,6 +54,7 @@ type TradeRow = {
   quantity: number
   fee: number | null
   trade_time: string
+  buy_planner_id: string | null
   sell_planner_id: string | null
 }
 
@@ -102,7 +104,7 @@ export function AlertsTooltip({
       try {
         const { data, error } = await supabaseBrowser
           .from('buy_planners')
-          .select('coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
+.select('id,coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,is_active,user_id')
           .eq('user_id', user!.id)
           .eq('is_active', true)
         if (error) throw error
@@ -213,9 +215,13 @@ export function AlertsTooltip({
   const sym = (cid: string) =>
     coins?.find(c => c.coingecko_id === cid)?.symbol?.toUpperCase() ?? cid.toUpperCase()
 
+  // Canonicalize coin IDs so alerts work even if DB has casing/whitespace quirks
+  const canonId = (id: string | null | undefined) =>
+    String(id ?? '').trim().toLowerCase()
+
   type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
 
-  // ⬇ rich trades to compute fills exactly like Portfolio (fail-soft)
+    // ⬇ rich trades to compute fills exactly like Portfolio (fail-soft)
   type TradeRow = {
     coingecko_id: string
     side: 'buy' | 'sell'
@@ -223,6 +229,7 @@ export function AlertsTooltip({
     quantity: number
     fee: number | null
     trade_time: string
+    buy_planner_id: string | null
     sell_planner_id: string | null
   }
 
@@ -232,7 +239,7 @@ export function AlertsTooltip({
       try {
         const { data, error } = await supabaseBrowser
           .from('trades')
-          .select('coingecko_id,side,price,quantity,fee,trade_time,sell_planner_id')
+.select('coingecko_id,side,price,quantity,fee,trade_time,buy_planner_id,sell_planner_id')
           .eq('user_id', user!.id)
           .order('trade_time', { ascending: true })
         if (error) throw error
@@ -266,7 +273,8 @@ export function AlertsTooltip({
     // BUY alerts
     for (const p of activeBuyPlanners ?? []) {
       const cid = p.coingecko_id
-      const live = pricesMap instanceof Map ? (pricesMap.get(cid.toLowerCase()) ?? 0) : 0
+      const cidCanon = canonId(cid)
+      const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
       if (!(live > 0)) continue
 
       const top = Number(p.top_price ?? 0)
@@ -277,7 +285,7 @@ export function AlertsTooltip({
 
       const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       const buys: BuyTrade[] = (tradesByCoinRich.get(cid) ?? [])
-        .filter(t => t.side === 'buy')
+        .filter(t => t.side === 'buy' && t.buy_planner_id === p.id)
         .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
 
       const fills = computeBuyFills(plan, buys, 0)
@@ -285,7 +293,7 @@ export function AlertsTooltip({
       const hit = plan.some((lv, i) => {
         const lvl = Number(lv.price)
         if (!(lvl > 0)) return false
-        const within = live <= lvl * 1.03
+        const within = live <= lvl * 1.015
         const notFilled = (fills.fillPct?.[i] ?? 0) < 0.97
         return within && notFilled
       })
@@ -302,7 +310,8 @@ export function AlertsTooltip({
 
     for (const sp of activeSellPlanners ?? []) {
       const cid = sp.coingecko_id
-      const live = pricesMap instanceof Map ? (pricesMap.get(cid.toLowerCase()) ?? 0) : 0
+      const cidCanon = canonId(cid)
+      const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
       if (!(live > 0)) continue
 
       const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a,b)=>a.level-b.level)

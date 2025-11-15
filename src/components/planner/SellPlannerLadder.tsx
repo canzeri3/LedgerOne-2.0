@@ -197,7 +197,12 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
             {rows.map((r, i) => {
               const green = r.pct >= 0.97
               const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
-              const yellow = !green && hasLive && r.targetPrice > 0 && (livePrice as number) >= r.targetPrice
+              // YELLOW when live price is anywhere from 1.5% below the level or anything above it
+              const yellow =
+                !green &&
+                hasLive &&
+                r.targetPrice > 0 &&
+                (livePrice as number) >= r.targetPrice * 0.985
 
               const rowClass = green
                 ? 'text-[rgb(121,171,89)]'

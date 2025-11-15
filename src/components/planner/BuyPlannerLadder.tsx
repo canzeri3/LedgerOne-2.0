@@ -155,13 +155,14 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
               // GREEN when ≥98% filled
               const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
 
-              // YELLOW when live price is <= the BUY level
+              // YELLOW when live price is <= the BUY level,
+              // plus a small 1.5% buffer above the level.
               const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
               const yellow =
                 !full &&
                 hasLivePrice &&
                 Number(lv.price) > 0 &&
-                ((livePrice as number) <= Number(lv.price))
+                (livePrice as number) <= Number(lv.price) * 1.015
 
               const rowCls = full ? 'text-[rgb(115,171,84)]' : yellow ? 'text-[rgb(207,180,45)]' : ''
 
