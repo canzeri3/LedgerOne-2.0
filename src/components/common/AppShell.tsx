@@ -9,7 +9,7 @@ import AuthButton from '@/components/auth/AuthButton'
 // @ts-ignore
 import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
-import { AlertsTooltip } from '@/app/page'
+import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 
 // Deep page background (rich-black, very deep blue)
 const PAGE_BG = 'rgb(19,20,21)'
