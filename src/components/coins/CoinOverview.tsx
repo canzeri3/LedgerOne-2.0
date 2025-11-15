@@ -72,8 +72,16 @@ function percentNumberToFraction(x: number | null | undefined): number | null {
   if (x == null) return null
   const v = Number(x)
   if (!Number.isFinite(v)) return null
-  return Math.abs(v) <= 1 ? v : v / 100
+
+  // New data core contract:
+  // - pct24h/change_24h_pct is a PERCENT number (e.g. 0.21 => 0.21%)
+  //   and MUST be converted to a FRACTION for fmtPct.
+  //   0.21   => 0.0021  (0.21%)
+  //   2.14   => 0.0214  (2.14%)
+  //   -5.82  => -0.0582 (-5.82%)
+  return v / 100
 }
+
 
 function fractionFromHistory(hist: HistoryPoint[] | null): number | null {
   if (!hist || hist.length < 2) return null

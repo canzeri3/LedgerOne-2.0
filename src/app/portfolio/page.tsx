@@ -265,16 +265,31 @@ export default function PortfolioPage() {
         const priceMap: Record<string, number> = {}
         const pctMap: Record<string, number | null> = {}
 
-        for (const r of j.rows ?? []) {
+               for (const r of j.rows ?? []) {
           const id = r.id
-          if (typeof r.price === 'number') priceMap[id] = r.price
-          if (r.pct24h == null) {
-            pctMap[id] = null
-          } else {
+          if (!id) continue
+
+          // Live price (straight from data core)
+          if (r.price != null && Number.isFinite(Number(r.price))) {
+            priceMap[id] = Number(r.price)
+          }
+
+          // 24h pct from NEW data core:
+          // - /api/prices returns pct24h as a PERCENT number (×100),
+          //   e.g.  3.2   => 3.2%   move
+          //         0.21  => 0.21%  move
+          //         0.005 => 0.005% move (very small)
+          //
+          // Our downstream math (prev = last / (1 + chgPct)) expects a FRACTION of 1.0:
+          //   0.032  => 3.2%
+          //   0.0021 => 0.21%
+          //   0.00005 => 0.005%
+          if (r.pct24h != null && Number.isFinite(Number(r.pct24h))) {
             const raw = Number(r.pct24h)
-            pctMap[id] = Math.abs(raw) > 1 ? raw / 100 : raw
+            pctMap[id] = raw / 100
           }
         }
+
 
         if (!cancelled) {
           setPrices(priceMap)
