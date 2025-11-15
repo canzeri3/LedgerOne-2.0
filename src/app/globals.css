@@ -217,3 +217,88 @@ html, body {
     border-radius: 0.25rem !important; /* ~4px */
   }
 }
+/* ── Header alerts bell – final header-only styling ────────────────────── */
+/* This affects ONLY the AlertsTooltip instance wrapped in data-header-alerts */
+
+/* Make the wrapper the same size as the settings icon (h-9 w-9) */
+[data-header-alerts] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;   /* 36px */
+  height: 2.25rem;  /* 36px */
+}
+
+/* The inner div (wrapRef container) should also fill this box */
+[data-header-alerts] > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Reset the button from a pill into a bare icon trigger */
+[data-header-alerts] button {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  cursor: pointer;
+}
+
+/* Hide the gradient overlay div inside the button */
+[data-header-alerts] button > div {
+  display: none !important;
+}
+
+/* Inside the button we now have:
+   button
+     > span.flex
+         > svg      (bell icon)
+         > span     ("Alerts")
+         > span     (CountPill)
+   We want ONLY the svg, so hide the nested spans under that flex span. */
+[data-header-alerts] button span span {
+  display: none !important;
+}
+
+/* Bell icon – base state (no active alerts) */
+[data-header-alerts] svg {
+  width: 1.1rem;  /* tweak if you want slightly larger/smaller */
+  height: 1.1rem;
+  display: block;
+  color: rgb(226, 232, 240); /* soft grey like other header icons */
+}
+
+/* When there is at least one alert, AppShell adds .header-has-alerts */
+[data-header-alerts].header-has-alerts svg {
+  color: rgb(250, 204, 21); /* yellow bell when active */
+}
+
+/* Subtle hover emphasis */
+[data-header-alerts] button:hover svg {
+  filter: brightness(1.1);
+}
+/* ── Header alerts panel – position under the bell (header only) ──────── */
+/* Only affects the AlertsTooltip instance inside data-header-alerts */
+
+[data-header-alerts] [role="dialog"][aria-label="Alerts"] {
+  /* Anchor the panel to the bottom of the bell wrapper */
+  top: 100% !important;
+  right: auto !important;
+  left: 50% !important;
+  transform: translateX(-50%);  /* center under the bell */
+
+  /* mt-2 from the existing class still adds a small gap; keep it */
+}

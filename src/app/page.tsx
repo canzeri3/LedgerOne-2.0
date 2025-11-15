@@ -262,7 +262,7 @@ function ScrollingNumericText({ text }: { text: string }) {
   )
 }
 
-function AlertsTooltip({
+export function AlertsTooltip({
   coinIds,
   tradesByCoin, // (kept for prop compatibility; not used for fills)
   coins,
@@ -271,6 +271,7 @@ function AlertsTooltip({
   tradesByCoin: Map<string, TradeLite[]>
   coins: CoinMeta[] | undefined
 }) {
+
   const { user } = useUser()
   const router = useRouter()
 

@@ -15,7 +15,9 @@ import {
   FileSpreadsheet,
   Coins as CoinsIcon,
   HelpCircle,
+  Settings as SettingsIcon,
 } from 'lucide-react'
+
 
 import { useFavorites } from '@/lib/useFavorites'
 
@@ -112,7 +114,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="px-2 py-3">
+            <nav className="px-2 py-3">
         {/* Primary nav with icons on the left */}
         <ul className="space-y-1">
           <li>
@@ -132,7 +134,7 @@ export default function Sidebar() {
           <li>
             <NavLink
               href="/portfolio"
-              label="Portfolio"
+              label="Portfolio / Risk"
               icon={<Wallet className="h-4 w-4 opacity-80" />}
             />
           </li>
@@ -150,6 +152,13 @@ export default function Sidebar() {
               icon={<FileSpreadsheet className="h-4 w-4 opacity-80" />}
             />
           </li>
+          <li>
+            <NavLink
+              href="/settings"
+              label="Settings"
+              icon={<SettingsIcon className="h-4 w-4 opacity-80" />}
+            />
+          </li>
         </ul>
           <li>
             <NavLink
@@ -158,6 +167,7 @@ export default function Sidebar() {
               icon={<HelpCircle className="h-4 w-4 opacity-80" />}
             />
           </li>
+
 
         {/* Coins dropdown */}
         <div className="mt-6">

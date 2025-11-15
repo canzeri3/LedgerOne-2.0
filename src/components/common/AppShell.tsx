@@ -1,12 +1,15 @@
 'use client'
 
 import { ReactNode, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Settings as SettingsIcon } from 'lucide-react'
 import AuthButton from '@/components/auth/AuthButton'
 // TS NOTE: Sidebar is default-exported at runtime but TS complains about the default export.
 // We explicitly tell TS to ignore this type check and keep the runtime import as-is.
 // @ts-ignore
 import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
+import { AlertsTooltip } from '@/app/page'
 
 // Deep page background (rich-black, very deep blue)
 const PAGE_BG = 'rgb(19,20,21)'
@@ -20,12 +23,39 @@ const GLOW_SCROLL = 'rgb(20,21,22)'
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const [scrolled, setScrolled] = useState(false)
+  const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
 
+  // Existing scroll shadow effect
   useEffect(() => {
+    if (typeof window === 'undefined') return
     const onScroll = () => setScrolled(window.scrollY > 0)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Watch the header AlertsTooltip text and detect if there is any numeric count > 0
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.querySelector('[data-header-alerts]')
+    if (!root) return
+
+    const update = () => {
+      const text = root.textContent || ''
+      const match = text.match(/(\d+)/)
+      const count = match ? parseInt(match[1], 10) : 0
+      setHasHeaderAlerts(count > 0)
+    }
+
+    update()
+
+    const observer = new MutationObserver(update)
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+    return () => observer.disconnect()
   }, [])
 
   return (
@@ -65,9 +95,33 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 : 'none',
             }}
           >
-            <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-end">
+            <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-end gap-3">
+              {/* Alerts in header – same logic as dashboard, styled via data-header-alerts + header-has-alerts */}
+              <div
+                className={[
+                  'hidden sm:inline-flex',
+                  hasHeaderAlerts ? 'header-has-alerts' : '',
+                ].join(' ')}
+                data-header-alerts
+              >
+                <AlertsTooltip
+                  coinIds={[]}
+                  tradesByCoin={new Map() as any}
+                  coins={undefined}
+                />
+              </div>
+
+              {/* Settings gear – icon only (no circle) */}
+  <Link
+    href="/settings"
+    aria-label="Settings & preferences"
+    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
+  >
+    <SettingsIcon className="h-4 w-4 text-slate-200" />
+  </Link>
+
+
               {/* Force the user email button bg + border to rgb(19,20,21) */}
-              {/* TS NOTE: AuthButton props typing doesn't include className, but it supports it at runtime. */}
               {/* @ts-ignore */}
               <AuthButton className="bg-[rgb(19,20,21)] border border-[rgb(19,20,21)]" />
             </div>
