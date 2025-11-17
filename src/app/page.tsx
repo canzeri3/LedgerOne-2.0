@@ -1,532 +1,303 @@
-'use client'
-
-import { useMemo, useRef, useState } from 'react'
-import useSWR from 'swr'
-import { supabaseBrowser } from '@/lib/supabaseClient'
-import { useUser } from '@/lib/useUser'
-import PortfolioGrowthChart, { type Point } from '@/components/dashboard/PortfolioGrowthChart'
-import { fmtCurrency } from '@/lib/format'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
-import { AlertsTooltip } from '@/components/common/AlertsTooltip'
-import {
-  buildBuyLevels,
-  computeBuyFills,
-  computeSellFills,
-  type BuyLevel,
-  type BuyTrade,
-} from '@/lib/planner'
 
-// TEMP: lib/planner no longer exports SellLevel/SellTrade as types.
-// Use loose aliases here so the page compiles without affecting runtime.
-type PlannerSellLevel = any
-type PlannerSellTrade = any
-
-type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; quantity: number; trade_time: string }
-type Timeframe = '24h' | '7d' | '30d' | '90d' | '1y' | 'YTD' | 'Max'
-const TIMEFRAMES: Timeframe[] = ['24h', '7d', '30d', '90d', '1y', 'YTD', 'Max']
-
-// minimal extra types used by the tooltip
-type CoinMeta = { coingecko_id: string; symbol: string; name: string }
-type BuyPlannerRow = {
-  coingecko_id: string
-  top_price: number | null
-  budget_usd: number | null
-  total_budget: number | null
-  ladder_depth: number | null
-  growth_per_level: number | null
-  is_active: boolean | null
+type CoinRow = {
+  symbol: string
+  name: string
+  strategyReturn: string
+  buyHoldReturn: string
+  excessReturn: string
 }
 
-/* ── timeframe helpers ─────────────────────────────────────── */
-function startOfYTD(): number {
-  const d = new Date()
-  return new Date(d.getFullYear(), 0, 1).getTime()
-}
-function rangeStartFor(tf: Timeframe): number | null {
-  const now = Date.now(), day = 24 * 60 * 60 * 1000
-  switch (tf) {
-    case '24h': return now - day
-    case '7d': return now - 7 * day
-    case '30d': return now - 30 * day
-    case '90d': return now - 90 * day
-    case '1y': return now - 365 * day
-    case 'YTD': return startOfYTD()
-    case 'Max': return null
-  }
-}
-function stepMsFor(tf: Timeframe): number {
-  const m = 60_000, h = 60 * m
-  switch (tf) {
-    case '24h': return 5 * m
-    case '7d': return 30 * m
-    case '30d': return 2 * h
-    case '90d': return 6 * h
-    case '1y': return 24 * h
-    case 'YTD': return 12 * h
-    case 'Max': return 24 * h
-  }
-}
-function daysParamFor(tf: Timeframe): string {
-  switch (tf) {
-    case '24h': return '1'
-    case '7d': return '7'
-    case '30d': return '30'
-    case '90d': return '90'
-    case '1y': return '365'
-    case 'YTD': return 'max'
-    case 'Max': return 'max'
-  }
-}
+// Placeholder demo data – you can later replace with your real backtest stats
+const DEMO_COIN_ROWS: CoinRow[] = [
+  { symbol: 'BTC', name: 'Bitcoin', strategyReturn: '+325%', buyHoldReturn: '+295%', excessReturn: '+30%' },
+  { symbol: 'ETH', name: 'Ethereum', strategyReturn: '+410%', buyHoldReturn: '+380%', excessReturn: '+30%' },
+  { symbol: 'SOL', name: 'Solana', strategyReturn: '+720%', buyHoldReturn: '+665%', excessReturn: '+55%' },
+  { symbol: 'BNB', name: 'BNB', strategyReturn: '+260%', buyHoldReturn: '+230%', excessReturn: '+30%' },
+  { symbol: 'ADA', name: 'Cardano', strategyReturn: '+190%', buyHoldReturn: '+165%', excessReturn: '+25%' },
+  { symbol: 'XRP', name: 'XRP', strategyReturn: '+140%', buyHoldReturn: '+115%', excessReturn: '+25%' },
+  { symbol: 'DOGE', name: 'Dogecoin', strategyReturn: '+380%', buyHoldReturn: '+340%', excessReturn: '+40%' },
+  { symbol: 'AVAX', name: 'Avalanche', strategyReturn: '+310%', buyHoldReturn: '+275%', excessReturn: '+35%' },
+  { symbol: 'MATIC', name: 'Polygon', strategyReturn: '+270%', buyHoldReturn: '+235%', excessReturn: '+35%' },
+  { symbol: 'LINK', name: 'Chainlink', strategyReturn: '+215%', buyHoldReturn: '+190%', excessReturn: '+25%' },
+]
 
-/* ── fetch helpers ─────────────────────────────────────────── */
-// Choose a sensible interval for /api/price-history based on days
-function intervalForDays(days: string): 'minute' | 'hourly' | 'daily' {
-  if (days === '1') return 'minute'
-  if (days === '7' || days === '30' || days === '90') return 'hourly'
-  return 'daily'
-}
-
-async function fetchHistories(ids: string[], days: string): Promise<Record<string, Point[]>> {
-  const interval = intervalForDays(days)
-  const urls = ids.map(
-    id => `/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}&interval=${interval}`
-  )
-  const settled = await Promise.allSettled(
-    urls.map(async (u) => {
-      const r = await fetch(u, { cache: 'no-store' })
-      if (!r.ok) throw new Error(String(r.status))
-      // NEW CORE SHAPE: { id, currency, points:[{t,p}], updatedAt }
-      const j = await r.json()
-      const pts = Array.isArray(j?.points) ? j.points : []
-      const series: Point[] = pts
-        .map((row: any) => ({ t: Number(row.t), v: Number(row.p) })) // map p -> v for chart
-        .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
-        .sort((a: Point, b: Point) => a.t - b.t)
-      return series
-    })
-  )
-  const byId: Record<string, Point[]> = {}
-  settled.forEach((res, i) => {
-    if (res.status === 'fulfilled') byId[ids[i]] = res.value as Point[]
-  })
-  return byId
-}
-
-/* ── alignment-based aggregation (smooth, with interpolation) ───────────── */
-function buildAlignedPortfolioSeries(
-  coinIds: string[],
-  historiesMap: Record<string, Point[]>,
-  tradesByCoin: Map<string, TradeLite[]>,
-  windowStart: number | null,
-  stepMs: number
-): Point[] {
-  const now = Date.now()
-
-  // Choose the start of the window
-  let start = windowStart ?? Number.POSITIVE_INFINITY
-  if (windowStart == null) {
-    for (const id of coinIds) {
-      const s = historiesMap[id]
-      if (s && s.length) start = Math.min(start, s[0].t)
-    }
-    if (!Number.isFinite(start)) start = now - 24 * 60 * 60 * 1000
-  }
-  const end = now
-
-  type Cursor = { priceIdx: number; tradeIdx: number; qty: number }
-
-  const cursors = new Map<string, Cursor>()
-  for (const id of coinIds) {
-    const series = (historiesMap[id] ?? []).slice().sort((a, b) => a.t - b.t)
-    const trades = (tradesByCoin.get(id) ?? []).slice().sort(
-      (a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime()
-    )
-
-    const cur: Cursor = { priceIdx: 0, tradeIdx: 0, qty: 0 }
-
-    // qty at window start
-    while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= start) {
-      const tr = trades[cur.tradeIdx++]
-      cur.qty += tr.side === 'buy' ? tr.quantity : -tr.quantity
-    }
-    // price cursor at/just before start
-    if (series.length) {
-      while (cur.priceIdx + 1 < series.length && series[cur.priceIdx + 1].t <= start) cur.priceIdx++
-    }
-    cursors.set(id, cur)
-  }
-
-  function priceAt(series: Point[], idx: number, t: number): { price: number | null; idx: number } {
-    const n = series.length
-    if (!n) return { price: null, idx }
-    while (idx + 1 < n && series[idx + 1].t <= t) idx++
-    if (t <= series[0].t) return { price: series[0].v, idx: 0 }
-    if (t >= series[n - 1].t) return { price: series[n - 1].v, idx: n - 1 }
-    const a = series[idx], b = series[idx + 1]
-    if (!a || !b) return { price: a?.v ?? null, idx }
-    const span = b.t - a.t
-    if (span <= 0) return { price: a.v, idx }
-    const ratio = (t - a.t) / span
-    return { price: a.v + (b.v - a.v) * ratio, idx }
-  }
-
-  const out: Point[] = []
-  for (let t = start; t <= end; t += stepMs) {
-    let total = 0
-    for (const id of coinIds) {
-      const series = historiesMap[id] ?? []
-      const trades = (tradesByCoin.get(id) ?? [])
-      const cur = cursors.get(id)!
-      if (!cur) continue
-
-      while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= t) {
-        const tr = trades[cur.tradeIdx++]
-        cur.qty += tr.side === 'buy' ? tr.quantity : -tr.quantity
-      }
-
-      const { price, idx } = priceAt(series, cur.priceIdx, t)
-      cur.priceIdx = idx
-      if (price != null && Number.isFinite(cur.qty)) total += cur.qty * price
-    }
-    out.push({ t, v: Math.max(0, total) })
-  }
-
-  if (out.length === 1) {
-    const only = out[0]
-    out.unshift({ t: only.t - stepMs, v: only.v })
-  }
-  return out
-}
-
-/* ── Coin-page timeframe UI port (exact styles) ───────────── */
-type WindowKey = '24h' | '7d' | '30d' | '90d' | '1y' | 'ytd' | 'max'
-const TF_TO_WINDOW: Record<Timeframe, WindowKey> = {
-  '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '1y': '1y', 'YTD': 'ytd', 'Max': 'max',
-}
-const WINDOW_TO_TF: Record<WindowKey, Timeframe> = {
-  '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '1y': '1y', 'ytd': 'YTD', 'max': 'Max',
-}
-
-function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: WindowKey) => void }) {
-  const opts: WindowKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
+export default function LandingPage() {
   return (
-    <div className="inline-flex flex-wrap items-center gap-2">
-      {opts.map(opt => {
-        const active = value === opt
-        return (
-          <button
-            key={opt}
-            aria-pressed={active}
-            onClick={() => onChange(opt)}
-            className={[
-              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
-              'bg-[rgb(28,29,31)] border',
-              active
-                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
-              'focus:ring-0 focus:outline-none'
-            ].join(' ')}
-          >
-            {opt.toUpperCase()}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/* ── Digit scroll (odometer) components — hydration-safe ──── */
-const DIGITS = '0123456789'
-function DigitReel({ digit }: { digit: string }) {
-  if (!DIGITS.includes(digit)) return <span className="inline-block">{digit}</span>
-  const idx = DIGITS.indexOf(digit)
-  return (
-    <span className="inline-block h-[1em] overflow-hidden align-baseline" style={{ lineHeight: '1em' }}>
-      <span
-        className="block will-change-transform"
-        style={{ transform: `translateY(${-idx}em)`, transition: 'transform 500ms ease-out' }}
+    // Tight vertical layout; hero content lifted toward top
+    <div className="flex flex-col gap-8">
+      {/* Hero / Overview */}
+      <section
+        id="overview"
+        className="grid gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1.1fr)] items-start"
       >
-        {DIGITS.split('').map(d => (
-          <span key={d} className="block h-[1em]" style={{ lineHeight: '1em' }}>{d}</span>
-        ))}
-      </span>
-    </span>
-  )
-}
-function ScrollingNumericText({ text }: { text: string }) {
-  return (
-    <span className="inline-flex items-baseline" style={{ fontVariantNumeric: 'tabular-nums' }}>
-      {Array.from(text).map((ch, i) => <DigitReel key={i} digit={ch} />)}
-    </span>
-  )
-}
-
-
-
-/* ── page ──────────────────────────────────────────────────── */
-export default function Page() {
-  const { user } = useUser()
-  const [tf, setTf] = useState<Timeframe>('30d')
-
-  // Trades (all-time) — fail-soft + consistent options
-  const { data: trades } = useSWR<TradeLite[]>(
-    user ? ['/dashboard/trades-lite', user.id] : null,
-    async () => {
-      try {
-        const { data, error } = await supabaseBrowser
-          .from('trades')
-          .select('coingecko_id,side,quantity,trade_time')
-          .eq('user_id', user!.id)
-        if (error) throw error
-        return (data ?? []).map((t: any) => ({
-          coingecko_id: String(t.coingecko_id),
-          side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
-          quantity: Number(t.quantity ?? 0),
-          trade_time: String(t.trade_time),
-        })) as TradeLite[]
-      } catch {
-        return []
-      }
-    },
-    {
-      revalidateOnMount: true,
-      revalidateOnFocus: tf === '24h',
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      refreshInterval: tf === '24h' ? 30_000 : 120_000,
-      dedupingInterval: 10_000,
-    }
-  )
-
-  const coinIds = useMemo(
-    () => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))).sort(), // sorted for stable keys below
-    [trades]
-  )
-
-  // coins meta for tooltip labels — fail-soft
-  const { data: coins } = useSWR<CoinMeta[]>(
-    user ? ['/portfolio/coins'] : null,
-    async () => {
-      try {
-        const res = await fetch('/api/coins', { cache: 'no-store' })
-        if (!res.ok) throw new Error(String(res.status))
-        const j = await res.json()
-        return (j ?? []) as CoinMeta[]
-      } catch {
-        return []
-      }
-    },
-    {
-      revalidateOnMount: true,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      dedupingInterval: 30_000,
-    }
-  )
-
-  // light trades map for tooltip deps (does not change existing logic)
-  const tradesByCoinForAlerts = useMemo(() => {
-    const m = new Map<string, TradeLite[]>()
-    for (const tr of (trades ?? [])) {
-      if (!m.has(tr.coingecko_id)) m.set(tr.coingecko_id, [])
-      m.get(tr.coingecko_id)!.push(tr)
-    }
-    return m
-  }, [trades])
-
-  // TF-dependent histories for the chart series — robust key + keepPreviousData
-  const { data: historiesMap } = useSWR<Record<string, Point[]>>(
-    coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParamFor(tf)] : null,
-    () => fetchHistories(coinIds, daysParamFor(tf)),
-    {
-      revalidateOnMount: true,
-      revalidateOnFocus: tf === '24h',
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      refreshInterval: tf === '24h' ? 30_000 : 120_000,
-      dedupingInterval: 10_000,
-    }
-  )
-
-  // TF-INDEPENDENT live histories for live balance display only (refresh 30s)
-  const { data: historiesMapLive } = useSWR<Record<string, Point[]>>(
-    coinIds.length ? ['portfolio-histories-live', coinIds.join(','), '1'] : null,
-    () => fetchHistories(coinIds, '1'),
-    {
-      revalidateOnMount: true,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      refreshInterval: 30_000,
-      dedupingInterval: 10_000,
-    }
-  )
-
-  const aggregated: Point[] = useMemo(() => {
-    if (!historiesMap || !trades || coinIds.length === 0) return []
-    const windowStart = rangeStartFor(tf)
-    const step = stepMsFor(tf)
-
-    const tradesByCoin = new Map<string, TradeLite[]>()
-    for (const t of (trades ?? [])) {
-      if (!tradesByCoin.has(t.coingecko_id)) tradesByCoin.set(t.coingecko_id, [])
-      tradesByCoin.get(t.coingecko_id)!.push(t)
-    }
-
-    let series = buildAlignedPortfolioSeries(coinIds, historiesMap, tradesByCoin, windowStart, step)
-    if (tf === 'YTD') {
-      const ytd = startOfYTD()
-      series = series.filter(p => p.t >= ytd)
-    }
-    return series
-  }, [historiesMap, trades, coinIds.join(','), tf])
-
-  // Live, timeframe-invariant total portfolio value
-  const liveValue = useMemo(() => {
-    if (!historiesMapLive || !trades || coinIds.length === 0) return 0
-    const qtyById = new Map<string, number>()
-    for (const id of coinIds) qtyById.set(id, 0)
-    for (const tr of trades) {
-      const cur = qtyById.get(tr.coingecko_id) ?? 0
-      qtyById.set(tr.coingecko_id, cur + (tr.side === 'buy' ? tr.quantity : -tr.quantity))
-    }
-    let total = 0
-    for (const id of coinIds) {
-      const series = historiesMapLive[id] ?? []
-      const last = series.length ? series[series.length - 1].v : null
-      const qty = qtyById.get(id) ?? 0
-      if (last != null && Number.isFinite(last) && Number.isFinite(qty)) {
-        total += qty * last
-      }
-    }
-    return Math.max(0, total)
-  }, [historiesMapLive, trades, coinIds.join(',')])
-
-  // Timeframe performance (from current aggregated series)
-  const { delta, pct } = useMemo(() => {
-    if (!aggregated || aggregated.length < 2) return { delta: 0, pct: 0 }
-    const first = aggregated[0].v
-    const last = aggregated[aggregated.length - 1].v
-    const d = last - first
-    const p = first > 0 ? (d / first) * 100 : 0
-    return { delta: d, pct: p }
-  }, [aggregated])
-
-  const pctAbsText = Math.abs(pct).toFixed(2)
-  const deltaDigitsOnly = Math.abs(delta).toFixed(2)
-
-  return (
-    <div data-portfolio-page className="space-y-6">
-      {/* Top row: three mini-cards */}
-      <div className="mx-4 md:mx-6 lg:mx-8 mb-8 md:mb-10 lg:mb-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">x</span>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-medium text-emerald-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span>Institutional-grade crypto planning workspace</span>
             </div>
           </div>
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">y</span>
-            </div>
+
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              PRODUCT · Overview
+            </p>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-50">
+              Turn chaotic crypto positions
+              <br className="hidden sm:block" />
+              into a disciplined, provable plan.
+            </h1>
           </div>
-               <Link
-            href="/how-to"
-            prefetch
-            className="rounded-md border border-transparent ring-0 focus:ring-2 focus:ring-[rgba(51,65,85,0.35)] focus:outline-none bg-[rgb(28,29,31)] hover:bg-[rgba(28,29,31,0.9)] transition block"
-          >
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">How to Use</span>
-            </div>
-          </Link>
 
+          <p className="max-w-xl text-sm sm:text-base text-slate-400">
+            Build a clear accumulation plan for your crypto—pre-defined levels, target allocations,
+            and risk guardrails—so less of your portfolio is guesswork.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/30 transition hover:bg-indigo-400"
+            >
+              Sign in to your workspace
+            </Link>
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#1f2021] px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]"
+            >
+              Request access
+            </Link>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Already onboarded?{' '}
+            <Link
+              href="/dashboard"
+              className="text-indigo-300 hover:text-indigo-200 hover:underline"
+            >
+              Jump straight to your dashboard
+            </Link>
+            .
+          </p>
         </div>
-      </div>
 
-      {/* Portfolio Balance (Live) card) */}
-      <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8 relative">
-        {/* ABSOLUTE: Alerts in the card's top-right corner */}
-        <div className="absolute top-4 right-4">
-          <AlertsTooltip
-            coinIds={coinIds}
-            tradesByCoin={tradesByCoinForAlerts}
-            coins={coins}
-          />
-        </div>
+        {/* Product preview card */}
+        <div className="relative">
+          <div className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/20 via-emerald-500/10 to-sky-500/10 blur-2xl" />
+          <div className="relative rounded-3xl border border-slate-800/80 bg-[#1f2021] px-5 py-4 shadow-2xl shadow-black/60">
+            <header className="flex items-center justify-between gap-4 border-b border-slate-800/80 pb-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                  LedgerOne · Overview
+                </p>
+                <p className="mt-1 text-sm font-medium text-slate-100">
+                  Coin accumulation program (illustrative)
+                </p>
+              </div>
+              <div className="rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-medium text-emerald-300">
+                Strategy vs natural growth
+              </div>
+            </header>
 
-        {/* Header (left content spans full width now) */}
-        <div className="px-4 pt-4">
-          <div className="flex flex-col gap-4 md:gap-6">
-            <h2 className="text-l md:text-l font-semibold tracking-tight pl-2 md:pl-3 lg:pl-4">Portfolio Balance</h2>
-            <div className="text-3xl md:text-4xl font-bold text-slate-100 pl-2 md:pl-3 lg:pl-4">
-              {fmtCurrency(liveValue)}
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3">
+                <p className="text-[11px] font-medium text-slate-400">Net exposure</p>
+                <p className="mt-1 text-lg font-semibold text-slate-50">$1.28M</p>
+                <p className="mt-1 text-[11px] text-emerald-300">+3.4% vs target</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3">
+                <p className="text-[11px] font-medium text-slate-400">Plan fills</p>
+                <p className="mt-1 text-lg font-semibold text-slate-50">37 / 52</p>
+                <p className="mt-1 text-[11px] text-slate-400">Next allocation band in 3.2%</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-3">
+                <p className="text-[11px] font-medium text-slate-400">Risk metric</p>
+                <p className="mt-1 text-lg font-semibold text-slate-50">0.63</p>
+                <p className="mt-1 text-[11px] text-amber-300">Balanced · within mandate</p>
+              </div>
             </div>
 
-            {/* % change row now spans the whole card width */}
-            <div className="flex items-center">
-              <div
-                className={[
-                  'text-sm md:text-lg font-medium',
-                  'pl-2 md:pl-3 lg:pl-4',
-                  pct >= 0 ? 'text-[rgb(124,188,97)]' : 'text-[rgb(214,66,78)]',
-                ].join(' ')}
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                <span>{pct >= 0 ? '+' : '-'}</span>
-                <ScrollingNumericText text={pctAbsText} />
-                <span>%</span>
-                <span> (</span>
-                <span>{delta >= 0 ? '' : '-'}</span>
-                <span>$</span>
-                <ScrollingNumericText text={deltaDigitsOnly} />
-                <span>)</span>
+            {/* Top 10 coins · strategy vs natural growth */}
+            <div className="mt-4 rounded-2xl border border-slate-800/80 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                Top 10 coins · strategy vs natural growth
+              </p>
+
+              <div className="mt-1 flex items-baseline justify-between text-[11px]">
+                <span className="font-medium text-emerald-300">Avg excess vs HODL · +18%</span>
+                <span className="text-slate-500">Per-coin vs its own buy-and-hold path</span>
               </div>
 
-              {/* Timeframe selector: leave a small gap from the right edge */}
-              <div className="ml-auto -mr-0.5">
-                <WindowTabs
-                  value={TF_TO_WINDOW[tf]}
-                  onChange={(win) => setTf(WINDOW_TO_TF[win])}
-                />
+              <div className="mt-2 rounded-xl border border-slate-800/80 bg-slate-950/40">
+                {/* Header row */}
+                <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] font-medium text-slate-400">
+                  <span>Coin</span>
+                  <span className="text-right">Strategy</span>
+                  <span className="text-right">Buy &amp; hold</span>
+                  <span className="text-right">Excess</span>
+                </div>
+
+                {/* Scrollable body – compact, but keeps font size */}
+                <div className="max-h-28 overflow-y-auto border-t border-slate-800/80">
+                  {DEMO_COIN_ROWS.map((row) => (
+                    <div
+                      key={row.symbol}
+                      className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-1.5 text-[10px] text-slate-200 odd:bg-slate-900/40 even:bg-slate-900/20"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800/80 text-[9px] font-semibold text-slate-100">
+                          {row.symbol[0]}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-medium text-slate-100">
+                            {row.symbol}
+                          </span>
+                          <span className="text-[9px] text-slate-400">{row.name}</span>
+                        </div>
+                      </div>
+                      <span className="text-right text-emerald-300">{row.strategyReturn}</span>
+                      <span className="text-right text-slate-300">{row.buyHoldReturn}</span>
+                      <span className="text-right text-indigo-300">{row.excessReturn}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
+              <p className="mt-2 text-[10px] text-slate-500">
+                Illustrative only · Strategy returns vs each coin&apos;s own buy-and-hold growth since Jan 1, 2021.
+              </p>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Card body */}
-        <div className="p-4">
-          <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px]">
-            <PortfolioGrowthChart data={aggregated} />
-          </div>
+      {/* Trust strip / methodology hint */}
+      <section
+        id="methodology"
+        className="rounded-2xl border border-slate-800/80 bg-[#151618] px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+      >
+        <p className="text-xs text-slate-300">
+          Institutional-style structure, packaged for everyday crypto investors.
+        </p>
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+          <span className="rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1">
+                Any portfolio size
+          </span>
+          <span className="rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1">
+            Long-horizon focus
+          </span>
+          <span className="rounded-full border border-slate-700/80 bg-slate-900/60 px-3 py-1">
+            All investor levels
+          </span>
+        </div>
+      </section>
+
+      {/* Workflow */}
+      <section id="planner" className="space-y-4">
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            PRODUCT · Workflow
+          </p>
+          <p className="text-sm text-slate-300 max-w-xl">
+            Three simple steps to put structure around your crypto investing.
+          </p>
         </div>
 
-      </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              01 · Define the playbook
+            </p>
+            <h2 className="mt-2 text-sm font-semibold text-slate-100">
+              Set your levels and allocations
+            </h2>
+            <p className="mt-2 text-xs text-slate-400">
+              Map out buy zones, trim levels, and max allocation per coin before price moves.
+            </p>
+          </div>
 
-      {/* Spacer */}
-      <div className="h-2 md:h-2 lg:h-2"></div>
+          <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              02 · Execute with discipline
+            </p>
+            <h2 className="mt-2 text-sm font-semibold text-slate-100">See when it&apos;s time to act</h2>
+            <p className="mt-2 text-xs text-slate-400">
+              Let the planner highlight which levels are live, filled, or coming into range.
+            </p>
+          </div>
 
-{/* Portfolio Holdings */}
-<div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
-  <div className="px-4 pt-4">
- <h2 className="text-md md:text-2xmd font-semibold tracking-tight">Portfolio Holdings</h2>
-  </div>
-  {/* Edge-to-edge table: no horizontal padding */}
-  <div className="px-0 py-2 md:py-4">
-    <PortfolioHoldingsTable
-      coinIds={coinIds}
-      historiesMapLive={historiesMapLive ?? {}}
-      trades={trades}
-      coins={coins}
-    />
-  </div>
+          <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              03 · Review risk & progress
+            </p>
+            <h2 className="mt-2 text-sm font-semibold text-slate-100">Stay aligned with your plan</h2>
+            <p className="mt-2 text-xs text-slate-400">
+              Track exposure and plan fills over time so your portfolio follows your rules.
+            </p>
+          </div>
+        </div>
+      </section>
 
+      {/* Audience fit */}
+      <section id="teams" className="space-y-4">
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            RESOURCES · Who uses LedgerOne
+          </p>
+          <p className="text-sm text-slate-300 max-w-xl">
+ Built for investors at any scale—from first portfolios to larger allocations—who want a plan, not just price charts.          </p>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+      <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+  <p className="text-xs font-medium text-slate-300">For everyday and advanced investors</p>
+  <p className="mt-2 text-xs text-slate-400">
+    From your first crypto allocation to managing a larger, diversified portfolio, use a simple
+    rules-based workspace to grow and adjust positions over time.
+  </p>
 </div>
 
- 
+          <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+            <p className="text-xs font-medium text-slate-300">Institutional habits, consumer access</p>
+            <p className="mt-2 text-xs text-slate-400">
+             LedgerOne borrows the same planning habits used by professional allocators—pre-defined
+            bands, sizing rules, and risk guardrails—so you can take the guesswork out of when and how
+            to invest.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] p-5">
+            <p className="text-xs font-medium text-slate-300">For long-horizon wealth builders</p>
+            <p className="mt-2 text-xs text-slate-400">
+              Scale into positions over months or years with guardrails you can actually stick to.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA / pricing hint */}
+      <section
+        id="pricing"
+        className="mt-2 flex flex-col items-center justify-center gap-3 border-t border-slate-800/60 pt-4"
+      >
+        <p className="text-xs text-slate-400 text-center max-w-md">
+          Ready to bring institutional-style structure to your household portfolio?
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-4 py-2 text-xs font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-2 text-xs font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]"
+          >
+            Request access
+          </Link>
+        </div>
+      </section>
     </div>
   )
 }

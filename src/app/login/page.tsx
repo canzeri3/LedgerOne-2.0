@@ -25,10 +25,11 @@ export default function LoginPage() {
         throw error
       }
 
-      // Success → redirect; session handling is done globally via useUser/AuthListener
+       // Success → redirect; session handling is done globally via useUser/AuthListener
       if (typeof window !== 'undefined') {
-        window.location.href = '/'
+        window.location.href = '/dashboard'
       }
+
     } catch (err: any) {
       setError(err?.message || 'Sign-in failed. Please check your credentials.')
     } finally {

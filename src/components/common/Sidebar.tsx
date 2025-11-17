@@ -116,14 +116,15 @@ export default function Sidebar() {
 
             <nav className="px-2 py-3">
         {/* Primary nav with icons on the left */}
-        <ul className="space-y-1">
-          <li>
-            <NavLink
-              href="/"
-              label="Dashboard"
-              icon={<LayoutDashboard className="h-4 w-4 opacity-80" />}
-            />
-          </li>
+       <ul className="space-y-1">
+  <li>
+    <NavLink
+      href="/dashboard"
+      label="Dashboard"
+      icon={<LayoutDashboard className="h-4 w-4 opacity-80" />}
+    />
+  </li>
+
           <li>
             <NavLink
               href="/planner"

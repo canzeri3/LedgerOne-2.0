@@ -1,14 +1,43 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
-import PortfolioGrowthChart from '@/components/dashboard/PortfolioGrowthChart'
+import PortfolioGrowthChart, { type Point } from '@/components/dashboard/PortfolioGrowthChart'
+import { fmtCurrency } from '@/lib/format'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
+import { AlertsTooltip } from '@/components/common/AlertsTooltip'
+import {
+  buildBuyLevels,
+  computeBuyFills,
+  computeSellFills,
+  type BuyLevel,
+  type BuyTrade,
+} from '@/lib/planner'
 
-type TradeLite = { coingecko_id: string; side: 'buy'|'sell'; quantity: number; trade_time: string }
-type Timeframe = '24h'|'7d'|'30d'|'90d'|'1y'|'YTD'|'Max'
-const TIMEFRAMES: Timeframe[] = ['24h','7d','30d','90d','1y','YTD','Max']
+// TEMP: lib/planner no longer exports SellLevel/SellTrade as types.
+// Use loose aliases here so the page compiles without affecting runtime.
+type PlannerSellLevel = any
+type PlannerSellTrade = any
+
+type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; quantity: number; trade_time: string }
+type Timeframe = '24h' | '7d' | '30d' | '90d' | '1y' | 'YTD' | 'Max'
+const TIMEFRAMES: Timeframe[] = ['24h', '7d', '30d', '90d', '1y', 'YTD', 'Max']
+
+// minimal extra types used by the tooltip
+type CoinMeta = { coingecko_id: string; symbol: string; name: string }
+type BuyPlannerRow = {
+  coingecko_id: string
+  top_price: number | null
+  budget_usd: number | null
+  total_budget: number | null
+  ladder_depth: number | null
+  growth_per_level: number | null
+  is_active: boolean | null
+}
 
 /* ── timeframe helpers ─────────────────────────────────────── */
 function startOfYTD(): number {
@@ -16,119 +45,76 @@ function startOfYTD(): number {
   return new Date(d.getFullYear(), 0, 1).getTime()
 }
 function rangeStartFor(tf: Timeframe): number | null {
-  const now = Date.now(), day = 24*60*60*1000
+  const now = Date.now(), day = 24 * 60 * 60 * 1000
   switch (tf) {
     case '24h': return now - day
-    case '7d':  return now - 7*day
-    case '30d': return now - 30*day
-    case '90d': return now - 90*day
-    case '1y':  return now - 365*day
+    case '7d': return now - 7 * day
+    case '30d': return now - 30 * day
+    case '90d': return now - 90 * day
+    case '1y': return now - 365 * day
     case 'YTD': return startOfYTD()
     case 'Max': return null
   }
 }
 function stepMsFor(tf: Timeframe): number {
-  const m = 60_000, h = 60*m
+  const m = 60_000, h = 60 * m
   switch (tf) {
-    case '24h': return 5*m
-    case '7d':  return 30*m
-    case '30d': return 2*h
-    case '90d': return 6*h
-    case '1y':  return 24*h
-    case 'YTD': return 12*h
-    case 'Max': return 24*h
+    case '24h': return 5 * m
+    case '7d': return 30 * m
+    case '30d': return 2 * h
+    case '90d': return 6 * h
+    case '1y': return 24 * h
+    case 'YTD': return 12 * h
+    case 'Max': return 24 * h
   }
 }
 function daysParamFor(tf: Timeframe): string {
   switch (tf) {
     case '24h': return '1'
-    case '7d':  return '7'
+    case '7d': return '7'
     case '30d': return '30'
     case '90d': return '90'
-    case '1y':  return '365'
+    case '1y': return '365'
     case 'YTD': return 'max'
     case 'Max': return 'max'
   }
 }
 
-/* ── fetch helpers (NEW DATA CORE, robust 24h detection) ───────────────────── */
-const fetcher = (url: string) => fetch(url).then(r => r.json())
-
-type Point = { t: number; v: number }
-
-/** Turns strings like "24h", "1d", "0.5", 1 into a numeric day count. */
-function normalizeDaysToNumber(d: string | number): number | null {
-  if (typeof d === 'number' && Number.isFinite(d)) return d
-  if (typeof d !== 'string') return null
-  const s = d.trim().toLowerCase()
-
-  // "24h", "12h", etc.
-  const hMatch = s.match(/^(\d+(\.\d+)?)h$/)
-  if (hMatch) {
-    const hours = parseFloat(hMatch[1])
-    return hours / 24
-  }
-
-  // "1d", "7d", etc.
-  const dMatch = s.match(/^(\d+(\.\d+)?)d$/)
-  if (dMatch) {
-    return parseFloat(dMatch[1])
-  }
-
-  // plain number as string ("1", "0.5", "30")
-  const num = parseFloat(s)
-  if (Number.isFinite(num)) return num
-
-  // unknown tokens like "max", "ytd" -> return null (let server default)
-  return null
+/* ── fetch helpers ─────────────────────────────────────────── */
+// Choose a sensible interval for /api/price-history based on days
+function intervalForDays(days: string): 'minute' | 'hourly' | 'daily' {
+  if (days === '1') return 'minute'
+  if (days === '7' || days === '30' || days === '90') return 'hourly'
+  return 'daily'
 }
 
-/** Match new /api/price-history contract: returns { id, currency, points:[{t,p}], updatedAt } */
-async function fetchHistories(ids: string[], days: string | number): Promise<Record<string, Point[]>> {
-  const numericDays = normalizeDaysToNumber(days)
-  const isSubOrEqOneDay = numericDays !== null && numericDays <= 1
-
-  const buildUrl = (id: string) => {
-    // use normalized 'days' for the query; if unknown token (e.g., 'max'), pass original through
-    const qDays =
-      numericDays === null
-        ? String(days).toLowerCase()
-        : String(numericDays) // server accepts day count as a number string
-
-    const base = `/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(qDays)}`
-    const hourly = isSubOrEqOneDay ? '&interval=hourly' : '' // force intraday granularity for <= 1d
-    return `${base}${hourly}`
-  }
-
-  const urls = ids.map(buildUrl)
-
+async function fetchHistories(ids: string[], days: string): Promise<Record<string, Point[]>> {
+  const interval = intervalForDays(days)
+  const urls = ids.map(
+    id => `/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}&interval=${interval}`
+  )
   const settled = await Promise.allSettled(
     urls.map(async (u) => {
       const r = await fetch(u, { cache: 'no-store' })
       if (!r.ok) throw new Error(String(r.status))
-      const body = await r.json()
-      // body.points is [{t,p}]
-      const series: Point[] = Array.isArray(body?.points)
-        ? body.points
-            .map((row: any) => ({ t: Number(row?.t), v: Number(row?.p) }))
-            .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
-            .sort((a: Point, b: Point) => a.t - b.t)
-        : []
+      // NEW CORE SHAPE: { id, currency, points:[{t,p}], updatedAt }
+      const j = await r.json()
+      const pts = Array.isArray(j?.points) ? j.points : []
+      const series: Point[] = pts
+        .map((row: any) => ({ t: Number(row.t), v: Number(row.p) })) // map p -> v for chart
+        .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
+        .sort((a: Point, b: Point) => a.t - b.t)
       return series
     })
   )
-
   const byId: Record<string, Point[]> = {}
-  for (let i = 0; i < ids.length; i++) {
-    const id = ids[i]
-    const s = settled[i]
-    byId[id] = s.status === 'fulfilled' ? s.value : []
-  }
+  settled.forEach((res, i) => {
+    if (res.status === 'fulfilled') byId[ids[i]] = res.value as Point[]
+  })
   return byId
 }
 
-
-/* ── alignment-based aggregation (smooth) ──────────────────── */
+/* ── alignment-based aggregation (smooth, with interpolation) ───────────── */
 function buildAlignedPortfolioSeries(
   coinIds: string[],
   historiesMap: Record<string, Point[]>,
@@ -137,58 +123,72 @@ function buildAlignedPortfolioSeries(
   stepMs: number
 ): Point[] {
   const now = Date.now()
+
+  // Choose the start of the window
   let start = windowStart ?? Number.POSITIVE_INFINITY
   if (windowStart == null) {
     for (const id of coinIds) {
       const s = historiesMap[id]
       if (s && s.length) start = Math.min(start, s[0].t)
     }
-    if (!Number.isFinite(start)) start = now - 24*60*60*1000
+    if (!Number.isFinite(start)) start = now - 24 * 60 * 60 * 1000
   }
   const end = now
 
-  type Cursor = { priceIdx: number; tradeIdx: number; lastPrice: number | null; qty: number }
+  type Cursor = { priceIdx: number; tradeIdx: number; qty: number }
+
   const cursors = new Map<string, Cursor>()
   for (const id of coinIds) {
-    const trades = (tradesByCoin.get(id) ?? []).slice().sort((a,b)=>new Date(a.trade_time).getTime()-new Date(b.trade_time).getTime())
-    cursors.set(id, { priceIdx: 0, tradeIdx: 0, lastPrice: null, qty: 0 })
-    const cur = cursors.get(id)!
+    const series = (historiesMap[id] ?? []).slice().sort((a, b) => a.t - b.t)
+    const trades = (tradesByCoin.get(id) ?? []).slice().sort(
+      (a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime()
+    )
+
+    const cur: Cursor = { priceIdx: 0, tradeIdx: 0, qty: 0 }
+
+    // qty at window start
     while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= start) {
       const tr = trades[cur.tradeIdx++]
       cur.qty += tr.side === 'buy' ? tr.quantity : -tr.quantity
     }
-    const series = (historiesMap[id] ?? []).slice().sort((a,b)=>a.t-b.t)
+    // price cursor at/just before start
     if (series.length) {
-      while (cur.priceIdx < series.length && series[cur.priceIdx].t <= start) {
-        cur.lastPrice = series[cur.priceIdx].v
-        cur.priceIdx++
-      }
-      cur.priceIdx = Math.max(0, cur.priceIdx - 1)
-      cur.lastPrice = cur.priceIdx >= 0 ? (series[cur.priceIdx]?.v ?? cur.lastPrice) : cur.lastPrice
+      while (cur.priceIdx + 1 < series.length && series[cur.priceIdx + 1].t <= start) cur.priceIdx++
     }
+    cursors.set(id, cur)
+  }
+
+  function priceAt(series: Point[], idx: number, t: number): { price: number | null; idx: number } {
+    const n = series.length
+    if (!n) return { price: null, idx }
+    while (idx + 1 < n && series[idx + 1].t <= t) idx++
+    if (t <= series[0].t) return { price: series[0].v, idx: 0 }
+    if (t >= series[n - 1].t) return { price: series[n - 1].v, idx: n - 1 }
+    const a = series[idx], b = series[idx + 1]
+    if (!a || !b) return { price: a?.v ?? null, idx }
+    const span = b.t - a.t
+    if (span <= 0) return { price: a.v, idx }
+    const ratio = (t - a.t) / span
+    return { price: a.v + (b.v - a.v) * ratio, idx }
   }
 
   const out: Point[] = []
   for (let t = start; t <= end; t += stepMs) {
     let total = 0
     for (const id of coinIds) {
-      const cur = cursors.get(id)!
       const series = historiesMap[id] ?? []
-      const trades = tradesByCoin.get(id) ?? []
-
-      while (cur.priceIdx + 1 < series.length && series[cur.priceIdx + 1].t <= t) {
-        cur.priceIdx++
-        cur.lastPrice = series[cur.priceIdx].v
-      }
+      const trades = (tradesByCoin.get(id) ?? [])
+      const cur = cursors.get(id)!
+      if (!cur) continue
 
       while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= t) {
         const tr = trades[cur.tradeIdx++]
         cur.qty += tr.side === 'buy' ? tr.quantity : -tr.quantity
       }
 
-      if (cur.lastPrice != null && Number.isFinite(cur.qty)) {
-        total += cur.qty * cur.lastPrice
-      }
+      const { price, idx } = priceAt(series, cur.priceIdx, t)
+      cur.priceIdx = idx
+      if (price != null && Number.isFinite(cur.qty)) total += cur.qty * price
     }
     out.push({ t, v: Math.max(0, total) })
   }
@@ -197,39 +197,172 @@ function buildAlignedPortfolioSeries(
     const only = out[0]
     out.unshift({ t: only.t - stepMs, v: only.v })
   }
-
   return out
 }
+
+/* ── Coin-page timeframe UI port (exact styles) ───────────── */
+type WindowKey = '24h' | '7d' | '30d' | '90d' | '1y' | 'ytd' | 'max'
+const TF_TO_WINDOW: Record<Timeframe, WindowKey> = {
+  '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '1y': '1y', 'YTD': 'ytd', 'Max': 'max',
+}
+const WINDOW_TO_TF: Record<WindowKey, Timeframe> = {
+  '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '1y': '1y', 'ytd': 'YTD', 'max': 'Max',
+}
+
+function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: WindowKey) => void }) {
+  const opts: WindowKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
+  return (
+    <div className="inline-flex flex-wrap items-center gap-2">
+      {opts.map(opt => {
+        const active = value === opt
+        return (
+          <button
+            key={opt}
+            aria-pressed={active}
+            onClick={() => onChange(opt)}
+            className={[
+              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
+              'bg-[rgb(28,29,31)] border',
+              active
+                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
+                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
+              'focus:ring-0 focus:outline-none'
+            ].join(' ')}
+          >
+            {opt.toUpperCase()}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── Digit scroll (odometer) components — hydration-safe ──── */
+const DIGITS = '0123456789'
+function DigitReel({ digit }: { digit: string }) {
+  if (!DIGITS.includes(digit)) return <span className="inline-block">{digit}</span>
+  const idx = DIGITS.indexOf(digit)
+  return (
+    <span className="inline-block h-[1em] overflow-hidden align-baseline" style={{ lineHeight: '1em' }}>
+      <span
+        className="block will-change-transform"
+        style={{ transform: `translateY(${-idx}em)`, transition: 'transform 500ms ease-out' }}
+      >
+        {DIGITS.split('').map(d => (
+          <span key={d} className="block h-[1em]" style={{ lineHeight: '1em' }}>{d}</span>
+        ))}
+      </span>
+    </span>
+  )
+}
+function ScrollingNumericText({ text }: { text: string }) {
+  return (
+    <span className="inline-flex items-baseline" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {Array.from(text).map((ch, i) => <DigitReel key={i} digit={ch} />)}
+    </span>
+  )
+}
+
+
 
 /* ── page ──────────────────────────────────────────────────── */
 export default function Page() {
   const { user } = useUser()
   const [tf, setTf] = useState<Timeframe>('30d')
 
+  // Trades (all-time) — fail-soft + consistent options
   const { data: trades } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
     async () => {
-      const { data, error } = await supabaseBrowser
-        .from('trades')
-        .select('coingecko_id,side,quantity,trade_time')
-        .eq('user_id', user!.id)
-      if (error) throw error
-      return (data ?? []).map((t: any) => ({
-        coingecko_id: String(t.coingecko_id),
-        side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy'|'sell',
-        quantity: Number(t.quantity ?? 0),
-        trade_time: String(t.trade_time),
-      })) as TradeLite[]
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('trades')
+          .select('coingecko_id,side,quantity,trade_time')
+          .eq('user_id', user!.id)
+        if (error) throw error
+        return (data ?? []).map((t: any) => ({
+          coingecko_id: String(t.coingecko_id),
+          side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
+          quantity: Number(t.quantity ?? 0),
+          trade_time: String(t.trade_time),
+        })) as TradeLite[]
+      } catch {
+        return []
+      }
     },
-    { revalidateOnFocus: tf === '24h', refreshInterval: tf === '24h' ? 30_000 : 120_000 }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: tf === '24h',
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: tf === '24h' ? 30_000 : 120_000,
+      dedupingInterval: 10_000,
+    }
   )
 
-  const coinIds = useMemo(() => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))), [trades])
+  const coinIds = useMemo(
+    () => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))).sort(), // sorted for stable keys below
+    [trades]
+  )
 
+  // coins meta for tooltip labels — fail-soft
+  const { data: coins } = useSWR<CoinMeta[]>(
+    user ? ['/portfolio/coins'] : null,
+    async () => {
+      try {
+        const res = await fetch('/api/coins', { cache: 'no-store' })
+        if (!res.ok) throw new Error(String(res.status))
+        const j = await res.json()
+        return (j ?? []) as CoinMeta[]
+      } catch {
+        return []
+      }
+    },
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 30_000,
+    }
+  )
+
+  // light trades map for tooltip deps (does not change existing logic)
+  const tradesByCoinForAlerts = useMemo(() => {
+    const m = new Map<string, TradeLite[]>()
+    for (const tr of (trades ?? [])) {
+      if (!m.has(tr.coingecko_id)) m.set(tr.coingecko_id, [])
+      m.get(tr.coingecko_id)!.push(tr)
+    }
+    return m
+  }, [trades])
+
+  // TF-dependent histories for the chart series — robust key + keepPreviousData
   const { data: historiesMap } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParamFor(tf)] : null,
     () => fetchHistories(coinIds, daysParamFor(tf)),
-    { revalidateOnFocus: tf === '24h', refreshInterval: tf === '24h' ? 30_000 : 120_000, keepPreviousData: true }
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: tf === '24h',
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: tf === '24h' ? 30_000 : 120_000,
+      dedupingInterval: 10_000,
+    }
+  )
+
+  // TF-INDEPENDENT live histories for live balance display only (refresh 30s)
+  const { data: historiesMapLive } = useSWR<Record<string, Point[]>>(
+    coinIds.length ? ['portfolio-histories-live', coinIds.join(','), '1'] : null,
+    () => fetchHistories(coinIds, '1'),
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      refreshInterval: 30_000,
+      dedupingInterval: 10_000,
+    }
   )
 
   const aggregated: Point[] = useMemo(() => {
@@ -238,7 +371,7 @@ export default function Page() {
     const step = stepMsFor(tf)
 
     const tradesByCoin = new Map<string, TradeLite[]>()
-    for (const t of trades) {
+    for (const t of (trades ?? [])) {
       if (!tradesByCoin.has(t.coingecko_id)) tradesByCoin.set(t.coingecko_id, [])
       tradesByCoin.get(t.coingecko_id)!.push(t)
     }
@@ -248,46 +381,152 @@ export default function Page() {
       const ytd = startOfYTD()
       series = series.filter(p => p.t >= ytd)
     }
-
     return series
   }, [historiesMap, trades, coinIds.join(','), tf])
 
+  // Live, timeframe-invariant total portfolio value
+  const liveValue = useMemo(() => {
+    if (!historiesMapLive || !trades || coinIds.length === 0) return 0
+    const qtyById = new Map<string, number>()
+    for (const id of coinIds) qtyById.set(id, 0)
+    for (const tr of trades) {
+      const cur = qtyById.get(tr.coingecko_id) ?? 0
+      qtyById.set(tr.coingecko_id, cur + (tr.side === 'buy' ? tr.quantity : -tr.quantity))
+    }
+    let total = 0
+    for (const id of coinIds) {
+      const series = historiesMapLive[id] ?? []
+      const last = series.length ? series[series.length - 1].v : null
+      const qty = qtyById.get(id) ?? 0
+      if (last != null && Number.isFinite(last) && Number.isFinite(qty)) {
+        total += qty * last
+      }
+    }
+    return Math.max(0, total)
+  }, [historiesMapLive, trades, coinIds.join(',')])
+
+  // Timeframe performance (from current aggregated series)
+  const { delta, pct } = useMemo(() => {
+    if (!aggregated || aggregated.length < 2) return { delta: 0, pct: 0 }
+    const first = aggregated[0].v
+    const last = aggregated[aggregated.length - 1].v
+    const d = last - first
+    const p = first > 0 ? (d / first) * 100 : 0
+    return { delta: d, pct: p }
+  }, [aggregated])
+
+  const pctAbsText = Math.abs(pct).toFixed(2)
+  const deltaDigitsOnly = Math.abs(delta).toFixed(2)
+
   return (
-    <div className="space-y-6">
-      {/* Card header */}
-      {/* tighter corners to match coins page stat cards + required background */}
-      <div className="rounded-md border border-neutral-800 bg-[rgb(28,29,31)]">
-        <div className="flex items-center justify-between px-4 pt-4">
-          <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Portfolio Value (Live)</h2>
-          <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1">
-            {TIMEFRAMES.map(key => {
-              const active = tf === key
-              return (
-                <button
-                  key={key}
-                  onClick={() => setTf(key)}
-                  className={[
-                    'px-2.5 py-1.5 text-xs md:text-sm rounded-lg transition-colors',
-                    'border border-transparent',
-                    active ? 'bg-white/15 text-white' : 'text-slate-200/80 hover:text-white hover:bg-white/10'
-                  ].join(' ')}
-                >
-                  {key}
-                </button>
-              )
-            })}
+    <div data-portfolio-page className="space-y-6">
+      {/* Top row: three mini-cards */}
+      <div className="mx-4 md:mx-6 lg:mx-8 mb-8 md:mb-10 lg:mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
+            <div className="p-3 h-16 flex items-center justify-center">
+              <span className="text-slate-200 text-base md:text-lg font-medium">x</span>
+            </div>
+          </div>
+          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
+            <div className="p-3 h-16 flex items-center justify-center">
+              <span className="text-slate-200 text-base md:text-lg font-medium">y</span>
+            </div>
+          </div>
+               <Link
+            href="/how-to"
+            prefetch
+            className="rounded-md border border-transparent ring-0 focus:ring-2 focus:ring-[rgba(51,65,85,0.35)] focus:outline-none bg-[rgb(28,29,31)] hover:bg-[rgba(28,29,31,0.9)] transition block"
+          >
+            <div className="p-3 h-16 flex items-center justify-center">
+              <span className="text-slate-200 text-base md:text-lg font-medium">How to Use</span>
+            </div>
+          </Link>
+
+        </div>
+      </div>
+
+      {/* Portfolio Balance (Live) card) */}
+      <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8 relative">
+        {/* ABSOLUTE: Alerts in the card's top-right corner */}
+        <div className="absolute top-4 right-4">
+          <AlertsTooltip
+            coinIds={coinIds}
+            tradesByCoin={tradesByCoinForAlerts}
+            coins={coins}
+          />
+        </div>
+
+        {/* Header (left content spans full width now) */}
+        <div className="px-4 pt-4">
+          <div className="flex flex-col gap-4 md:gap-6">
+            <h2 className="text-l md:text-l font-semibold tracking-tight pl-2 md:pl-3 lg:pl-4">Portfolio Balance</h2>
+            <div className="text-3xl md:text-4xl font-bold text-slate-100 pl-2 md:pl-3 lg:pl-4">
+              {fmtCurrency(liveValue)}
+            </div>
+
+            {/* % change row now spans the whole card width */}
+            <div className="flex items-center">
+              <div
+                className={[
+                  'text-sm md:text-lg font-medium',
+                  'pl-2 md:pl-3 lg:pl-4',
+                  pct >= 0 ? 'text-[rgb(124,188,97)]' : 'text-[rgb(214,66,78)]',
+                ].join(' ')}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                <span>{pct >= 0 ? '+' : '-'}</span>
+                <ScrollingNumericText text={pctAbsText} />
+                <span>%</span>
+                <span> (</span>
+                <span>{delta >= 0 ? '' : '-'}</span>
+                <span>$</span>
+                <ScrollingNumericText text={deltaDigitsOnly} />
+                <span>)</span>
+              </div>
+
+              {/* Timeframe selector: leave a small gap from the right edge */}
+              <div className="ml-auto -mr-0.5">
+                <WindowTabs
+                  value={TF_TO_WINDOW[tf]}
+                  onChange={(win) => setTf(WINDOW_TO_TF[win])}
+                />
+              </div>
+
+            </div>
           </div>
         </div>
 
         {/* Card body */}
         <div className="p-4">
-          <div className="h-[360px]">
+          <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px]">
             <PortfolioGrowthChart data={aggregated} />
           </div>
         </div>
+
       </div>
 
-      {/* Leave the rest of the dashboard as-is */}
+      {/* Spacer */}
+      <div className="h-2 md:h-2 lg:h-2"></div>
+
+{/* Portfolio Holdings */}
+<div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
+  <div className="px-4 pt-4">
+ <h2 className="text-md md:text-2xmd font-semibold tracking-tight">Portfolio Holdings</h2>
+  </div>
+  {/* Edge-to-edge table: no horizontal padding */}
+  <div className="px-0 py-2 md:py-4">
+    <PortfolioHoldingsTable
+      coinIds={coinIds}
+      historiesMapLive={historiesMapLive ?? {}}
+      trades={trades}
+      coins={coins}
+    />
+  </div>
+
+</div>
+
+ 
     </div>
   )
 }
