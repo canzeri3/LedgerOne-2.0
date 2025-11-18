@@ -1,128 +1,128 @@
+// src/lib/useLivePrice.ts
 'use client'
 
 import useSWR from 'swr'
-import { useEffect, useRef } from 'react'
-
-type ApiShape =
-  | {
-      // New route shape I proposed
-      price?: number | null
-      pct24h?: number | null     // percent, e.g. -0.82
-      abs24h?: number | null     // USD change over 24h
-      lastPrice?: number | null  // yesterday price (implied)
-      updatedAt?: number | string | null
-      captured_at?: never
-      change_24h_pct?: never
-    }
-  | {
-      // Your existing route shape
-      price?: number | null
-      change_24h_pct?: number | null // percent, e.g. -0.82
-      captured_at?: string | null
-      provider?: string
-    }
-  | Record<string, unknown>
-
-function toNum(x: unknown): number | null {
-  if (x == null) return null
-  const n =
-    typeof x === 'number' ? x :
-    typeof x === 'string' ? Number(x) : NaN
-  return Number.isFinite(n) ? n : null
-}
-
-const fetcher = (url: string) =>
-  fetch(url, { cache: 'no-store' })
-    .then(r => r.json() as Promise<ApiShape>)
-    .catch(() => ({} as ApiShape))
 
 /**
- * useLivePrice(coingeckoId, refreshMs)
- *
- * Returns:
- * - price:      current USD price (live tick)
- * - lastPrice:  previous tick's price (for crossing detection)
- * - pct24h:     24h change in percent (from API when present; computed if needed)
- * - abs24h:     24h absolute USD change (computed if needed)
- * - yesterdayPrice: yesterday's price implied by pct24h (computed if needed)
- * - updatedAt:  when the API last updated (epoch seconds or ISO string passthrough)
+ * Shape of the /api/prices response (single-coin row).
+ * This mirrors what your new data core returns.
  */
-export function useLivePrice(coingeckoId: string, refreshMs = 15000) {
-  const { data, error, isLoading, mutate } = useSWR<ApiShape>(
-    coingeckoId ? `/api/price/${encodeURIComponent(coingeckoId)}` : null,
-    fetcher,
-    {
-      refreshInterval: refreshMs,
-      dedupingInterval: Math.max(1000, Math.floor(refreshMs * 0.8)),
-      revalidateOnFocus: false,
-      shouldRetryOnError: true,
-      errorRetryInterval: 10000,
-      errorRetryCount: 5,
-    }
-  )
-
-  // Normalize fields from either API shape
-  const price = toNum((data as any)?.price)
-
-  let pct24h =
-    toNum((data as any)?.pct24h) ??
-    toNum((data as any)?.change_24h_pct) ?? // ← current route field
-    toNum((data as any)?.usd_24h_change) ?? // safety
-    null
-
-  let abs24h =
-    toNum((data as any)?.abs24h) ??
-    toNum((data as any)?.change24h) ??
-    null
-
-  let yesterdayPrice =
-    toNum((data as any)?.lastPrice) ?? // new route
-    toNum((data as any)?.prev24h) ??   // safety alias
-    null
-
-  const updatedAt =
-    (data as any)?.updatedAt ??
-    (data as any)?.captured_at ??
-    null
-
-  // Backfill missing pieces consistently
-  if (price != null && pct24h != null && yesterdayPrice == null) {
-    // P_now = P_prev * (1 + pct/100) → P_prev = P_now / (1+pct/100)
-    yesterdayPrice = price / (1 + pct24h / 100)
-  }
-  if (price != null && pct24h != null && abs24h == null && yesterdayPrice != null) {
-    abs24h = price - yesterdayPrice
-  }
-  if (price != null && abs24h != null && pct24h == null) {
-    const prev = price - abs24h
-    if (prev) pct24h = (abs24h / prev) * 100
-  }
-
-  // Preserve previous *tick* for crossing detection
-  const prevTickRef = useRef<number | null>(null)
-  const lastTickRef = useRef<number | null>(null)
-
-  const current = price != null && isFinite(price) ? price : null
-
-  useEffect(() => {
-    if (current != null) {
-      prevTickRef.current = lastTickRef.current
-      lastTickRef.current = current
-    }
-  }, [current])
-
-  return {
-    price: lastTickRef.current ?? current, // current live tick
-    lastPrice: prevTickRef.current,        // previous *tick* (NOT yesterday)
-    pct24h,
-    abs24h,
-    yesterdayPrice,
-    updatedAt,
-    isLoading,
-    error,
-    mutate,
-  }
+type PriceRow = {
+  id: string
+  price: number | null
+  price_24h?: number | null
+  pct24h?: number | null
+  source?: string | null
+  stale?: boolean
+  quality?: number | null
 }
 
-export default useLivePrice
+type PricesResponse = {
+  rows: PriceRow[]
+  updatedAt?: string
+}
 
+/**
+ * What the hook returns to callers.
+ * This is intentionally rich but backwards-friendly:
+ * callers can use price / price24h / pct24h or dive into `data`.
+ */
+export type UseLivePriceResult = {
+  price: number | null
+  price24h: number | null
+  pct24h: number | null
+  data?: PriceRow
+  updatedAt?: string
+  isLoading: boolean
+  isValidating: boolean
+  error: unknown
+}
+
+/**
+ * Simple fetcher for /api/prices.
+ * Client-side: uses relative path (no INTERNAL_BASE_URL).
+ */
+const fetcher = async (url: string): Promise<PricesResponse> => {
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ${url}: ${res.status}`)
+  }
+  return res.json()
+}
+
+/**
+ * useLivePrice
+ *
+ * Live price hook that:
+ * - Uses the NEW data core only (/api/prices).
+ * - Has an env-tunable refresh interval:
+ *     - NEXT_PUBLIC_LIVE_REFRESH_MS (ms)
+ *     - Defaults to:
+ *         • dev: 0 (no polling, manual refresh during development)
+ *         • prod: 30_000 ms (30s)
+ * - Accepts an optional override `refreshMs` param for special cases.
+ *
+ * NOTE: This replaces the old /api/price/:id legacy adapter usage.
+ */
+export function useLivePrice(
+  coingeckoId: string,
+  refreshMs?: number
+): UseLivePriceResult {
+  const isDev = process.env.NODE_ENV === 'development'
+
+  // Decide the default refresh interval from env or sensible defaults.
+  // If NEXT_PUBLIC_LIVE_REFRESH_MS is set, respect it in both dev/prod.
+  // Otherwise:
+  //   - dev: 0 (no polling)
+  //   - prod: 30s
+  const envRaw = process.env.NEXT_PUBLIC_LIVE_REFRESH_MS
+  const envParsed = envRaw ? Number(envRaw) : NaN
+
+  const defaultInterval = Number.isFinite(envParsed)
+    ? envParsed
+    : isDev
+      ? 0
+      : 30_000
+
+  const effectiveInterval = refreshMs ?? defaultInterval
+
+  // If no id, disable fetching entirely.
+  const hasId = !!coingeckoId
+  const key = hasId
+    ? `/api/prices?ids=${encodeURIComponent(coingeckoId)}&currency=USD`
+    : null
+
+  const {
+    data: resp,
+    error,
+    isLoading,
+    isValidating,
+  } = useSWR<PricesResponse>(key, fetcher, {
+    refreshInterval: hasId && effectiveInterval > 0 ? effectiveInterval : 0,
+    // Short deduping interval; SWR will avoid refetching too aggressively.
+    dedupingInterval:
+      hasId && effectiveInterval > 0
+        ? Math.floor(effectiveInterval * 0.8)
+        : 0,
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  })
+
+  // Extract the single row for this coin.
+  const row = resp?.rows?.[0]
+  const price = row?.price ?? null
+  const price24h = row?.price_24h ?? null
+  const pct24h = row?.pct24h ?? null
+  const updatedAt = resp?.updatedAt
+
+  return {
+    price,
+    price24h,
+    pct24h,
+    data: row,
+    updatedAt,
+    isLoading: !!key && isLoading,
+    isValidating: !!key && isValidating,
+    error: error ?? null,
+  }
+}

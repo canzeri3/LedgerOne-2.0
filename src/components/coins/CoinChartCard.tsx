@@ -63,17 +63,23 @@ export default function CoinChartCard({ coingeckoId, trades = [], className }: P
   const interval: 'minute' | 'hourly' | 'daily' =
     daysParam === 1 ? 'minute' : daysParam <= 7 ? 'hourly' : 'daily'
 
+  // Make history polling environment-aware here too.
+  // Dev: no polling (just fetch on mount / param change).
+  // Prod: keep existing 120s refresh for a "live enough" feeling.
+  const isDev = process.env.NODE_ENV === 'development'
+
   const { points, isLoading } = useHistory(
     coingeckoId,
     daysParam,
     interval,
     'USD',
     {
-      refreshInterval: 120_000,
-      revalidateOnFocus: false,
+      refreshInterval: isDev ? 0 : 120_000,
+      revalidateOnFocus: !isDev,
       dedupingInterval: 60_000,
     }
   )
+
 
   // Map {t,p} -> {t,v} to match CoinHistoryChart input
   const series = Array.isArray(points) ? points.map(({ t, p }) => ({ t, v: p })) : []
