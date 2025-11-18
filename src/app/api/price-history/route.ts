@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConsensusPrices } from "../../../server/services/priceService";
 // NEW: map canonical id -> provider-specific id (e.g., trx -> tron for CoinGecko)
 import { mapToProvider /*, normalizeCoinId*/ } from "@/server/db/coinRegistry";
+import { cacheGet, cacheSet } from "@/server/ttlCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
 type Pt = { t: number; p: number };
 
 const CG_BASE = process.env.PROVIDER_CG_BASE ?? "https://api.coingecko.com/api/v3";
+
+const HISTORY_HOT_TTL_SEC = 300; // 5 minutes
+const HISTORY_LASTGOOD_TTL_SEC = 3600; // 1 hour
 
 function cgHeaders(): Record<string, string> {
   const demo = process.env.CG_API_KEY || process.env.X_CG_DEMO_API_KEY;
@@ -104,40 +108,66 @@ export async function GET(req: NextRequest) {
   const cgId = (await mapToProvider(canonicalId, "coingecko")) ?? canonicalId;
   if (cgId !== canonicalId) notes.push(`map.coingecko:${canonicalId}->${cgId}`);
 
+  const hotKey = `history:hot:${currency}:${interval}:${days}:${cgId}`;
+  const lastGoodKey = `history:lastgood:${currency}:${interval}:${days}:${cgId}`;
+
   let points: Pt[] = [];
 
+  // First try hot cache (fresh within HISTORY_HOT_TTL_SEC)
+  const cached = await cacheGet<Pt[]>(hotKey);
+  if (cached && Array.isArray(cached) && cached.length >= 2) {
+    notes.push("cache.hit");
+    points = cached;
+  } else {
+    notes.push("cache.miss");
+  }
+
   try {
-    if (interval === "daily") {
-      // Primary path for portfolio analytics: get 30–45 daily points
-      notes.push(`cg.daily(${days})`);
-      const daily = await fetchCgDaily(cgId, currency, days); // mapped id here
-      if (Array.isArray(daily) && daily.length >= 2) {
-        points = daily;
+    if (points.length === 0) {
+      if (interval === "daily") {
+        // Primary path for portfolio analytics: get 30–45 daily points
+        notes.push(`cg.daily(${days})`);
+        const daily = await fetchCgDaily(cgId, currency, days); // mapped id here
+        if (Array.isArray(daily) && daily.length >= 2) {
+          points = daily;
+        } else {
+          notes.push("cg.daily.empty");
+        }
       } else {
-        notes.push("cg.daily.empty");
+        // (Optional) For hourly/minute, we still attempt market_chart for <= 7d windows
+        const cappedDays = Math.min(days, 7); // CG returns hourly granularity up to 7D reliably
+        const url =
+          `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` + // mapped id here
+          `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
+          `&days=${encodeURIComponent(String(cappedDays))}`;
+        notes.push(`cg.generic(${cappedDays}d)`);
+        const j = await robustJsonFetch(url);
+        const prices: [number, number][] = Array.isArray(j?.prices) ? j.prices : [];
+        points = prices.map(([t, p]) => ({ t, p }));
       }
-    } else {
-      // (Optional) For hourly/minute, we still attempt market_chart for <= 7d windows
-      const cappedDays = Math.min(days, 7); // CG returns hourly granularity up to 7D reliably
-      const url =
-        `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` + // mapped id here
-        `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
-        `&days=${encodeURIComponent(String(cappedDays))}`;
-      notes.push(`cg.generic(${cappedDays}d)`);
-      const j = await robustJsonFetch(url);
-      const prices: [number, number][] = Array.isArray(j?.prices) ? j.prices : [];
-      points = prices.map(([t, p]) => ({ t, p }));
     }
   } catch (e: any) {
     notes.push(`cg.error:${String(e?.message || e)}`);
   }
 
-  // Fallback: synthesize 2 points from consensus (now + 24h-ago)
+  // On success, write hot + last-good cache entries
+  if (points.length >= 2) {
+    await cacheSet<Pt[]>(hotKey, points, HISTORY_HOT_TTL_SEC);
+    await cacheSet<Pt[]>(lastGoodKey, points, HISTORY_LASTGOOD_TTL_SEC);
+  }
+
+  // Fallback: first try last-good cache, then synthesize from consensus (now + 24h-ago)
   if (points.length < 2) {
-    notes.push("consensus.synth");
-    const synth = await synthFromConsensus(canonicalId, currency);
-    if (Array.isArray(synth) && synth.length >= 2) {
-      points = synth;
+    const lastGood = await cacheGet<Pt[]>(lastGoodKey);
+    if (lastGood && Array.isArray(lastGood) && lastGood.length >= 2) {
+      notes.push("cache.lastgood");
+      points = lastGood;
+    } else {
+      notes.push("consensus.synth");
+      const synth = await synthFromConsensus(canonicalId, currency);
+      if (Array.isArray(synth) && synth.length >= 2) {
+        points = synth;
+      }
     }
   }
 

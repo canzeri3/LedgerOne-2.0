@@ -338,18 +338,30 @@ export default function Page() {
   }, [trades])
 
   // TF-dependent histories for the chart series — robust key + keepPreviousData
+   // Make history polling environment-aware to avoid hammering CoinGecko in dev.
+  // In development: no auto-refresh (refreshInterval 0, no focus revalidation).
+  // In production: keep the existing behavior (30s for 24h view, 120s otherwise).
+  const isDev = process.env.NODE_ENV === 'development'
+
+  const historyRefreshInterval =
+    isDev
+      ? 0 // no polling in dev; manual reload is enough
+      : tf === '24h'
+        ? 30_000
+        : 120_000
+
+  const historyRevalidateOnFocus = isDev ? false : tf === '24h'
+
   const { data: historiesMap } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParamFor(tf)] : null,
     () => fetchHistories(coinIds, daysParamFor(tf)),
     {
-      revalidateOnMount: true,
-      revalidateOnFocus: tf === '24h',
-      revalidateOnReconnect: true,
+      revalidateOnFocus: historyRevalidateOnFocus,
+      refreshInterval: historyRefreshInterval,
       keepPreviousData: true,
-      refreshInterval: tf === '24h' ? 30_000 : 120_000,
-      dedupingInterval: 10_000,
     }
   )
+
 
   // TF-INDEPENDENT live histories for live balance display only (refresh 30s)
   const { data: historiesMapLive } = useSWR<Record<string, Point[]>>(
