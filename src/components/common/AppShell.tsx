@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Settings as SettingsIcon, ChevronDown } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import AuthButton from '@/components/auth/AuthButton'
@@ -111,15 +112,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {isLanding ? (
               // Landing-page header (no sidebar, marketing style)
               <div className="flex w-full items-center gap-8 px-4 py-4">
-                {/* Left: Logo + company name (pinned to far left) */}
+                {/* Left: Logo (pinned to far left) */}
                 <div className="flex flex-1 items-center">
-                  <Link href="/" className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-emerald-400 to-sky-400 shadow-lg shadow-emerald-500/40">
-                      <span className="text-[11px] font-semibold text-slate-950">L1</span>
-                    </div>
-                    <span className="text-base md:text-lg font-semibold tracking-tight text-slate-50">
-                      LedgerOne
-                    </span>
+                  <Link href="/" className="flex items-center gap-2" aria-label="LedgerOne home">
+ <Image
+  src="/lg1-logo.png"
+  alt="LedgerOne"
+  width={260}
+  height={100}
+  priority
+  className="h-12 w-auto sm:h-14"
+/>
+
+
+
+
                   </Link>
                 </div>
 
@@ -198,35 +205,51 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 </div>
               </div>
             ) : (
-              // Default in-app header (alerts + settings + auth)
-              <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-end gap-3">
-                {/* Alerts in header – same logic as dashboard, styled via data-header-alerts + header-has-alerts */}
-                <div
-                  className={[
-                    'hidden sm:inline-flex',
-                    hasHeaderAlerts ? 'header-has-alerts' : '',
-                  ].join(' ')}
-                  data-header-alerts
-                >
-                  <AlertsTooltip
-                    coinIds={[]}
-                    tradesByCoin={new Map() as any}
-                    coins={undefined}
-                  />
-                </div>
-
-                {/* Settings gear – icon only (no circle) */}
+              // Default in-app header (logo left, alerts + settings + auth right)
+              <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-3">
+                {/* Left: Logo for in-app views */}
                 <Link
-                  href="/settings"
-                  aria-label="Settings & preferences"
-                  className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
+                  href="/dashboard"
+                  className="flex items-center gap-2"
+                  aria-label="LedgerOne dashboard"
                 >
-                  <SettingsIcon className="h-4 w-4 text-slate-200" />
+
+
+
+
+
                 </Link>
 
-                {/* Force the user email button bg + border to rgb(19,20,21) */}
-                {/* @ts-ignore */}
-                <AuthButton className="bg-[rgb(19,20,21)] border border-[rgb(19,20,21)]" />
+                {/* Right: alerts, settings, auth */}
+                <div className="flex items-center justify-end gap-3">
+                  {/* Alerts in header – same logic as dashboard, styled via data-header-alerts + header-has-alerts */}
+                  <div
+                    className={[
+                      'hidden sm:inline-flex',
+                      hasHeaderAlerts ? 'header-has-alerts' : '',
+                    ].join(' ')}
+                    data-header-alerts
+                  >
+                    <AlertsTooltip
+                      coinIds={[]}
+                      tradesByCoin={new Map() as any}
+                      coins={undefined}
+                    />
+                  </div>
+
+                  {/* Settings gear – icon only (no circle) */}
+                  <Link
+                    href="/settings"
+                    aria-label="Settings & preferences"
+                    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
+                  >
+                    <SettingsIcon className="h-4 w-4 text-slate-200" />
+                  </Link>
+
+                  {/* Force the user email button bg + border to rgb(19,20,21) */}
+                  {/* @ts-ignore */}
+                  <AuthButton className="bg-[rgb(19,20,21)] border border-[rgb(19,20,21)]" />
+                </div>
               </div>
             )}
           </header>

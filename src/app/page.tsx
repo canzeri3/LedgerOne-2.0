@@ -96,7 +96,7 @@ export default function LandingPage() {
                 </p>
               </div>
               <div className="rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-medium text-emerald-300">
-                Strategy vs natural growth
+                Strategy vs Natural Growth
               </div>
             </header>
 

@@ -4,6 +4,7 @@ import { useMemo, useState, ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import useSWR from 'swr'
+import Image from 'next/image'
 import {
   ChevronRight,
   Search,
@@ -98,21 +99,22 @@ export default function Sidebar() {
   return (
     // Sidebar scrolls independently if content exceeds viewport
     <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto">
-      {/* Title (less bold + smaller subtitle, updated dot) */}
+        {/* Brand logo */}
       <div className="px-3 pt-4 pb-3">
-
-
-        <div className="leading-tight text-left">
-          <div className="text-[30px] md:text-[30px] font-semibold tracking-tight text-slate-100">
-            LedgerOne
-          </div>
-          <div className="text-[12px] md:text-[12px] text-slate-300 -mt-1/4">
-  portfolio · planner
-</div>
-
-
+        <div className="flex items-center">
+          <Image
+            src="/lg1-logo.png"
+            alt="LedgerOne · portfolio planner"
+            width={260}
+            height={70}
+            className="h-14 w-auto"
+            priority
+          />
         </div>
       </div>
+
+
+
 
             <nav className="px-2 py-3">
         {/* Primary nav with icons on the left */}
