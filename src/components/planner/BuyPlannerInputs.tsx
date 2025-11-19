@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -15,8 +16,7 @@ const toNum = (v: any) => {
 
 // keep only digits and a single decimal point
 function normalizeDecimalInput(raw: string): string {
-  if (!raw) return ''
-  let s = stripCommas(raw).replace(/[^\d.]/g, '')
+  let s = raw.replace(/[^0-9.]/g, '')
   const parts = s.split('.')
   if (parts.length > 2) s = parts[0] + '.' + parts.slice(1).join('')
   return s
@@ -29,47 +29,53 @@ function formatWithCommas(raw: string): string {
   return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas
 }
 
-/* ── Visual helpers for the dropdown option ────────────────── */
-function DepthMeta(opt: '70' | '90') {
-  const levels = opt === '70' ? 6 : 8
-  const range = opt === '70' ? '20–70%' : '20–90%'
-  const title = opt === '70' ? 'Standard ladder' : 'Extended ladder'
-  const desc = `${levels} levels • ${range} drawdowns`
+/* ── Risk depth metadata ───────────────────────────────────── */
 
-  // tiny “level bars” (different counts for quick visual diff)
+type RiskDepth = '70' | '90'
+
+function DepthMeta(opt: RiskDepth) {
+  const isModerate = opt === '70'
+  const levels = isModerate ? 6 : 8
+
+  const shortLabel = isModerate ? 'Moderate' : 'Conservative'
+  const title = isModerate ? 'Moderate profile' : 'Conservative profile'
+  const desc = isModerate
+    ? '70% depth · 6 levels · growth ×1.25'
+    : '90% depth · 8 levels · growth ×1.25'
+
   const bars = Array.from({ length: levels })
-  return { title, desc, levels, bars }
+
+  return { shortLabel, title, desc, levels, bars }
 }
 
-/* ── Polished, accessible dropdown for Ladder Depth ──────────
-   - Seamless with input: same bg, same height, borderless, attached corners
-   - Shows ONLY the opposite option (70% ⇄ 90%)
-   - Clear visual differentiation (title, subtext, levels pill, mini-bars)
-   - Keyboard: Enter/Space open/choose, Esc closes, ArrowUp/Down toggles
-*/
+/* ── Risk profile dropdown (your preferred UI) ─────────────── */
+
 function LadderDepthDropdown({
   value,
   onChange,
 }: {
-  value: '70' | '90'
-  onChange: (v: '70' | '90') => void
+  value: RiskDepth
+  onChange: (v: RiskDepth) => void
 }) {
   const [open, setOpen] = useState(false)
-  const buttonRef = useRef<HTMLButtonElement | null>(null)
-  const optionRef = useRef<HTMLButtonElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
 
-  // Click outside to close
+  const OPTIONS: RiskDepth[] = ['70', '90']
+
+  // Close when clicking outside
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!wrapRef.current) return
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false)
+      if (!wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  // Keyboard on the control
+  // Keyboard: basic open/close
   useEffect(() => {
     const btn = buttonRef.current
     if (!btn) return
@@ -77,7 +83,6 @@ function LadderDepthDropdown({
       if ((e.key === 'Enter' || e.key === ' ') && !open) {
         e.preventDefault()
         setOpen(true)
-        queueMicrotask(() => optionRef.current?.focus())
         return
       }
       if (e.key === 'Escape' && open) {
@@ -85,52 +90,20 @@ function LadderDepthDropdown({
         setOpen(false)
         return
       }
-      if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-        e.preventDefault()
-        const opposite = value === '70' ? '90' : '70'
-        onChange(opposite)
-        setOpen(false)
-      }
     }
     btn.addEventListener('keydown', onKey)
     return () => btn.removeEventListener('keydown', onKey)
-  }, [open, value, onChange])
+  }, [open])
 
-  // Keyboard on the single option
-  useEffect(() => {
-    const el = optionRef.current
-    if (!el) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-        buttonRef.current?.focus()
-      }
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        const opposite = value === '70' ? '90' : '70'
-        onChange(opposite)
-        setOpen(false)
-        buttonRef.current?.focus()
-      }
-      if (e.key === 'Tab') setOpen(false)
-    }
-    el.addEventListener('keydown', onKey)
-    return () => el.removeEventListener('keydown', onKey)
-  }, [value, onChange])
-
-  // Visual tokens
   const baseBg = 'bg-[rgb(41,42,43)]'
   const baseText = 'text-slate-200'
-  const noBorder = 'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
+  const noBorder =
+    'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
   const heightPad = 'px-3 py-2.5'
   const radiusClosed = 'rounded-lg'
-  const radiusOpenBtn = 'rounded-t-lg rounded-b-none'
-  const radiusOpenList = 'rounded-b-lg rounded-t-none'
   const muted = 'text-slate-400'
 
-  const opposite: '70' | '90' = value === '70' ? '90' : '70'
-  const meta = DepthMeta(opposite)
+  const currentMeta = DepthMeta(value)
 
   return (
     <div ref={wrapRef} className="relative">
@@ -143,77 +116,94 @@ function LadderDepthDropdown({
         aria-controls="ladder-depth-listbox"
         onClick={() => setOpen(o => !o)}
         className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none
-                    flex items-center justify-between transition-[border-radius,transform] duration-150
-                    ${open ? radiusOpenBtn : radiusClosed}`}
+                    flex items-center justify-between ${radiusClosed}`}
       >
         <span className="text-sm flex items-center gap-2">
-          {value === '70' ? '70%' : '90%'}
+          {currentMeta.shortLabel}
           <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-            {value === '70' ? '6 levels' : '8 levels'}
+            {currentMeta.desc}
           </span>
         </span>
-        <svg
-          className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+        <span
+          className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgb(54,55,56)]"
+          aria-hidden="true"
         >
-          <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"/>
-        </svg>
+          <svg
+            className={`h-3 w-3 text-slate-200 transition-transform ${
+              open ? 'rotate-180' : 'rotate-0'
+            }`}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 11.085l3.71-3.855a.75.75 0 111.08 1.04l-4.24 4.4a.75.75 0 01-1.08 0l-4.24-4.4a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
       </button>
 
-      {/* Attached expanding list */}
-      <div
-        className={`overflow-hidden transition-all duration-200 ease-out
-                    ${open ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}
-      >
+      {/* Inline dropdown menu (no absolute positioning outside container) */}
+      {open && (
         <div
           id="ladder-depth-listbox"
           role="listbox"
-          aria-label="Select ladder depth"
-          className={`${baseBg} ${baseText} ${noBorder} w-full grid gap-1
-                      ${radiusOpenList} px-2 py-2`}
+          aria-label="Select risk profile"
+          className={`${baseBg} ${baseText} ${noBorder} mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg`}
         >
-          {/* Only one, highly-differentiated option */}
-          <button
-            ref={optionRef}
-            type="button"
-            role="option"
-            aria-selected={false}
-            onClick={() => {
-              onChange(opposite)
-              setOpen(false)
-              buttonRef.current?.focus()
-            }}
-        className={`w-full text-left rounded-md ${noBorder}
-            hover:bg-[rgb(47,48,49)] focus:bg-[rgb(47,48,49)]
-            px-3 py-2 ring-1 ring-slate-400/30 focus:ring-slate-300/40 transition`}
+          <div className="py-1">
+            {OPTIONS.map(opt => {
+              const meta = DepthMeta(opt)
+              const selected = opt === value
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(opt)
+                    setOpen(false)
+                    buttonRef.current?.focus()
+                  }}
+                  className={`w-full text-left px-3 py-2 transition
+                              ${selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm">{meta.title}</span>
+                      <span className={`text-[12px] ${muted}`}>{meta.desc}</span>
+                    </div>
+                    <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
+                      {meta.levels} levels
+                    </span>
+                  </div>
 
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-sm">{meta.title} — {opposite}%</span>
-                <span className={`text-[12px] ${muted}`}>{meta.desc}</span>
-              </div>
-              {/* levels pill */}
-              <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-                {meta.levels} levels
-              </span>
-            </div>
-
-            {/* mini level bars row: more bars for 90% vs 70% */}
-            <div className="mt-2 flex items-center gap-1">
-              {meta.bars.map((_, i) => (
-                <span
-                  key={i}
-                  className="h-1.5 rounded-sm bg-[rgb(75,76,78)]"
-                  style={{ width: 12 + (i % 3) * 2 }}
-                />
-              ))}
-            </div>
-          </button>
+                  {/* mini level bars */}
+                  <div className="mt-2 flex items-center gap-1">
+                    {meta.bars.map((_, i) => (
+                      <span
+                        key={i}
+                        className="h-1.5 rounded-sm bg-[rgb(75,76,78)]"
+                        style={{ width: 12 + (i % 3) * 2 }}
+                      />
+                    ))}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
+}
+
+// Anchor type for admin-defined tops
+type CoinAnchor = {
+  coingecko_id: string
+  anchor_top_price: number | null
 }
 
 export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
@@ -225,7 +215,9 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     async () => {
       const { data, error } = await supabaseBrowser
         .from('buy_planners')
-        .select('id,user_id,coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,started_at,is_active')
+        .select(
+          'id,user_id,coingecko_id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level,started_at,is_active'
+        )
         .eq('user_id', user!.id)
         .eq('coingecko_id', coingeckoId)
         .order('started_at', { ascending: false })
@@ -237,11 +229,25 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
+  // Admin anchor for this coin (used only for display / admin override, resolved server-side)
+  const { data: anchor } = useSWR<CoinAnchor | null>(
+    coingeckoId ? ['/coin-anchors', coingeckoId] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('coin_anchors')
+        .select('coingecko_id,anchor_top_price')
+        .eq('coingecko_id', coingeckoId)
+        .maybeSingle()
+      if (error) throw error
+      return (data as CoinAnchor) ?? null
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  )
+
   // Form state
-  const [top, setTop] = useState<string>('')        // formatted with commas
-  const [budget, setBudget] = useState<string>('')  // formatted with commas
-  const [depth, setDepth] = useState<'70' | '90'>('70')
-  const [growth, setGrowth] = useState<string>('1.25') // left unformatted (no commas)
+  const [budget, setBudget] = useState<string>('') // formatted with commas
+  const [depth, setDepth] = useState<RiskDepth>('70')
+  const [growth, setGrowth] = useState<string>('1.25') // internal only (no UI field)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -255,53 +261,70 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
       if (ce.detail.action === 'save') onSaveNew()
     }
     window.addEventListener('buyplanner:action', onAction as EventListener)
-    return () => window.removeEventListener('buyplanner:action', onAction as EventListener)
-  }, [top, budget, depth, growth, planner?.id, user?.id])
+    return () =>
+      window.removeEventListener('buyplanner:action', onAction as EventListener)
+  }, [budget, depth, growth, planner?.id, user?.id, anchor?.anchor_top_price])
 
-  // Prefill from existing planner
+  // Prefill from existing planner (top price stays in DB, no longer user-editable)
   useEffect(() => {
     if (!planner) return
-    const t = planner.top_price ?? ''
     const b = (planner.budget_usd ?? planner.total_budget) ?? ''
-    setTop((t as any) === '' ? '' : formatWithCommas(String(t)))
     setBudget(b === '' ? '' : formatWithCommas(String(b)))
-    setDepth(String(planner.ladder_depth) === '90' ? '90' : '70')
+    setDepth(String(planner.ladder_depth) === '90' ? '90' as RiskDepth : '70')
     setGrowth(String(planner.growth_per_level ?? '1.25'))
-
   }, [planner?.id])
 
   const validate = () => {
-    const t = toNum(top), b = toNum(budget), g = toNum(growth)
-    if (!Number.isFinite(t) || t <= 0) return 'Enter a valid recent top price'
+    const b = toNum(budget)
     if (!Number.isFinite(b) || b <= 0) return 'Enter a valid total budget'
-    if (!Number.isFinite(g) || g < 1.0) return 'Growth per level should be ≥ 1.0'
     return null
+  }
+
+  // Growth is now an internal parameter (default 1.25), not user-facing
+  const getGrowthOrDefault = () => {
+    const raw = toNum(growth)
+    if (!Number.isFinite(raw) || raw < 1.0) return 1.25
+    return raw
   }
 
   // Edit current buy planner
   const onEdit = async () => {
-    setErr(null); setMsg(null)
-    const v = validate(); if (v) { setErr(v); return }
-    if (!user) { setErr('Not signed in.'); return }
-    if (!planner?.id) { setErr('No planner found to edit.'); return }
+    setErr(null)
+    setMsg(null)
+    const v = validate()
+    if (v) {
+      setErr(v)
+      return
+    }
+    if (!user) {
+      setErr('Not signed in.')
+      return
+    }
+    if (!planner?.id) {
+      setErr('No planner found to edit.')
+      return
+    }
 
     const numBudget = toNum(budget)
+    const growthNum = getGrowthOrDefault()
+
     setBusy(true)
     try {
       const { error: e1 } = await supabaseBrowser
         .from('buy_planners')
         .update({
-          top_price: toNum(top),
+          // top_price is intentionally NOT updated here; existing top stays as-is
           budget_usd: numBudget,
           total_budget: numBudget,
           ladder_depth: Number(depth),
-          growth_per_level: toNum(growth),
+          growth_per_level: growthNum,
         })
         .eq('id', planner.id)
         .eq('user_id', user.id)
+
       if (e1) throw e1
 
-      setMsg('Updated current Buy planner.')
+      setMsg('Updated current Buy planner settings.')
       await mutate()
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to update Buy planner.')
@@ -310,21 +333,66 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     }
   }
 
-  // Save New via atomic RPC
+  // Save New via atomic RPC (uses per-user top price from price-cycle logic)
   const onSaveNew = async () => {
-    setErr(null); setMsg(null)
-    const v = validate(); if (v) { setErr(v); return }
-    if (!user) { setErr('Not signed in.'); return }
+    setErr(null)
+    setMsg(null)
+    const v = validate()
+    if (v) {
+      setErr(v)
+      return
+    }
+    if (!user) {
+      setErr('Not signed in.')
+      return
+    }
+
+    const growthNum = getGrowthOrDefault()
+    const budgetNum = toNum(budget)
+
+    // Resolve the effective top price for this user/asset using the price-cycle engine.
+    // This endpoint applies:
+    //   - per-coin pump threshold (e.g., 50% vs 70%)
+    //   - admin overrides (anchor_top_price) when configured
+    //   - safe fallbacks when no pump cycle is found
+    let topForNew: number | null = null
+
+    try {
+      const res = await fetch(
+        `/api/planner/user-top-price?id=${encodeURIComponent(coingeckoId)}&currency=USD`,
+        { method: 'GET' }
+      )
+      if (!res.ok) {
+        throw new Error(
+          `Unable to resolve price cycle (status ${res.status}). Please try again later.`
+        )
+      }
+      const data = await res.json()
+      const tp = typeof data?.topPrice === 'number' ? data.topPrice : NaN
+      if (!Number.isFinite(tp) || tp <= 0) {
+        throw new Error(
+          'Top price for this asset could not be determined yet. Please try again later.'
+        )
+      }
+      topForNew = tp
+    } catch (e: any) {
+      setErr(
+        e?.message ??
+          'Unable to resolve the current price cycle. Please try again later.'
+      )
+      return
+    }
 
     setBusy(true)
     try {
       const { error } = await supabaseBrowser.rpc('rotate_buy_sell_planners', {
         p_coingecko_id: coingeckoId,
-        p_top_price: toNum(top),
-        p_budget: toNum(budget),
+        p_top_price: topForNew,
+        p_budget: budgetNum,
         p_ladder_depth: Number(depth),
-        p_growth: toNum(growth),
+        p_growth: growthNum,
       })
+
       if (error) throw error
       setMsg('Saved new Buy planner and rotated Sell planner.')
       await mutate()
@@ -337,70 +405,37 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
 
   /* ── styles for text inputs (match dropdown) ─────────────── */
   const fieldShell =
-    'mt-1 w-full rounded-lg bg-[rgb(41,42,43)] px-3 py-2.5 text-slate-200 outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent appearance-none'
+    'mt-1 w-full rounded-lg bg-[rgb(41,42,43)] px-3 py-2.5 text-[13px] text-slate-100 placeholder:text-[120,121,125] border border-[rgb(58,59,63)] focus:outline-none focus:ring-0 focus:border-transparent appearance-none'
 
-  /* ── onChange formatters for auto-commas ─────────────────── */
-  const onChangeTop = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const normalized = normalizeDecimalInput(e.target.value)
-    setTop(formatWithCommas(normalized))
-  }
+  /* ── onChange formatters ─────────────────────────────────── */
   const onChangeBudget = (e: React.ChangeEvent<HTMLInputElement>) => {
     const normalized = normalizeDecimalInput(e.target.value)
     setBudget(formatWithCommas(normalized))
-  }
-  // growth remains plain decimal (no commas)
-  const onChangeGrowth = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const normalized = normalizeDecimalInput(e.target.value)
-    setGrowth(normalized)
   }
 
   return (
     <div className="p-2">
       {/* Inputs only — no action buttons here */}
-      <div className="grid grid-cols-1 gap-2">
-        {/* Top price (USD) */}
+      <div className="space-y-4">
+        {/* Total budget */}
         <label className="block">
-          <span className="text-xs text-slate-300">Top price (USD)</span>
+          <span className="text-xs text-slate-300">Total budget (USD)</span>
           <input
-            value={top}
-            onChange={onChangeTop}
-            className={fieldShell}
-            placeholder="e.g. 65,000"
+            type="text"
             inputMode="decimal"
-          />
-        </label>
-
-        {/* Total Budget (USD) */}
-        <label className="block">
-          <span className="text-xs text-slate-300">Total Budget (USD)</span>
-          <input
+            autoComplete="off"
+            disabled={busy}
             value={budget}
             onChange={onChangeBudget}
             className={fieldShell}
-            placeholder="e.g. 1,000"
-            inputMode="decimal"
+            placeholder="e.g. 10,000"
           />
         </label>
 
-        {/* Ladder depth — polished attached dropdown w/ clear differentiation */}
+        {/* Risk profile — maps to ladder depth & levels under the hood */}
         <label className="block">
-          <span className="text-xs text-slate-300">Ladder depth</span>
-          <LadderDepthDropdown
-            value={depth}
-            onChange={(v) => setDepth(v)}
-          />
-        </label>
-
-        {/* Growth per level */}
-        <label className="block">
-          <span className="text-xs text-slate-300">Growth per level</span>
-          <input
-            value={growth}
-            onChange={onChangeGrowth}
-            className={fieldShell}
-            placeholder="e.g. 1.25"
-            inputMode="decimal"
-          />
+          <span className="text-xs text-slate-300">Risk profile</span>
+          <LadderDepthDropdown value={depth} onChange={v => setDepth(v)} />
         </label>
       </div>
 

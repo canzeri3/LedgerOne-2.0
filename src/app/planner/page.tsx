@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
+import { useUser } from '@/lib/useUser'
+import { supabaseBrowser } from '@/lib/supabaseClient'
+import { usePrice } from '@/lib/dataCore'
+
 import BuyPlannerInputs from '@/components/planner/BuyPlannerInputs'
 import SellPlannerInputs from '@/components/planner/SellPlannerInputs'
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
@@ -19,6 +23,11 @@ type Coin = {
   symbol: string
   name: string
   marketcap?: number | null
+}
+
+type BuyPlannerRow = {
+  id: string
+  top_price: number | null
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -47,11 +56,18 @@ function CoinDropdown({
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popRef = useRef<HTMLDivElement | null>(null)
 
-  const selected = useMemo(() => items.find(i => i.coingecko_id === selectedId), [items, selectedId])
+  const selected = useMemo(
+    () => items.find(i => i.coingecko_id === selectedId),
+    [items, selectedId]
+  )
 
   // Reset highlight when list or open state changes
   useEffect(() => {
-    setHighlight(items.length ? Math.max(0, items.findIndex(i => i.coingecko_id === selectedId)) : -1)
+    setHighlight(
+      items.length
+        ? Math.max(0, items.findIndex(i => i.coingecko_id === selectedId))
+        : -1
+    )
   }, [items, selectedId, open])
 
   // Close on click outside / Esc
@@ -110,8 +126,19 @@ function CoinDropdown({
         onClick={() => setOpen(o => !o)}
         className="w-full min-w-[240px] md:min-w-[260px] rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-3 py-2 text-[14px] md:text-[15px] text-slate-200 hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70 flex items-center justify-between gap-3"
       >
-        <span className="truncate">{selected ? `${selected.name} (${(selected.symbol ?? '').toUpperCase()})` : 'Select a coin'}</span>
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="opacity-70">
+        <span className="truncate">
+          {selected
+            ? `${selected.name} (${(selected.symbol ?? '').toUpperCase()})`
+            : 'Select a coin'}
+        </span>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+          className="opacity-70"
+        >
           <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" />
         </svg>
       </button>
@@ -125,7 +152,9 @@ function CoinDropdown({
         >
           <div className="max-h-[340px] overflow-y-auto">
             {items.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-[rgb(163,163,164)]">No results</div>
+              <div className="px-3 py-3 text-sm text-[rgb(163,163,164)]">
+                No results
+              </div>
             ) : (
               items.map((c, idx) => {
                 const isActive = idx === highlight
@@ -144,15 +173,31 @@ function CoinDropdown({
                     className={
                       'relative w-full text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between overflow-hidden whitespace-nowrap truncate ' +
                       (isActive ? 'bg-[rgb(31,32,33)] ' : 'bg-transparent ') +
-                      (isSelected ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] rounded-lg ' : 'z-0 ')
+                      (isSelected
+                        ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] rounded-lg '
+                        : 'z-0 ')
                     }
                   >
                     <span className="truncate">
-                      {c.name} <span className="opacity-70">({(c.symbol ?? '').toUpperCase()})</span>
+                      {c.name}{' '}
+                      <span className="opacity-70">
+                        ({(c.symbol ?? '').toUpperCase()})
+                      </span>
                     </span>
                     {isSelected && (
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="opacity-80 shrink-0">
-                        <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.01 7.071a1 1 0 0 1-1.424 0L3.29 8.786a1 1 0 0 1 1.419-1.41l3.06 3.082 6.298-6.35a1 1 0 0 1 1.414.006z" clipRule="evenodd" />
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        aria-hidden="true"
+                        className="opacity-80 shrink-0"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.01 7.071a1 1 0 0 1-1.424 0L3.29 8.786a1 1 0 0 1 1.419-1.41l3.06 3.082 6.298-6.35a1 1 0 0 1 1.414.006z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                     )}
                   </button>
@@ -211,6 +256,95 @@ export default function PlannerPage() {
     }
   }, [filteredCoins, coingeckoId])
 
+  // ── New price cycle detection (banner only; no logic changes to planners) ─
+  const { user } = useUser()
+
+  const { data: activeBuyPlanner } = useSWR<BuyPlannerRow | null>(
+    user && coingeckoId
+      ? ['/buy-planner/latest-banner', user.id, coingeckoId]
+      : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('buy_planners')
+        .select('id, top_price')
+        .eq('user_id', user!.id)
+        .eq('coingecko_id', coingeckoId)
+        // IMPORTANT: align with existing schema (started_at, not created_at)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        // Non-fatal: if something is off with the table, just skip the banner
+        // eslint-disable-next-line no-console
+        console.error('Failed to load latest buy_planner for banner:', error)
+        return null
+      }
+
+      return (data as BuyPlannerRow) ?? null
+    },
+    { revalidateOnFocus: false, dedupingInterval: 15_000 }
+  )
+
+  const { row: priceRow } = usePrice(coingeckoId || null, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15_000,
+  })
+
+  // NEW: per-user cycle top from engine (admin anchor or auto 50% pump)
+  const { data: userTopPriceData } = useSWR<{ topPrice: number | null }>(
+    coingeckoId ? ['/planner/user-top-price-banner', coingeckoId] : null,
+    async () => {
+      const res = await fetch(
+        `/api/planner/user-top-price?id=${encodeURIComponent(
+          coingeckoId
+        )}&currency=USD`
+      )
+      if (!res.ok) {
+        // Non-fatal: log and fallback to no banner
+        // eslint-disable-next-line no-console
+        console.error(
+          'Failed to load user-top-price for banner:',
+          res.status
+        )
+        return { topPrice: null }
+      }
+      const data = await res.json()
+      return {
+        topPrice:
+          typeof data?.topPrice === 'number' && data.topPrice > 0
+            ? data.topPrice
+            : null,
+      }
+    },
+    { revalidateOnFocus: false, dedupingInterval: 15_000 }
+  )
+
+  const userCycleTop = userTopPriceData?.topPrice ?? null
+
+  const showCycleBanner = useMemo(() => {
+    if (!activeBuyPlanner?.top_price) return false
+
+    const plannerTop = activeBuyPlanner.top_price
+    if (!plannerTop || plannerTop <= 0) return false
+
+    // Primary: engine-derived cycle top (admin anchor OR auto pump) has moved
+    // meaningfully above this ladder's top. This captures cases like:
+    // - You update anchor from 75k -> 140k
+    // - Engine detects a new 50% pump cycle
+    if (userCycleTop && userCycleTop > 0) {
+      // Require > ~1% drift above the ladder's top to avoid noise
+      if (userCycleTop > plannerTop * 1.01) return true
+    }
+
+    // Secondary safety: live price has pushed above the ladder's top
+    if (priceRow && typeof priceRow.price === 'number' && priceRow.price > 0) {
+      if (priceRow.price > plannerTop) return true
+    }
+
+    return false
+  }, [activeBuyPlanner?.top_price, userCycleTop, priceRow?.price])
+
   return (
     <div
       className="px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-screen-2xl mx-auto space-y-10"
@@ -221,12 +355,19 @@ export default function PlannerPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-[rgb(41,42,45)]/80 pb-3">
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-           <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90 leading-tight">Buy / Sell Planner</h1>
+              <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90 leading-tight">
+                Buy / Sell Planner
+              </h1>
               {selected ? (
-                <span className="text-[13px] md:text-[14px] text-[rgb(163,163,164)] truncate">{(selected.symbol ?? '').toUpperCase()} · {selected.name}</span>
+                <span className="text-[13px] md:text-[14px] text-[rgb(163,163,164)] truncate">
+                  {(selected.symbol ?? '').toUpperCase()} · {selected.name}
+                </span>
               ) : null}
             </div>
-            <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)]">Pick a coin, then configure inputs and review ladders in a clean, unified view.</p>
+            <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)]">
+              Pick a coin, then configure inputs and review ladders in a clean,
+              unified view.
+            </p>
           </div>
 
           {/* Right side: Search + new integrated dropdown */}
@@ -238,16 +379,23 @@ export default function PlannerPage() {
                 inputMode="search"
                 placeholder="Coin Ticker…"
                 value={coinQuery}
-                onChange={(e) => setCoinQuery(e.target.value)}
+                onChange={e => setCoinQuery(e.target.value)}
                 className="rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-3 py-2 text-[13px] md:text-[14px] text-slate-200 placeholder:text-[rgb(163,163,164)] hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70 min-w-[180px]"
                 aria-label="Search coins by name or symbol"
               />
             </div>
 
-            <label className="text-slate-300 text-[13px] md:text-[14px]">Coin</label>
+            <label className="text-slate-300 text-[13px] md:text-[14px]">
+              Coin
+            </label>
 
             {/* Connected, professional dropdown */}
-            <CoinDropdown items={filteredCoins} selectedId={coingeckoId} onChange={setCoingeckoId} disabled={!coins?.length} />
+            <CoinDropdown
+              items={filteredCoins}
+              selectedId={coingeckoId}
+              onChange={setCoingeckoId}
+              disabled={!coins?.length}
+            />
           </div>
         </div>
 
@@ -261,17 +409,75 @@ export default function PlannerPage() {
         <div className="text-slate-400 text-sm">Loading…</div>
       ) : (
         <>
+          {/* New price cycle banner (short, points people to tooltip) */}
+          {showCycleBanner && selected && (
+            <div className="mb-4 rounded-lg border border-[rgb(60,61,65)] bg-[rgb(32,33,36)] px-4 py-3 text-sm text-slate-200">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-flex h-2 w-2 rounded-full bg-[rgb(136,128,213)]"
+                    aria-hidden="true"
+                  />
+                  <span className="font-medium">
+                    {(selected.symbol ?? '').toUpperCase() || selected.name} new
+                    price cycle detected
+                  </span>
+                </div>
+                <p className="text-[13px] text-slate-300">
+                  For best use of the strategy, consider updating Total Budget
+                  and clicking <span className="font-medium">Save New</span> to
+                  start a fresh ladder for this cycle. For the full explanation,
+                  hover the info icon next to{' '}
+                  <span className="font-medium">Buy Planner</span>.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
           <Card
-            title="Buy Planner"
+            title={
+              <div className="flex items-center gap-2">
+                <span>Buy Planner</span>
+                {/* Info tooltip – keeps page clean but explanation always available */}
+                <div className="relative inline-flex items-center group">
+                  <button
+                    type="button"
+                    aria-label="How the Buy Planner & price cycles work"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
+                  >
+                    i
+                  </button>
+                  <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
+                    <p className="mb-1 font-semibold text-slate-100">
+                      How this planner works
+                    </p>
+                    <p className="text-slate-300">
+                      LedgerOne builds a personalized, structured scale-in plan
+                      for each major price cycle in this asset, based on the
+                      risk profile you choose. When a new price cycle is
+                      detected, we suggest that you refresh your plan by
+                      adjusting your total budget if needed and clicking{' '}
+                      <span className="font-medium">Save New</span>. This
+                      creates a new buy ladder for the current market
+                      environment while keeping a separate, preserved sell
+                      planner for the previous cycle.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            }
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
-              noHoverLift
-              noShadow
+            noHoverLift
+            noShadow
           >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
               {/* Left: Inputs */}
-              <section aria-label="Buy Planner Inputs" className="md:col-span-4 lg:col-span-3 space-y-4 buy-inputs-equal">
+              <section
+                aria-label="Buy Planner Inputs"
+                className="md:col-span-4 lg:col-span-3 space-y-4 buy-inputs-equal"
+              >
                 <div className="text-xs text-slate-400 md:hidden">Inputs</div>
                 <div
                   className={`
@@ -282,12 +488,16 @@ export default function PlannerPage() {
                     [&_*]:[contain:layout_style_paint]
                   `}
                 >
-                  <BuyPlannerInputs coingeckoId={coingeckoId} />
+<BuyPlannerInputs coingeckoId={coingeckoId} showCycleBanner={showCycleBanner} />
                 </div>
               </section>
 
               {/* Right: Ladder */}
-              <section aria-label="Buy Planner Ladder" className="md:col-span-8 lg:col-span-9 space-y-4" data-buy-planner>
+              <section
+                aria-label="Buy Planner Ladder"
+                className="md:col-span-8 lg:col-span-9 space-y-4"
+                data-buy-planner
+              >
                 <div className="text-xs text-slate-400 md:hidden">Ladder</div>
                 <div className="p-2 rounded-md border border-[rgb(58,59,63)] bg-[rgb(41,42,45)]">
                   <BuyPlannerLadder coingeckoId={coingeckoId} />
@@ -299,7 +509,13 @@ export default function PlannerPage() {
             <div className="mt-3 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('buyplanner:action', { detail: { action: 'edit' } }))}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent('buyplanner:action', {
+                      detail: { action: 'edit' },
+                    })
+                  )
+                }
                 className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
               >
                 Edit Planner
@@ -308,7 +524,13 @@ export default function PlannerPage() {
               {/* Save New — Uiverse.io (Madflows) animated gradient, now with matching ring */}
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('buyplanner:action', { detail: { action: 'save' } }))}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent('buyplanner:action', {
+                      detail: { action: 'save' },
+                    })
+                  )
+                }
                 className="button"
               >
                 <span className="button-content">Save New</span>
@@ -317,17 +539,24 @@ export default function PlannerPage() {
           </Card>
 
           {/* ───────── SELL: inputs + active/history ───────── */}
-       <Card
-   title="Sell Planner"
-  className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
-  headerBorderClassName="border-[rgb(41,42,45)]"
-  headerRight={<div id="sell-planner-header-right" className="flex items-center gap-2" />}
-    noHoverLift
-    noShadow
->
-
+          <Card
+            title="Sell Planner"
+            className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
+            headerBorderClassName="border-[rgb(41,42,45)]"
+            headerRight={
+              <div
+                id="sell-planner-header-right"
+                className="flex items-center gap-2"
+              />
+            }
+            noHoverLift
+            noShadow
+          >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
-              <section aria-label="Sell Planner Inputs" className="md:col-span-4 lg:col-span-3 space-y-4 sell-inputs-stack">
+              <section
+                aria-label="Sell Planner Inputs"
+                className="md:col-span-4 lg:col-span-3 space-y-4 sell-inputs-stack"
+              >
                 <div className="text-xs text-slate-400 md:hidden">Inputs</div>
                 <div
                   className={`
@@ -343,14 +572,22 @@ export default function PlannerPage() {
                 </div>
               </section>
 
-              <section aria-label="Sell Planner Active and History" className="md:col-span-8 lg:col-span-9 space-y-4" data-sell-planner>
-                <div className="text-xs text-slate-400 md:hidden">Active &amp; History</div>
+              <section
+                aria-label="Sell Planner Active and History"
+                className="md:col-span-8 lg:col-span-9 space-y-4"
+                data-sell-planner
+              >
+                <div className="text-xs text-slate-400 md:hidden">
+                  Active &amp; History
+                </div>
                 <div className="p-0">
                   {/* CHANGED: use the planner-only component here */}
                   <SellPlannerCombinedCardPlanner
                     title="Active & History"
                     ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
-                    HistoryView={<SellPlannerHistory coingeckoId={coingeckoId} />}
+                    HistoryView={
+                      <SellPlannerHistory coingeckoId={coingeckoId} />
+                    }
                     newestFirst={true}
                   />
                 </div>
@@ -401,7 +638,7 @@ export default function PlannerPage() {
           font-size: 0.875rem;
           line-height: 1.25rem;
           font-weight: 500;
-          border: 1px solid rgb(58,59,63);
+          border: 1px solid rgb(58, 59, 63);
           cursor: pointer;
         }
         .button:hover::before {
@@ -412,7 +649,7 @@ export default function PlannerPage() {
           z-index: 1;
         }
         .button::before {
-          content: "";
+          content: '';
           position: absolute;
           top: 0;
           left: 0;
@@ -421,7 +658,11 @@ export default function PlannerPage() {
           width: 100%;
           height: inherit;
           border-radius: inherit;
-          background: linear-gradient(82.3deg, rgba(109,93,186) 10.8%, rgba(109,93,186) 94.3%);
+          background: linear-gradient(
+            82.3deg,
+            rgba(109, 93, 186) 10.8%,
+            rgba(109, 93, 186) 94.3%
+          );
           transition: all 0.4s;
         }
       `}</style>
