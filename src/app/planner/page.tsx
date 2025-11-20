@@ -30,6 +30,11 @@ type BuyPlannerRow = {
   top_price: number | null
 }
 
+type TopPriceMeta = {
+  topPrice: number | null
+  source?: string | null
+}
+
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 /* ─────────────────────────────────────────────────────────────
@@ -256,7 +261,7 @@ export default function PlannerPage() {
     }
   }, [filteredCoins, coingeckoId])
 
-  // ── New price cycle detection (banner only; no logic changes to planners) ─
+  // ── New price cycle detection (banner only; no logic changes) ─────────────
   const { user } = useUser()
 
   const { data: activeBuyPlanner } = useSWR<BuyPlannerRow | null>(
@@ -286,64 +291,37 @@ export default function PlannerPage() {
     { revalidateOnFocus: false, dedupingInterval: 15_000 }
   )
 
-  const { row: priceRow } = usePrice(coingeckoId || null, 'USD', {
+    const { row: priceRow } = usePrice(coingeckoId || null, 'USD', {
     revalidateOnFocus: false,
     dedupingInterval: 15_000,
   })
 
-  // NEW: per-user cycle top from engine (admin anchor or auto 50% pump)
-  const { data: userTopPriceData } = useSWR<{ topPrice: number | null }>(
-    coingeckoId ? ['/planner/user-top-price-banner', coingeckoId] : null,
-    async () => {
-      const res = await fetch(
-        `/api/planner/user-top-price?id=${encodeURIComponent(
+  const { data: topPriceMeta } = useSWR<TopPriceMeta | null>(
+    coingeckoId
+      ? `/api/planner/user-top-price?id=${encodeURIComponent(
           coingeckoId
         )}&currency=USD`
-      )
-      if (!res.ok) {
-        // Non-fatal: log and fallback to no banner
-        // eslint-disable-next-line no-console
-        console.error(
-          'Failed to load user-top-price for banner:',
-          res.status
-        )
-        return { topPrice: null }
-      }
-      const data = await res.json()
-      return {
-        topPrice:
-          typeof data?.topPrice === 'number' && data.topPrice > 0
-            ? data.topPrice
-            : null,
-      }
-    },
-    { revalidateOnFocus: false, dedupingInterval: 15_000 }
+      : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 15_000,
+    }
   )
 
-  const userCycleTop = userTopPriceData?.topPrice ?? null
-
-  const showCycleBanner = useMemo(() => {
+   const showCycleBanner = useMemo(() => {
     if (!activeBuyPlanner?.top_price) return false
+    if (!priceRow || typeof priceRow.price !== 'number') return false
+    if (activeBuyPlanner.top_price <= 0 || priceRow.price <= 0) return false
 
-    const plannerTop = activeBuyPlanner.top_price
-    if (!plannerTop || plannerTop <= 0) return false
+    // If this coin is in a forced manual anchor regime, suppress "new cycle" banners.
+    const source = topPriceMeta?.source
+    if (source === 'admin_anchor_forced') return false
 
-    // Primary: engine-derived cycle top (admin anchor OR auto pump) has moved
-    // meaningfully above this ladder's top. This captures cases like:
-    // - You update anchor from 75k -> 140k
-    // - Engine detects a new 50% pump cycle
-    if (userCycleTop && userCycleTop > 0) {
-      // Require > ~1% drift above the ladder's top to avoid noise
-      if (userCycleTop > plannerTop * 1.01) return true
-    }
+    // "New price cycle" = current price has moved above the ladder's top price
+    return priceRow.price > activeBuyPlanner.top_price
+  }, [activeBuyPlanner?.top_price, priceRow?.price, topPriceMeta?.source])
 
-    // Secondary safety: live price has pushed above the ladder's top
-    if (priceRow && typeof priceRow.price === 'number' && priceRow.price > 0) {
-      if (priceRow.price > plannerTop) return true
-    }
-
-    return false
-  }, [activeBuyPlanner?.top_price, userCycleTop, priceRow?.price])
 
   return (
     <div
@@ -424,10 +402,10 @@ export default function PlannerPage() {
                   </span>
                 </div>
                 <p className="text-[13px] text-slate-300">
-                  For best use of the strategy, consider updating Total Budget
-                  and clicking <span className="font-medium">Save New</span> to
-                  start a fresh ladder for this cycle. For the full explanation,
-                  hover the info icon next to{' '}
+                  For best use of the strategy, consider updating Total Budget and clicking{' '}
+                  <span className="font-medium">Save New</span> to start a
+                  fresh ladder for this cycle. For the full explanation, hover
+                  the info icon next to{' '}
                   <span className="font-medium">Buy Planner</span>.
                 </p>
               </div>
@@ -452,17 +430,16 @@ export default function PlannerPage() {
                     <p className="mb-1 font-semibold text-slate-100">
                       How this planner works
                     </p>
-                    <p className="text-slate-300">
-                      LedgerOne builds a personalized, structured scale-in plan
-                      for each major price cycle in this asset, based on the
-                      risk profile you choose. When a new price cycle is
-                      detected, we suggest that you refresh your plan by
-                      adjusting your total budget if needed and clicking{' '}
-                      <span className="font-medium">Save New</span>. This
-                      creates a new buy ladder for the current market
-                      environment while keeping a separate, preserved sell
-                      planner for the previous cycle.
-                    </p>
+            <p className="text-slate-300">
+  LedgerOne builds a personalized, structured scale-in plan for each major price cycle in
+   this asset, based on the risk profile you choose. When a new price cycle is detected, 
+   we suggest that you refresh your plan by adjusting your total budget if needed and clicking{' '}
+  <span className="font-medium">Save New</span>. This creates a new buy ladder for the
+  current market environment while keeping a separate, preserved sell planner for the
+  previous cycle.
+</p>
+
+
                   </div>
                 </div>
               </div>
@@ -488,7 +465,7 @@ export default function PlannerPage() {
                     [&_*]:[contain:layout_style_paint]
                   `}
                 >
-<BuyPlannerInputs coingeckoId={coingeckoId} showCycleBanner={showCycleBanner} />
+                  <BuyPlannerInputs coingeckoId={coingeckoId} />
                 </div>
               </section>
 
