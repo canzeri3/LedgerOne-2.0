@@ -413,37 +413,41 @@ export default function PlannerPage() {
           )}
 
           {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
+                    {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
           <Card
             title={
-              <div className="flex items-center gap-2">
-                <span>Buy Planner</span>
-                {/* Info tooltip – keeps page clean but explanation always available */}
-                <div className="relative inline-flex items-center group">
-                  <button
-                    type="button"
-                    aria-label="How the Buy Planner & price cycles work"
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
-                  >
-                    i
-                  </button>
-                  <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
-                    <p className="mb-1 font-semibold text-slate-100">
-                      How this planner works
-                    </p>
-            <p className="text-slate-300">
-  LedgerOne builds a personalized, structured scale-in plan for each major price cycle in
-   this asset, based on the risk profile you choose. When a new price cycle is detected, 
-   we suggest that you refresh your plan by adjusting your total budget if needed and clicking{' '}
-  <span className="font-medium">Save New</span>. This creates a new buy ladder for the
-  current market environment while keeping a separate, preserved sell planner for the
-  previous cycle.
-</p>
-
-
+              (
+                <div className="flex items-center gap-2">
+                  <span>Buy Planner</span>
+                  {/* Info tooltip – keeps page clean but explanation always available */}
+                  <div className="relative inline-flex items-center group">
+                    <button
+                      type="button"
+                      aria-label="How the Buy Planner & price cycles work"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
+                    >
+                      i
+                    </button>
+                    <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
+                      <p className="mb-1 font-semibold text-slate-100">
+                        How this planner works
+                      </p>
+                      <p className="text-slate-300">
+                        LedgerOne builds a personalized, structured scale-in plan for each
+                        major price cycle in this asset, based on the risk profile you
+                        choose. When a new price cycle is detected, we suggest that you
+                        refresh your plan by adjusting your total budget if needed and
+                        clicking{' '}
+                        <span className="font-medium">Save New</span>. This creates a new
+                        buy ladder for the current market environment while keeping a
+                        separate, preserved sell planner for the previous cycle.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) as any
             }
+
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
             noHoverLift
