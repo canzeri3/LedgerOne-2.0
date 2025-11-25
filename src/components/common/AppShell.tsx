@@ -26,6 +26,7 @@ const GLOW_SCROLL = 'rgb(20,21,22)'
 export default function AppShell({ children }: { children: ReactNode }) {
   const [scrolled, setScrolled] = useState(false)
   const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
+  const [showPageLoader, setShowPageLoader] = useState(false)
   const pathname = usePathname()
   const isLanding = pathname === '/'
 
@@ -37,6 +38,44 @@ export default function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  // Global page loader overlay with route-based rules
+  useEffect(() => {
+    if (!pathname) return
+
+    // Routes where we NEVER show the overlay:
+    // - Landing
+    // - Login / signup
+    // - Password-related pages (reset + auth flows)
+    const disableLoader =
+      pathname === '/' ||
+      pathname === '/login' ||
+      pathname === '/signup' ||
+      pathname === '/reset' ||
+      pathname === '/auth' ||
+      pathname.startsWith('/auth/')
+
+    if (disableLoader) {
+      setShowPageLoader(false)
+      return
+    }
+
+    // "Heavy" core workspace pages: keep full 1.5s interaction
+    const isHeavyRoute =
+      pathname === '/dashboard' ||
+      pathname === '/planner' ||
+      pathname.startsWith('/coins') ||
+      pathname === '/portfolio'
+
+    const duration = isHeavyRoute ? 1500 : 1000
+
+    setShowPageLoader(true)
+    const timer = setTimeout(() => {
+      setShowPageLoader(false)
+    }, duration)
+
+    return () => clearTimeout(timer)
+  }, [pathname])
 
   // Watch the header AlertsTooltip text and detect if there is any numeric count > 0
   useEffect(() => {
@@ -66,6 +105,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
+
+      {/* Full-screen blurred loader overlay (except on excluded routes) */}
+      {showPageLoader && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/45 backdrop-blur-md">
+          <div className="lg1-page-loader">
+            <div className="lg1-loader-orbit">
+              <div className="lg1-triangle1" />
+              <div className="lg1-triangle2" />
+            </div>
+            <div className="lg1-loader-text">
+              Preparing your LedgerOne workspace…
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky sidebar + independent scrolling main column */}
       <div className="grid grid-cols-12">
@@ -115,18 +169,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 {/* Left: Logo (pinned to far left) */}
                 <div className="flex flex-1 items-center">
                   <Link href="/" className="flex items-center gap-2" aria-label="LedgerOne home">
- <Image
-  src="/lg1-logo.png"
-  alt="LedgerOne"
-  width={260}
-  height={100}
-  priority
-  className="h-12 w-auto sm:h-14"
-/>
-
-
-
-
+                    <Image
+                      src="/lg1-logo.png"
+                      alt="LedgerOne"
+                      width={260}
+                      height={100}
+                      priority
+                      className="h-12 w-auto sm:h-14"
+                    />
                   </Link>
                 </div>
 
@@ -213,11 +263,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   className="flex items-center gap-2"
                   aria-label="LedgerOne dashboard"
                 >
-
-
-
-
-
+                  {/* In-app logo intentionally omitted (existing behavior preserved) */}
                 </Link>
 
                 {/* Right: alerts, settings, auth */}

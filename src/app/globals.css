@@ -302,4 +302,79 @@ html, body {
 
   /* mt-2 from the existing class still adds a small gap; keep it */
 }
- 
+ /* ── Global page loader (LedgerOne triangles) ─────────────────────────── */
+
+.lg1-page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.lg1-loader-orbit {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+/* From Uiverse.io by Cksunandh – adapted & namespaced for LedgerOne */
+.lg1-triangle1,
+.lg1-triangle2 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+}
+
+/* Top-left oriented triangle */
+.lg1-triangle1 {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 50px 50px 0 0;
+  border-color: #8086e0 transparent transparent transparent;
+  margin: -25px 0 0 -25px;
+  animation: lg1-shk1 1.1s ease-in-out infinite alternate;
+}
+
+/* Bottom-right oriented triangle */
+.lg1-triangle2 {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 50px 50px;
+  border-color: transparent transparent #6554b3 transparent;
+  margin: -25px 0 0 -25px;
+  animation: lg1-shk2 1.1s ease-in-out infinite alternate;
+  opacity: 0.85;
+}
+
+/* Rotational animation, slightly softened for an institutional feel */
+@keyframes lg1-shk1 {
+  0% {
+    transform: translate(-50%, -50%) rotate(-360deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+}
+
+@keyframes lg1-shk2 {
+  0% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+}
+
+.lg1-loader-text {
+  color: #9ca3af; /* slate-400-ish */
+  margin: 0 auto;
+  text-align: center;
+  font-weight: 500;
+  letter-spacing: 0.25em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
