@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
+
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import type { BuyPlannerRow } from '@/types/db'
@@ -233,6 +234,7 @@ type CoinAnchor = {
 
 export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
+  const { mutate: mutateGlobal } = useSWRConfig()
 
   // Load latest (current) buy planner for this coin
   const { data: planner, mutate } = useSWR<BuyPlannerRow | null>(
@@ -282,15 +284,17 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   // Bridge: listen for global actions from the Card footer buttons
   useEffect(() => {
     function onAction(e: Event) {
-      const ce = e as CustomEvent<{ action: 'edit' | 'save' }>
+      const ce = e as CustomEvent<{ action: 'edit' | 'save' | 'remove' }>
       if (!ce?.detail) return
       if (ce.detail.action === 'edit') onEdit()
       if (ce.detail.action === 'save') onSaveNew()
+      if (ce.detail.action === 'remove') onClearPlanner()
     }
     window.addEventListener('buyplanner:action', onAction as EventListener)
     return () =>
       window.removeEventListener('buyplanner:action', onAction as EventListener)
   }, [budget, depth, growth, planner?.id, user?.id, anchor?.anchor_top_price])
+
 
  // Prefill from existing planner (top price stays in DB, no longer user-editable)
 useEffect(() => {
@@ -325,7 +329,7 @@ useEffect(() => {
     return raw
   }
 
-  // Edit current buy planner
+    // Edit current buy planner
   const onEdit = async () => {
     setErr(null)
     setMsg(null)
@@ -366,6 +370,49 @@ useEffect(() => {
       await mutate()
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to update Buy planner.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Remove current planner (soft delete: mark as inactive)
+  const onClearPlanner = async () => {
+    setErr(null)
+    setMsg(null)
+
+    if (!user) {
+      setErr('Not signed in.')
+      return
+    }
+    if (!planner?.id) {
+      setErr('No active Buy planner to remove.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Remove the current Buy planner for this asset? This will stop alerts and the ladder for this coin, but keeps your past trades and history intact.'
+    )
+    if (!confirmed) return
+
+    setBusy(true)
+    try {
+      const { error } = await supabaseBrowser
+        .from('buy_planners')
+        .update({ is_active: false })
+        .eq('id', planner.id)
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      setMsg('Removed current Buy planner for this coin.')
+      await mutate()
+
+      // Kick other planner-related SWR caches so UI updates immediately
+      mutateGlobal(['/buy-planner/active', user.id, coingeckoId])
+      mutateGlobal(['/buy-planner/active-ladder', user.id, coingeckoId])
+      mutateGlobal(['/alerts/buy-planners', user.id])
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to remove Buy planner.')
     } finally {
       setBusy(false)
     }

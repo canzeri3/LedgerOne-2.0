@@ -486,8 +486,53 @@ export default function PlannerPage() {
               </section>
             </div>
 
-            {/* Footer: ACTIONS at the bottom-right of the WHOLE Buy Planner card */}
-            <div className="mt-3 flex justify-end gap-3">
+                        {/* Footer: ACTIONS — Remove on the left, Edit/Save on the right */}
+          <div className="mt-3 flex items-center justify-between">
+            {/* Delete current planner (soft-deactivate) on the left side */}
+            <button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('buyplanner:action', {
+                    detail: { action: 'remove' },
+                  })
+                )
+              }
+              className="planner-delete-btn"
+            >
+              <span className="button__text">Delete</span>
+              <span className="button__icon" aria-hidden="true">
+                <svg className="svg" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M3 6h18"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M10 11v6M14 11v6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+            </button>
+
+            {/* Edit + Save New grouped on the right */}
+            <div className="flex gap-3">
+              {/* Edit current planner (top/budget/growth) */}
               <button
                 type="button"
                 onClick={() =>
@@ -502,7 +547,7 @@ export default function PlannerPage() {
                 Edit Planner
               </button>
 
-              {/* Save New — Uiverse.io (Madflows) animated gradient, now with matching ring */}
+              {/* Save New — Uiverse.io sphere button */}
               <button
                 type="button"
                 onClick={() =>
@@ -517,6 +562,11 @@ export default function PlannerPage() {
                 <span className="button-content">Save New</span>
               </button>
             </div>
+          </div>
+
+
+
+
           </Card>
 
           {/* ───────── SELL: inputs + active/history ───────── */}
@@ -646,6 +696,73 @@ export default function PlannerPage() {
           );
           transition: all 0.4s;
         }
+                      /* Planner Delete button — identical style to Sell planner delete */
+        .planner-delete-btn {
+          position: relative;
+          border-radius: 6px;
+          width: 95px;
+          height: 28px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          border: 1px solid rgb(105, 40, 40);
+          background-color: rgba(41, 42, 45, 1);
+          overflow: hidden;
+        }
+
+        .planner-delete-btn,
+        .planner-delete-btn .button__icon,
+        .planner-delete-btn .button__text {
+          transition: all 0.3s;
+        }
+
+        .planner-delete-btn .button__text {
+          transform: translateX(22px);
+          color: #fff;
+          font-weight: 600;
+          font-size: 10px;
+          line-height: 1;
+        }
+
+        .planner-delete-btn .button__icon {
+          position: absolute;
+          transform: translateX(68px);
+          height: 100%;
+          width: 27px;
+          background-color: rgb(105, 40, 40);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+        }
+
+        .planner-delete-btn .svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        .planner-delete-btn:hover {
+          background: rgb(115, 45, 45);
+        }
+
+        .planner-delete-btn:hover .button__text {
+          color: transparent;
+        }
+
+        .planner-delete-btn:hover .button__icon {
+          width: 94px;
+          transform: translateX(0);
+        }
+
+        .planner-delete-btn:active .button__icon {
+          background-color: rgb(95, 35, 35);
+        }
+
+        .planner-delete-btn:active {
+          border: 1px solid rgb(95, 35, 35);
+        }
+
+
       `}</style>
     </div>
   )

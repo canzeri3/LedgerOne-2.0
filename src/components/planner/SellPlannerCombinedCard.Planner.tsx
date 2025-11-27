@@ -260,7 +260,7 @@ export default function SellPlannerCombinedCardPlanner({
           display: flex;
           align-items: center;
           border: 1px solid rgb(105, 40, 40);
-          background-color: rgb(130, 50, 50);
+          background-color: rgb(41, 42, 45);
           overflow: hidden;
           color: ${TEXT_RGB}; /* ensure icon inherits color */
         }
