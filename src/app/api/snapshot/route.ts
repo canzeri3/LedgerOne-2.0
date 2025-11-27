@@ -53,8 +53,21 @@ function lkgSet(providerId: string, row: RankRow) {
   LKG.set(providerId, { row, savedAt: Date.now() });
 }
 
+// ---------------- Snapshot response cache ----------------
+// Dev: response-level cache keyed by (currency + sorted ids).
+// Plain English: if we just answered this exact snapshot request, reuse it
+// for a short window instead of redoing all provider work.
+type SnapshotCacheEntry = {
+  payload: any;
+  expiresAt: number;
+};
+
+const SNAPSHOT_CACHE = new Map<string, SnapshotCacheEntry>();
+const SNAPSHOT_CACHE_TTL_MS = 60_000; // 60s
+
 // ---------------- Id normalization ----------------
 const ID_ALIASES: Record<string, string> = {
+
   btc: "bitcoin",
   eth: "ethereum",
   trx: "tron",
@@ -218,10 +231,23 @@ export async function GET(req: Request) {
 
     const currency = (u.searchParams.get("currency") || "USD").toUpperCase();
 
+    // Snapshot-level cache key: currency + sorted ids.
+    const sortedKeyIds = [...requestedIds].sort();
+    const cacheKey = `${currency}:${sortedKeyIds.join(",") || "default"}`;
+    const now = Date.now();
+    const cached = SNAPSHOT_CACHE.get(cacheKey);
+
+    if (cached && cached.expiresAt > now) {
+      const res = NextResponse.json(cached.payload, { status: 200 });
+      res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
+      return res;
+    }
+
     // 1) Prices (new data core)
     const { rows: priceRows, updatedAt } = await getConsensusPrices(requestedIds, currency);
 
     // 2) Ranks
+
     const providerIds = requestedIds.map(toProviderId);
 
     // (0) QUICK LKG PASS — if we already have LKG for all ids, we can return immediately
@@ -234,10 +260,16 @@ export async function GET(req: Request) {
     }
     if (hasAllLkg && requestedIds.length > 0) {
       const rows = toOrigRows(requestedIds, providerIds, pid => lkgGet(pid));
-      const res = NextResponse.json({ updatedAt, currency, prices: priceRows, rows }, { status: 200 });
+      const payload = { updatedAt, currency, prices: priceRows, rows };
+      SNAPSHOT_CACHE.set(cacheKey, {
+        payload,
+        expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS,
+      });
+      const res = NextResponse.json(payload, { status: 200 });
       res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
       return res;
     }
+
 
     // (1) Try top cache (CG), else fetch fresh top (CG), else fallback top (Paprika)
     let topByProviderId = topCacheGet()?.topByProviderId ?? null;
@@ -288,14 +320,21 @@ export async function GET(req: Request) {
       return null;
     };
 
-    const rows =
+      const rows =
       requestedIds.length > 0
         ? toOrigRows(requestedIds, providerIds, lookup)
         : Array.from(topByProviderId?.values() ?? []);
 
-    const res = NextResponse.json({ updatedAt, currency, prices: priceRows, rows }, { status: 200 });
+    const payload = { updatedAt, currency, prices: priceRows, rows };
+    SNAPSHOT_CACHE.set(cacheKey, {
+      payload,
+      expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS,
+    });
+
+    const res = NextResponse.json(payload, { status: 200 });
     res.headers.set("Cache-Control", "public, s-maxage=5, stale-while-revalidate=30");
     return res;
+
   } catch (err: any) {
     const res = NextResponse.json(
       {

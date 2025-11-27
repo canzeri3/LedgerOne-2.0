@@ -281,7 +281,7 @@ export default function LandingPage() {
         className="mt-2 flex flex-col items-center justify-center gap-3 border-t border-slate-800/60 pt-4"
       >
         <p className="text-xs text-slate-400 text-center max-w-md">
-          Ready to bring institutional-style structure to your household portfolio?
+          Ready to bring institutional-style structure to your investing portfolio?
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link

@@ -10,6 +10,29 @@
 // • Hooks are safe for React 19 and SWR 2.x.
 
 import useSWR, { SWRConfiguration } from "swr";
+// Shared SWR defaults for all dataCore hooks.
+// Dev terms: this controls how often SWR refetches / dedupes requests.
+// Plain English: think of this as "house rules" for how often the waiter
+// is allowed to run to the kitchen for updates.
+// Shared SWR defaults for all dataCore hooks.
+// Dev terms: this controls how often SWR refetches / dedupes requests.
+// Plain English: think of this as "house rules" for how the app refreshes data"
+// without being too aggressive.
+const DEFAULT_SWR: SWRConfiguration = {
+  // Don't spam refetches when the user switches tabs back to the app.
+  revalidateOnFocus: false,
+  // If the network briefly drops and comes back, SWR can refresh.
+  revalidateOnReconnect: true,
+  // If data is marked as stale for any reason, it's allowed to revalidate
+  // the next time something asks for it.
+  revalidateIfStale: true,
+  // Keep the last good data visible while a new request is in flight
+  // (prevents UI flicker).
+  keepPreviousData: true,
+  // NOTE: we let SWR use its own default dedupingInterval (≈2s)
+  // to avoid any surprises for views like the Exposure & Risk Metric card.
+};
+
 
 type SourceTag = "consensus";
 
@@ -141,15 +164,20 @@ export function usePrices(
       ? [`/api/prices`, list.sort().join(","), currency.toUpperCase()]
       : null;
 
-  const { data, error, isLoading, mutate } = useSWR<PricesPayload>(
-    key,
-    ([, joined, ccy]) => swrFetcher(`/api/prices?ids=${encodeURIComponent(joined)}&currency=${encodeURIComponent(ccy)}`),
-    {
-      revalidateOnFocus: false,
-      keepPreviousData: true,
-      ...swr,
-    }
-  );
+ const { data, error, isLoading, mutate } = useSWR<PricesPayload>(
+  key,
+  ([, joined, ccy]) =>
+    swrFetcher(
+      `/api/prices?ids=${encodeURIComponent(joined)}&currency=${encodeURIComponent(
+        ccy
+      )}`
+    ),
+  {
+    ...DEFAULT_SWR,
+    ...swr, // caller can still override anything if needed
+  }
+);
+
 
   return {
     rows: data?.rows ?? [],
@@ -203,20 +231,22 @@ export function useHistory(
         ]
       : null;
 
-  const { data, error, isLoading, mutate } = useSWR<HistoryPayload>(
-    key,
-    ([, coin, d, iv, ccy]) =>
-      swrFetcher(
-        `/api/price-history?id=${encodeURIComponent(coin)}&days=${encodeURIComponent(
-          d
-        )}&interval=${encodeURIComponent(iv as string)}&currency=${encodeURIComponent(ccy)}`
-      ),
-    {
-      revalidateOnFocus: false,
-      keepPreviousData: true,
-      ...swr,
-    }
-  );
+const { data, error, isLoading, mutate } = useSWR<HistoryPayload>(
+  key,
+  ([, coin, d, iv, ccy]) =>
+    swrFetcher(
+      `/api/price-history?id=${encodeURIComponent(
+        coin
+      )}&days=${encodeURIComponent(d)}&interval=${encodeURIComponent(
+        iv as string
+      )}&currency=${encodeURIComponent(ccy)}`
+    ),
+  {
+    ...DEFAULT_SWR,
+    ...swr,
+  }
+);
+
 
   return {
     points: data?.points ?? [],
