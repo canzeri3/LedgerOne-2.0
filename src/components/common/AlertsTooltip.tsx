@@ -278,12 +278,20 @@ export function AlertsTooltip({
       if (!(live > 0)) continue
 
       const top = Number(p.top_price ?? 0)
-      const budget = Number(p.budget_usd ?? p.total_budget ?? 0)
-      const depth: 70 | 90 = Number(p.ladder_depth) === 90 ? 90 : 70
-      const growth = Number(p.growth_per_level ?? 0)
-      if (!(top > 0) || !(budget > 0)) continue
+const budget = Number(p.budget_usd ?? p.total_budget ?? 0)
 
-      const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+const depthNum = Number(p.ladder_depth || 70)
+const depth = (depthNum === 90
+  ? 90
+  : depthNum === 75
+    ? 75
+    : 70) as 70 | 75 | 90
+
+const growth = Number(p.growth_per_level ?? 0)
+if (!(top > 0) || !(budget > 0)) continue
+
+const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+
       const buys: BuyTrade[] = (tradesByCoinRich.get(cid) ?? [])
         .filter(t => t.side === 'buy' && t.buy_planner_id === p.id)
         .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))

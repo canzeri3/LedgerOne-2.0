@@ -14,14 +14,23 @@ export type BuyLevel = {
 export function buildBuyLevels(
   topPrice: number,
   budgetUsd: number,
-  ladderDepth: 70 | 90,
+  ladderDepth: 70 | 75 | 90,
   growthPctPerLevel: number = 25
 ): BuyLevel[] {
   if (!(topPrice > 0) || !(budgetUsd > 0)) return []
 
-  const dds = ladderDepth === 70
-    ? [20, 30, 40, 50, 60, 70]
-    : [20, 30, 40, 50, 60, 70, 80, 90]
+  // Drawdowns by profile:
+  // - 70% => Moderate: 6 levels, 20..70
+  // - 75% => Aggressive: 3 levels, 25/50/75
+  // - 90% => Conservative: 8 levels, 20..90
+  let dds: number[]
+  if (ladderDepth === 70) {
+    dds = [20, 30, 40, 50, 60, 70]
+  } else if (ladderDepth === 75) {
+    dds = [25, 50, 75]
+  } else {
+    dds = [20, 30, 40, 50, 60, 70, 80, 90]
+  }
 
   const r = 1 + (growthPctPerLevel / 100)         // geometric weight ratio
   const weights = dds.map((_, i) => Math.pow(r, i))
@@ -47,6 +56,7 @@ export function buildBuyLevels(
     }
   })
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // BUY WATERFALL (USD-based) — price eligibility + lock-in

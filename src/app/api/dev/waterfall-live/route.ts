@@ -105,12 +105,20 @@ export async function GET(req: Request) {
   }))
 
   if (!levels.length) {
-    const top = Number((bp as any).top_price || 0)
-    const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
-    const depth = ((bp as any).ladder_depth === 90 ? 90 : 70) as 70 | 90
-    const growth = Number((bp as any).growth_per_level ?? 25)
-    const tmp = await import('@/lib/planner')
-    levels = tmp.buildBuyLevels(top, budget, depth, growth)
+const top = Number((bp as any).top_price || 0)
+const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
+
+const depthNum = Number((bp as any).ladder_depth || 70)
+const depth = (depthNum === 90
+  ? 90
+  : depthNum === 75
+    ? 75
+    : 70) as 70 | 75 | 90
+
+const growth = Number((bp as any).growth_per_level ?? 25)
+const tmp = await import('@/lib/planner')
+levels = tmp.buildBuyLevels(top, budget, depth, growth)
+
   }
 
   // buy trades tagged to this planner

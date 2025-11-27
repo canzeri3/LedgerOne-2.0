@@ -8,8 +8,9 @@ export type BuyPlannerRow = {
   // keep both optional so the UI can coalesce safely.
   budget_usd?: number | null
   total_budget?: number | null
-  ladder_depth: number | '70' | '90'
+  ladder_depth: number | '70' | '75' | '90'
   growth_per_level: number | null
   started_at: string
 }
+
 

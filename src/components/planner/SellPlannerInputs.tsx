@@ -253,12 +253,20 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     if (eBp) throw eBp
     if (!bp?.id) return 0
 
-    const top = Number((bp as any).top_price || 0)
-    const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
-    const depth = Number((bp as any).ladder_depth || 70) as 70 | 90
-    const growth = Number((bp as any).growth_per_level ?? 25)
+   const top = Number((bp as any).top_price || 0)
+const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
 
-    const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+const depthNum = Number((bp as any).ladder_depth || 70)
+const depth = (depthNum === 90
+  ? 90
+  : depthNum === 75
+    ? 75
+    : 70) as 70 | 75 | 90
+
+const growth = Number((bp as any).growth_per_level ?? 25)
+
+const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+
 
     const { data: buysRaw, error: eBuys } = await supabaseBrowser
       .from('trades')

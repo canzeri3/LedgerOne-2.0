@@ -21,11 +21,12 @@ type ActiveBuyPlanner = {
   top_price: number | null
   budget_usd: number | null
   total_budget: number | null
-  ladder_depth: 70 | 90
+  ladder_depth: 70 | 75 | 90
   growth_per_level: number | null
   started_at: string | null
   is_active: boolean | null
 }
+
 
 export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
@@ -58,15 +59,30 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // Build planned levels from planner settings
-  const plan: BuyLevel[] = useMemo(() => {
-    if (!planner) return []
-    const top = Number(planner.top_price || 0)
-    const budget = Number(planner.budget_usd ?? planner.total_budget ?? 0)
-    const depth = (Number(planner.ladder_depth || 70) === 90 ? 90 : 70) as 70 | 90
-    const growth = Number(planner.growth_per_level ?? 25)
-    return buildBuyLevels(top, budget, depth, growth)
-  }, [planner?.id])
+// Build planned levels from planner settings
+const plan: BuyLevel[] = useMemo(() => {
+  if (!planner) return []
+  const top = Number(planner.top_price || 0)
+  const budget = Number(planner.budget_usd ?? planner.total_budget ?? 0)
+
+  const depthNum = Number(planner.ladder_depth || 70)
+  const depth = (depthNum === 90
+    ? 90
+    : depthNum === 75
+      ? 75
+      : 70) as 70 | 75 | 90
+
+  const growth = Number(planner.growth_per_level ?? 25)
+  return buildBuyLevels(top, budget, depth, growth)
+}, [
+  planner?.id,
+  planner?.top_price,
+  planner?.budget_usd,
+  planner?.total_budget,
+  planner?.ladder_depth,
+  planner?.growth_per_level,
+])
+
 
   // BUY trades tied to this active Buy planner (chronological)
   const { data: buysRaw } = useSWR<any[] | null>(

@@ -31,22 +31,45 @@ function formatWithCommas(raw: string): string {
 
 /* ── Risk depth metadata ───────────────────────────────────── */
 
-type RiskDepth = '70' | '90'
+type RiskDepth = '70' | '75' | '90'
 
 function DepthMeta(opt: RiskDepth) {
-  const isModerate = opt === '70'
-  const levels = isModerate ? 6 : 8
+  if (opt === '70') {
+    const levels = 6
+    const bars = Array.from({ length: levels })
+    return {
+      shortLabel: 'Moderate',
+      title: 'Moderate profile',
+      desc: '70% depth · 6 levels · growth ×1.25',
+      levels,
+      bars,
+    }
+  }
 
-  const shortLabel = isModerate ? 'Moderate' : 'Conservative'
-  const title = isModerate ? 'Moderate profile' : 'Conservative profile'
-  const desc = isModerate
-    ? '70% depth · 6 levels · growth ×1.25'
-    : '90% depth · 8 levels · growth ×1.25'
+  if (opt === '75') {
+    const levels = 3
+    const bars = Array.from({ length: levels })
+    return {
+      shortLabel: 'Aggressive',
+      title: 'Aggressive profile',
+      desc: '75% depth · 3 levels · growth ×1.25',
+      levels,
+      bars,
+    }
+  }
 
+  // 90% depth: conservative
+  const levels = 8
   const bars = Array.from({ length: levels })
-
-  return { shortLabel, title, desc, levels, bars }
+  return {
+    shortLabel: 'Conservative',
+    title: 'Conservative profile',
+    desc: '90% depth · 8 levels · growth ×1.25',
+    levels,
+    bars,
+  }
 }
+
 
 /* ── Risk profile dropdown (your preferred UI) ─────────────── */
 
@@ -61,7 +84,9 @@ function LadderDepthDropdown({
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
 
-  const OPTIONS: RiskDepth[] = ['70', '90']
+  // Order in UI: Conservative (90), Moderate (70), Aggressive (75)
+  const OPTIONS: RiskDepth[] = ['90', '70', '75']
+
 
   // Close when clicking outside
   useEffect(() => {
@@ -248,6 +273,8 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   const [budget, setBudget] = useState<string>('') // formatted with commas
   const [depth, setDepth] = useState<RiskDepth>('70')
   const [growth, setGrowth] = useState<string>('1.25') // internal only (no UI field)
+  const [isDepthOpen, setIsDepthOpen] = useState(false)
+
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -265,14 +292,25 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
       window.removeEventListener('buyplanner:action', onAction as EventListener)
   }, [budget, depth, growth, planner?.id, user?.id, anchor?.anchor_top_price])
 
-  // Prefill from existing planner (top price stays in DB, no longer user-editable)
-  useEffect(() => {
-    if (!planner) return
-    const b = (planner.budget_usd ?? planner.total_budget) ?? ''
-    setBudget(b === '' ? '' : formatWithCommas(String(b)))
-    setDepth(String(planner.ladder_depth) === '90' ? '90' as RiskDepth : '70')
-    setGrowth(String(planner.growth_per_level ?? '1.25'))
-  }, [planner?.id])
+ // Prefill from existing planner (top price stays in DB, no longer user-editable)
+useEffect(() => {
+  if (!planner) return
+  const b = (planner.budget_usd ?? planner.total_budget) ?? ''
+  setBudget(b === '' ? '' : formatWithCommas(String(b)))
+
+  const rawDepth = String(planner.ladder_depth)
+  if (rawDepth === '90') {
+    setDepth('90')
+  } else if (rawDepth === '75') {
+    setDepth('75')
+  } else {
+    // default / legacy rows
+    setDepth('70')
+  }
+
+  setGrowth(String(planner.growth_per_level ?? '1.25'))
+}, [planner?.id])
+
 
   const validate = () => {
     const b = toNum(budget)
