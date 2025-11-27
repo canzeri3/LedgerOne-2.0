@@ -202,15 +202,26 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
               <td className="px-3 py-2">
                 {fmtCurrency(Math.max(0, plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0) - (fills.allocatedTotal ?? 0)))}
               </td>
-              <td className="px-3 py-2 text-right">
-                {/* Compact Off-Plan (tokens / USD) — matches Sell planner UI */}
-                <div className="inline-flex items-center gap-2 text-xs text-slate-400">
-                  <span className="text-amber-300">Off-Plan</span>
-                  <span className="tabular-nums">{offPlanTokens.toFixed(6)}</span>
-                  <span className="text-slate-600">/</span>
-                  <span className="tabular-nums">{fmtCurrency(Number(fills.offPlanUsd || 0))}</span>
+                  <td className="px-3 py-2 text-right">
+                {/* Avg cost of ladder + compact Off-Plan (tokens / USD) — matches Sell planner UI */}
+                <div className="flex flex-col items-end gap-1 text-xs text-slate-400">
+                  <div className="inline-flex items-center gap-2">
+                    <span>Avg cost</span>
+                    <span className="tabular-nums">
+                      {liveAvgPrice > 0 ? fmtCurrency(liveAvgPrice) : '—'}
+                    </span>
+                  </div>
+                  <div className="inline-flex items-center gap-2">
+                    <span className="text-amber-300">Off-Plan</span>
+                    <span className="tabular-nums">{offPlanTokens.toFixed(6)}</span>
+                    <span className="text-slate-600">/</span>
+                    <span className="tabular-nums">
+                      {fmtCurrency(Number(fills.offPlanUsd || 0))}
+                    </span>
+                  </div>
                 </div>
               </td>
+
             </tr>
           </tfoot>
         </table>
