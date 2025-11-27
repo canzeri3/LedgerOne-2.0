@@ -407,45 +407,86 @@ export default function PortfolioPage() {
     [prisk]
   )
 
-  // ---------- StatCard ----------
+    // ---------- StatCard ----------
   type Accent = 'pos' | 'neg' | 'neutral'
   const StatCard = ({
-    label, value, accent = 'neutral', icon, sub,
+    label,
+    value,
+    accent = 'neutral',
+    icon,
+    sub,
+    pctValue,
+    enablePctToggle = false,
   }: {
-    label: string; value: React.ReactNode; accent?: Accent; icon?: 'up' | 'down'; sub?: string
+    label: string
+    value: React.ReactNode
+    accent?: Accent
+    icon?: 'up' | 'down'
+    sub?: string
+    pctValue?: React.ReactNode
+    enablePctToggle?: boolean
   }) => {
+    const [showPct, setShowPct] = useState(false)
+
     const text =
-      accent === 'pos' ? 'text-emerald-400'
-      : accent === 'neg' ? 'text-[rgba(189,45,50,1)]'
-      : 'text-slate-200'
+      accent === 'pos'
+        ? 'text-emerald-400'
+        : accent === 'neg'
+          ? 'text-[rgba(189,45,50,1)]'
+          : 'text-slate-200'
     const iconUpClass = 'h-4 w-4 text-emerald-400'
     const iconDownClass = 'h-4 w-4 text-[rgba(189,45,50,1)]'
 
+    const displayValue =
+      enablePctToggle && showPct && pctValue != null
+        ? pctValue
+        : value
+
     return (
-      <div className="h-full rounded-md bg-[rgb(28,29,31)]">
+      <div className="relative h-full rounded-md bg-[rgb(28,29,31)]">
         <div className="p-4">
           <div className="flex items-center justify-between">
             <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
             {icon === 'up' && <TrendingUp className={iconUpClass} />}
             {icon === 'down' && <TrendingDown className={iconDownClass} />}
           </div>
-          <div className={`mt-2 text-xl md:text-2xl font-semibold tabular-nums ${text}`}>{value}</div>
+          <div className={`mt-2 text-xl md:text-2xl font-semibold tabular-nums ${text}`}>
+            {displayValue}
+          </div>
           {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
         </div>
+
+        {enablePctToggle && pctValue != null && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowPct((prev) => !prev)
+            }}
+            className="absolute bottom-1.5 right-2 text-[10px] text-slate-500 hover:text-slate-200"
+            aria-label="Toggle between $ and % view"
+          >
+            %
+          </button>
+        )}
       </div>
     )
   }
   const kpiAccent = (n: number | null | undefined): Accent =>
     n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
 
-  // ---------------- Holdings UI state (client-side) ------------------
+
+   // ---------------- Holdings UI state (client-side) ------------------
   type SortKey = 'name' | 'qty' | 'avg' | 'value' | 'invested' | 'unreal' | 'realized' | 'total'
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('value')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [dense, setDense] = useState(false)
+  const [holdingsPctMode, setHoldingsPctMode] = useState(false)
 
   const filteredSorted = useMemo(() => {
+
+
     const q = query.trim().toLowerCase()
     let list = rows
     if (q.length) {
@@ -949,13 +990,70 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* KPI Strip */}
+            {/* KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Portfolio Value" value={fmtCurrency(totals.value)} accent="neutral" />
-        <StatCard label="Money Invested" value={fmtCurrency(totals.invested)} sub="Cost basis of current holdings" accent="neutral" />
-        <StatCard label="Unrealized P&L" value={fmtCurrency(totals.unreal)} accent={kpiAccent(totals.unreal)} icon={kpiAccent(totals.unreal)==='pos'?'up':kpiAccent(totals.unreal)==='neg'?'down':undefined} />
-        <StatCard label="Realized P&L" value={fmtCurrency(totals.realized)} accent={kpiAccent(totals.realized)} icon={kpiAccent(totals.realized)==='pos'?'up':kpiAccent(totals.realized)==='neg'?'down':undefined} />
-        <StatCard label="Total P&L" value={fmtCurrency(totals.total)} accent={kpiAccent(totals.total)} icon={kpiAccent(totals.total)==='pos'?'up':kpiAccent(totals.total)==='neg'?'down':undefined} />
+        {/* No toggle on these two – always show $ */}
+        <StatCard
+          label="Portfolio Value"
+          value={fmtCurrency(totals.value)}
+          accent="neutral"
+        />
+        <StatCard
+          label="Money Invested"
+          value={fmtCurrency(totals.invested)}
+          sub="Cost basis of current holdings"
+          accent="neutral"
+        />
+
+        {/* Unrealized P&L – $ / % of invested */}
+        <StatCard
+          label="Unrealized P&L"
+          value={fmtCurrency(totals.unreal)}
+          pctValue={totals.invested > 0 ? fmtPct(totals.unreal / totals.invested) : '—'}
+          accent={kpiAccent(totals.unreal)}
+          icon={
+            kpiAccent(totals.unreal) === 'pos'
+              ? 'up'
+              : kpiAccent(totals.unreal) === 'neg'
+                ? 'down'
+                : undefined
+          }
+          enablePctToggle
+        />
+
+        {/* Realized P&L – $ / % of invested */}
+        <StatCard
+          label="Realized P&L"
+          value={fmtCurrency(totals.realized)}
+          pctValue={totals.invested > 0 ? fmtPct(totals.realized / totals.invested) : '—'}
+          accent={kpiAccent(totals.realized)}
+          icon={
+            kpiAccent(totals.realized) === 'pos'
+              ? 'up'
+              : kpiAccent(totals.realized) === 'neg'
+                ? 'down'
+                : undefined
+          }
+          enablePctToggle
+        />
+
+        {/* Total P&L – $ / % of invested */}
+        <StatCard
+          label="Total P&L"
+          value={fmtCurrency(totals.total)}
+          pctValue={totals.invested > 0 ? fmtPct(totals.total / totals.invested) : '—'}
+          accent={kpiAccent(totals.total)}
+          icon={
+            kpiAccent(totals.total) === 'pos'
+              ? 'up'
+              : kpiAccent(totals.total) === 'neg'
+                ? 'down'
+                : undefined
+          }
+          enablePctToggle
+        />
+
+        {/* 24h Change – $ / % over previous 24h value */}
         <StatCard
           label="24h Change"
           value={
@@ -963,11 +1061,20 @@ export default function PortfolioPage() {
               ? `${fmtCurrency(totals.delta24Usd)}`
               : `${fmtCurrency(totals.delta24Usd)} (${fmtPct(totals.delta24Pct)})`
           }
+          pctValue={totals.delta24Pct != null ? fmtPct(totals.delta24Pct) : '—'}
           sub={totals.delta24Pct == null ? '24h % unavailable' : 'vs previous 24h value'}
           accent={kpiAccent(totals.delta24Usd)}
-          icon={kpiAccent(totals.delta24Usd)==='pos'?'up':kpiAccent(totals.delta24Usd)==='neg'?'down':undefined}
+          icon={
+            kpiAccent(totals.delta24Usd) === 'pos'
+              ? 'up'
+              : kpiAccent(totals.delta24Usd) === 'neg'
+                ? 'down'
+                : undefined
+          }
+          enablePctToggle
         />
       </div>
+
 
       {/* Exposure & Risk (left) + Allocation donut (right) */}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -1277,65 +1384,102 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* HOLDINGS */}
-<div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">        <div className="px-4 py-3">
+            {/* HOLDINGS */}
+      <div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">
+        <div className="px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <div className="text-lg font-medium">Holdings</div>
-              <span className="hidden sm:inline text-xs text-slate-400">• {filteredSorted.length} shown</span>
+              <span className="hidden sm:inline text-xs text-slate-400">
+                • {filteredSorted.length} shown
+              </span>
             </div>
 
-<div className="relative z-[70] flex items-center gap-2 w-full md:w-auto lo-dropdown-layer">
+            <div className="relative z-[70] flex items-center gap-2 w-full md:w-auto lo-dropdown-layer">
+              {/* Search */}
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search coin or symbol…"
-                  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
-                    style={{ height: 38 }}   // ← add this
+                  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
+                  style={{ height: 38 }}
                 />
               </div>
 
+              {/* Sort select */}
               <SortSelect
                 value={sortKey}
                 onChange={(v) => setSortKey(v as any)}
                 ariaLabel="Sort by"
                 title="Sort by"
                 options={[
-                  { value: 'value',    label: 'Sort: Value' },
-                  { value: 'total',    label: 'Sort: Total P&L' },
-                  { value: 'unreal',   label: 'Sort: Unrealized' },
+                  { value: 'value', label: 'Sort: Value' },
+                  { value: 'total', label: 'Sort: Total P&L' },
+                  { value: 'unreal', label: 'Sort: Unrealized' },
                   { value: 'realized', label: 'Sort: Realized' },
                   { value: 'invested', label: 'Sort: Money Invested' },
-                  { value: 'qty',      label: 'Sort: Qty' },
-                  { value: 'avg',      label: 'Sort: Avg Cost' },
-                  { value: 'name',     label: 'Sort: Name' },
+                  { value: 'qty', label: 'Sort: Qty' },
+                  { value: 'avg', label: 'Sort: Avg Cost' },
+                  { value: 'name', label: 'Sort: Name' },
                 ]}
               />
 
-             <button
-  type="button"
-  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
-  title={`Direction: ${sortDir}`}
-  style={{ height: 38, minWidth: 120 }}   // ← add this
->
-  <ArrowUpDown className="h-4 w-4" />
-  {sortDir.toUpperCase()}
-</button>
+              {/* Sort direction */}
+              <button
+                type="button"
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                title={`Direction: ${sortDir}`}
+                style={{ height: 38, minWidth: 120 }}
+              >
+                <ArrowUpDown className="h-4 w-4" />
+                {sortDir.toUpperCase()}
+              </button>
 
+              {/* Density: Compact / Comfort */}
+              <button
+                type="button"
+                onClick={() => setDense((d) => !d)}
+                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                title={dense ? 'Comfortable rows' : 'Compact rows'}
+                style={{ height: 38, minWidth: 120 }}
+              >
+                {dense ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronUp className="h-4 w-4" />
+                )}
+                {dense ? 'Compact' : 'Comfort'}
+              </button>
 
-            <button
-  type="button"
-  onClick={() => setDense(d => !d)}
-className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
-  title={dense ? 'Comfortable rows' : 'Compact rows'}
-  style={{ height: 38, minWidth: 120 }}   // ← add this
->
-  {dense ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-  {dense ? 'Compact' : 'Comfort'}
-</button>
+                 {/* Holdings P&L mode: uses same card style as Compact/Comfort */}
+              <button
+                type="button"
+                onClick={() => setHoldingsPctMode((v) => !v)}
+                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                title={holdingsPctMode ? 'Show values and P&L in $' : 'Show values and P&L as %'}
+                style={{ height: 38 }}
+              >
+                <span
+                  className={
+                    holdingsPctMode ? 'font-semibold text-slate-400' : 'font-semibold text-slate-100'
+                  }
+                >
+                  $
+                </span>
+                <span className="text-slate-500">/</span>
+                <span
+                  className={
+                    holdingsPctMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-400'
+                  }
+                >
+                  %
+                </span>
+                <span className="ml-1 text-slate-400">P&amp;L</span>
+              </button>
+
 
             </div>
           </div>
@@ -1343,34 +1487,45 @@ className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-sm">
-            <thead className="text-slate-300 sticky top-0 bg-[rgb(28,29,31)] border-y border-[rgb(42,43,45)]">
-              <tr className="text-left">
-                <th className="py-2 pl-4 pr-2 font-medium">Coin</th>
-                <th className="py-2 pr-2 font-medium text-right">Qty</th>
-                <th className="py-2 pr-2 font-medium text-right">Avg Cost</th>
-                <th className="py-2 pr-2 font-medium text-right">Value</th>
-                <th className="py-2 pr-2 font-medium text-right">Money Invested</th>
-                <th className="py-2 pr-2 font-medium text-right">Unrealized</th>
-                <th className="py-2 pr-2 font-medium text-right">Realized</th>
-                <th className="py-2 pr-4 font-medium text-right">Total P&L</th>
+            <thead>
+              <tr className="border-t border-[rgb(42,43,45)] bg-[rgb(24,25,27)] text-xs text-slate-400">
+                <th className="py-2.5 pl-4 pr-2 text-left font-normal">Asset</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Qty</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Avg Cost</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Value</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Money Invested</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Unrealized P&amp;L</th>
+                <th className="py-2.5 pr-2 text-right font-normal">Realized P&amp;L</th>
+                <th className="py-2.5 pr-4 text-right font-normal">Total P&amp;L</th>
               </tr>
             </thead>
-
             <tbody>
-              {filteredSorted.map(r => {
+              {filteredSorted.map((r) => {
                 const rowPad = dense ? 'py-1.5' : 'py-2.5'
+                const basis = r.costBasisRemaining || 0
+
                 return (
                   <tr
                     key={r.cid}
                     onClick={() => router.push(`/coins/${r.cid}`)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/coins/${r.cid}`) } }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        router.push(`/coins/${r.cid}`)
+                      }
+                    }}
                     tabIndex={0}
-                    className="group cursor-pointer outline-none transition-colors odd:bg-[rgb(28,29,31)] even:bg-[rgb(26,27,28)] hover:bg-[rgb(19,20,21)] focus:bg-[rgb(19,20,21)]"
+                    className="group cursor-pointer outline-none border-t border-[rgb(42,43,45)] bg-[rgb(28,29,31)] hover:bg-[rgb(26,27,28)] focus:bg-[rgb(19,20,21)]"
                   >
+                    {/* Coin */}
                     <td className={`${rowPad} pl-4 pr-2`}>
                       <div className="flex items-center gap-2">
                         <div className="h-6 w-6 md:h-8 md:w-8">
-                          <CoinLogo symbol={r.symbol} name={r.name} className="h-5 w-5 md:h-7 md:w-7 shadow-none" />
+                          <CoinLogo
+                            symbol={r.symbol}
+                            name={r.name}
+                            className="h-5 w-5 md:h-7 md:w-7 shadow-none"
+                          />
                         </div>
 
                         <div className="min-w-0">
@@ -1380,20 +1535,59 @@ className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,
                       </div>
                     </td>
 
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>{r.qty.toLocaleString()}</td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.avg)}</td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.value)}</td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>{fmtCurrency(r.costBasisRemaining)}</td>
+                    {/* Qty */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                      {r.qty.toLocaleString()}
+                    </td>
 
-                    {/* NEGATIVE = rgba(189,45,50,1) */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.unrealUsd>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
-                      {fmtCurrency(r.unrealUsd)}
+                    {/* Avg Cost */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                      {fmtCurrency(r.avg)}
                     </td>
-                    <td className={`${rowPad} pr-2 text-right tabular-nums ${r.realizedUsd>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
-                      {fmtCurrency(r.realizedUsd)}
+
+                    {/* Value – $ or % of portfolio */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                      {holdingsPctMode && totals.value > 0 && r.value > 0
+                        ? fmtPct(r.value / totals.value)
+                        : fmtCurrency(r.value)}
                     </td>
-                    <td className={`${rowPad} pr-4 text-right tabular-nums ${r.totalPnl>=0?'text-emerald-400':'text-[rgba(189,45,50,1)]'}`}>
-                      {fmtCurrency(r.totalPnl)}
+
+                    {/* Money Invested (always $) */}
+                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                      {fmtCurrency(r.costBasisRemaining)}
+                    </td>
+
+                    {/* Unrealized – $ or % vs basis */}
+                    <td
+                      className={`${rowPad} pr-2 text-right tabular-nums ${
+                        r.unrealUsd >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
+                      }`}
+                    >
+                      {holdingsPctMode && basis > 0
+                        ? fmtPct(r.unrealUsd / basis)
+                        : fmtCurrency(r.unrealUsd)}
+                    </td>
+
+                    {/* Realized – $ or % vs basis */}
+                    <td
+                      className={`${rowPad} pr-2 text-right tabular-nums ${
+                        r.realizedUsd >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
+                      }`}
+                    >
+                      {holdingsPctMode && basis > 0
+                        ? fmtPct(r.realizedUsd / basis)
+                        : fmtCurrency(r.realizedUsd)}
+                    </td>
+
+                    {/* Total P&L – $ or % vs basis */}
+                    <td
+                      className={`${rowPad} pr-4 text-right tabular-nums ${
+                        r.totalPnl >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
+                      }`}
+                    >
+                      {holdingsPctMode && basis > 0
+                        ? fmtPct(r.totalPnl / basis)
+                        : fmtCurrency(r.totalPnl)}
                     </td>
                   </tr>
                 )
@@ -1410,6 +1604,7 @@ className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,
           </table>
         </div>
       </div>
+
 
       <p className="text-xs text-slate-500">
         “Max” spans from your first BUY across all coins. Data is cached per-coin and aggregated client-side for smooth, real-time feel without changing your backend.
