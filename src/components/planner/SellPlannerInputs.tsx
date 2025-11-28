@@ -18,13 +18,71 @@ const baseBg = 'bg-[rgb(41,42,43)]'
 const baseText = 'text-slate-200'
 const noBorder =
   'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
-const radiusClosed = 'rounded-lg'
-const radiusOpenBtn = 'rounded-t-lg rounded-b-none'
-const radiusOpenList = 'rounded-b-lg rounded-t-none'
-const fieldShell =
-  'mt-1 w-full rounded-lg bg-[rgb(41,42,43)] px-3 py-2.5 text-slate-200 outline-none focus:ring-0 focus:border-transparent appearance-none'
 
-/* ── InlineSelect: matches input size; right arrow; stable hooks ── */
+// Small-corner card shell for the two input cards (taller + bigger text)
+const cardShell = `
+  ${baseBg} ${baseText} ${noBorder}
+  rounded-lg px-4 py-4
+  text-sm
+  shadow-none
+`
+
+const fieldShell = `
+  mt-1 w-full
+  rounded-md px-3.5 py-2.5
+  bg-[rgb(32,33,35)]
+  text-sm text-slate-100
+  placeholder:text-slate-500
+  ${noBorder}
+`
+
+const inlineSelectShell = `
+  relative mt-1 w-full
+`
+
+// Small-corner dropdown button (NO arrow icon anymore)
+const inlineSelectBtn = `
+  w-full
+  inline-flex items-center
+  rounded-md px-3.5 py-2.5
+  bg-[rgb(41,42,45)]
+  text-sm text-slate-100
+  ${noBorder}
+  cursor-pointer
+`
+
+const inlineSelectMenu = `
+  absolute z-20 mt-1 w-full
+  rounded-xl
+  bg-[rgb(24,25,27)]
+  border border-[rgb(55,56,60)]
+  shadow-lg
+  max-h-60 overflow-y-auto
+`
+const inlineSelectOption = `
+  w-full text-left px-3 py-2 text-xs
+  text-slate-100
+  hover:bg-[rgb(41,42,45)]
+  cursor-pointer
+`
+
+// Card defaults / options
+// Card 2: "Coin Volatility" -> step size per level
+// Low: 50% step, Medium: 100% step, High: 150% step
+const stepOptions = [50, 100, 150]
+
+// Card 1: "Sell Intensity" -> % of remaining each level
+// Light Trim: 10%, Balanced Trim: 15%, Firm Trim: 20%, Max Trim: 25%
+const sellPctOptions = [10, 15, 20, 25]
+
+type Planner = {
+  id: string
+  avg_lock_price: number | null
+  created_at: string
+  is_active: boolean
+}
+
+// Simple inline select component (numeric options)
 type InlineSelectProps = {
   value: number
   options: number[]
@@ -32,6 +90,7 @@ type InlineSelectProps = {
   renderLabel: (v: number) => string
   ariaLabel: string
 }
+
 function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: InlineSelectProps) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState<number>(value)
@@ -63,54 +122,39 @@ function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: Inli
       return
     }
     if (!open) return
-    const idx = options.findIndex(v => v === active)
-    if (e.key === 'Escape') {
-      setOpen(false)
-      return
-    }
+    const idx = options.indexOf(active)
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActive(options[Math.min(options.length - 1, idx + 1)])
-      return
-    }
-    if (e.key === 'ArrowUp') {
+      const next = idx < 0 ? 0 : Math.min(options.length - 1, idx + 1)
+      setActive(options[next])
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActive(options[Math.max(0, idx - 1)])
-      return
-    }
-    if (e.key === 'Enter') {
+      const prev = idx < 0 ? 0 : Math.max(0, idx - 1)
+      setActive(options[prev])
+    } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onChange(active)
       setOpen(false)
-      return
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setOpen(false)
     }
   }
 
   return (
-    <div className="relative">
+    <div className={inlineSelectShell}>
       <button
-        ref={btnRef}
         type="button"
+        ref={btnRef}
+        className={inlineSelectBtn}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={ariaLabel}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((v) => !v)}
         onKeyDown={onKeyDown}
-        className={`mt-1 w-full ${baseBg} ${baseText} ${noBorder} ${open ? radiusOpenBtn : radiusClosed}
-                    px-3 py-2.5 pr-10 text-sm text-left relative`}
       >
-        <span className="block">{renderLabel(value)}</span>
-        {/* Right arrow, same placement as Select.tsx */}
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-transform ${open ? 'rotate-180' : ''} text-slate-400`}
-        >
-          <path
-            fill="currentColor"
-            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.24 3.4a.75.75 0 0 1-.92 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
-          />
-        </svg>
+        {/* Label only – no arrow icon */}
+        <span className="truncate">{renderLabel(value)}</span>
       </button>
 
       {open && (
@@ -119,31 +163,23 @@ function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: Inli
           role="listbox"
           aria-label={ariaLabel}
           tabIndex={-1}
-          className={`${baseBg} ${baseText} ${noBorder} ${radiusOpenList}
-                      absolute left-0 right-0 top-full z-20 grid gap-1 px-2 py-2`}
-          onKeyDown={onKeyDown}
+          className={inlineSelectMenu}
         >
-          {options.map(opt => {
-            const isActive = opt === active
-            const isSelected = opt === value
+          {options.map((opt) => {
+            const selected = opt === value
             return (
               <button
                 key={opt}
+                type="button"
                 role="option"
-                aria-selected={isSelected}
-                onClick={() => { onChange(opt); setOpen(false) }}
-                onMouseEnter={() => setActive(opt)}
-                className={`w-full text-left text-sm px-2 py-2 rounded-md ${noBorder}
-                            ${isActive ? 'bg-[rgb(54,55,56)]' : 'bg-transparent'}`}
+                aria-selected={selected}
+                className={`${inlineSelectOption} ${selected ? 'bg-[rgb(41,42,45)]' : ''}`}
+                onClick={() => {
+                  onChange(opt)
+                  setOpen(false)
+                }}
               >
-                <span className="flex items-center gap-2">
-                  <span>{renderLabel(opt)}</span>
-                  {isSelected && (
-                    <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-                      selected
-                    </span>
-                  )}
-                </span>
+                {renderLabel(opt)}
               </button>
             )
           })}
@@ -153,16 +189,7 @@ function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: Inli
   )
 }
 
-type Planner = {
-  id: string
-  avg_lock_price: number | null
-  created_at: string
-  is_active?: boolean
-}
-
-const stepOptions = [50, 100, 150, 200]
-const sellPctOptions = [10, 20]
-
+// Main Sell planner inputs
 export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
 
@@ -184,9 +211,12 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
+  // Card 2: Coin Volatility (step size per level)
   const [step, setStep] = useState<number>(50)
+  // Card 1: Sell Intensity (% of remaining each level)
   const [sellPct, setSellPct] = useState<number>(10)
-  const [levels, setLevels] = useState<number>(8)
+  // Always use 12 levels for the ladder (no user control)
+  const levels = 12
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -211,32 +241,19 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       .eq('side', 'sell')
       .eq('sell_planner_id', plannerId)
     if (e1) throw e1
-    const sold = (sells ?? []).reduce((a, r: any) => a + Number(r.quantity || 0), 0)
+    const soldQty = (sells ?? []).reduce((sum, t) => sum + Number(t.quantity ?? 0), 0)
 
-    const { data: bp } = await supabaseBrowser
-      .from('buy_planners')
-      .select('id,started_at')
+    const { data: buys, error: e2 } = await supabaseBrowser
+      .from('trades')
+      .select('quantity')
       .eq('user_id', user!.id)
       .eq('coingecko_id', coingeckoId)
-      .eq('is_active', true)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .eq('side', 'buy')
+    if (e2) throw e2
+    const boughtQty = (buys ?? []).reduce((sum, t) => sum + Number(t.quantity ?? 0), 0)
 
-    let bought = 0
-    if (bp?.id) {
-      const { data: buys, error: e2 } = await supabaseBrowser
-        .from('trades')
-        .select('quantity')
-        .eq('user_id', user!.id)
-        .eq('coingecko_id', coingeckoId)
-        .eq('side', 'buy')
-        .eq('buy_planner_id', bp.id)
-      if (e2) throw e2
-      bought = (buys ?? []).reduce((a, r: any) => a + Number(r.quantity || 0), 0)
-    }
-
-    return Math.max(0, bought - sold)
+    const pool = Math.max(0, boughtQty - soldQty)
+    return pool
   }
 
   // Compute ACTIVE planner average from ON-PLAN allocations only (strict)
@@ -253,28 +270,26 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     if (eBp) throw eBp
     if (!bp?.id) return 0
 
-   const top = Number((bp as any).top_price || 0)
-const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
+    const top = Number((bp as any).top_price || 0)
+    const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
 
-const depthNum = Number((bp as any).ladder_depth || 70)
-const depth = (depthNum === 90
-  ? 90
-  : depthNum === 75
-    ? 75
-    : 70) as 70 | 75 | 90
+    const depthNum = Number((bp as any).ladder_depth || 70)
+    const depth = (depthNum === 90
+      ? 90
+      : depthNum === 75
+        ? 75
+        : 70) as 70 | 75 | 90
 
-const growth = Number((bp as any).growth_per_level ?? 25)
+    const growth = Number((bp as any).growth_per_level ?? 25)
 
-const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
-
+    const levelsArr: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
 
     const { data: buysRaw, error: eBuys } = await supabaseBrowser
       .from('trades')
-      .select('price,quantity,fee,trade_time,side,buy_planner_id')
+      .select('price,quantity,fee,trade_time')
       .eq('user_id', user.id)
       .eq('coingecko_id', coingeckoId)
       .eq('side', 'buy')
-      .eq('buy_planner_id', (bp as any).id)
       .order('trade_time', { ascending: true })
     if (eBuys) throw eBuys
 
@@ -285,12 +300,12 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       trade_time: (t as any).trade_time,
     }))
 
-    if (!levels.length || !buys.length) return 0
+    if (!levelsArr.length || !buys.length) return 0
 
-    const fills = computeBuyFills(levels, buys) // STRICT waterfall
+    const fills = computeBuyFills(levelsArr, buys) // STRICT waterfall
 
     const allocatedUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
-    const allocatedTokens = levels.reduce((sum, lv, i) => {
+    const allocatedTokens = levelsArr.reduce((sum, lv, i) => {
       const usd = fills.allocatedUsd[i] ?? 0
       return sum + (usd > 0 ? usd / lv.price : 0)
     }, 0)
@@ -309,25 +324,6 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       setErr('No active Sell planner found.')
       return
     }
-    if (activeSell?.is_active === false) {
-      setErr('This planner is frozen. Generate only on the active sell planner.')
-      return
-    }
-
-    // Base average: prefer locked; otherwise on-plan moving average (STRICT)
-    let baseAvg = Number(activeSell?.avg_lock_price ?? 0)
-    if (!Number.isFinite(baseAvg) || baseAvg <= 0) {
-      try {
-        baseAvg = await getCurrentOnPlanAvg()
-      } catch (e: any) {
-        setErr(e?.message ?? 'Failed to compute on-plan average from buys.')
-        return
-      }
-      if (!Number.isFinite(baseAvg) || baseAvg <= 0) {
-        setErr('Need at least one ON-PLAN BUY before generating a ladder.')
-        return
-      }
-    }
 
     if (!Number.isFinite(levels) || levels < 1 || levels > 60) {
       setErr('Levels must be between 1 and 60.')
@@ -337,7 +333,13 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     setBusy(true)
     try {
       const poolTokens = await getPoolTokens(activeSell.id)
-      const avg = Number(baseAvg)
+      const avg = Number(activeSell.avg_lock_price || 0) || (await getCurrentOnPlanAvg())
+      const baseAvg = avg > 0 ? avg : 0
+      if (!baseAvg) {
+        setErr('Unable to compute base average price.')
+        return
+      }
+
       const stepFrac = step / 100
       const pctOfRemaining = sellPct / 100
 
@@ -345,7 +347,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       const plan = Array.from({ length: levels }, (_, i) => {
         const level = i + 1
         const rise_pct = step * level // 50, 100, 150...
-        const price = avg * (1 + stepFrac * level)
+        const price = baseAvg * (1 + stepFrac * level)
         const sell_tokens = i === levels - 1 ? remaining : Math.max(0, remaining * pctOfRemaining)
         const sell_pct_of_remaining = pctOfRemaining
         remaining = Math.max(0, remaining - sell_tokens)
@@ -361,29 +363,35 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
         .eq('sell_planner_id', activeSell.id)
 
       // Insert with ALL required NOT-NULL columns
-      if (plan.length > 0) {
-        const rows = plan.map(p => ({
-          user_id: user.id,
-          coingecko_id: coingeckoId,
-          sell_planner_id: activeSell.id,
-          level: p.level,
-          rise_pct: p.rise_pct,
-          price: p.price,
-          sell_pct_of_remaining: p.sell_pct_of_remaining,
-          sell_tokens: p.sell_tokens,
-        }))
-        const { error: eIns } = await supabaseBrowser.from('sell_levels').insert(rows)
-        if (eIns) throw eIns
-      }
+      const rows = plan.map((lv) => ({
+        user_id: user.id,
+        coingecko_id: coingeckoId,
+        sell_planner_id: activeSell.id,
+        level: lv.level,
+        rise_pct: lv.rise_pct,
+        price: lv.price,
+        sell_tokens: lv.sell_tokens,
+        sell_pct_of_remaining: lv.sell_pct_of_remaining,
+      }))
 
-      // NEW: notify so the ladder revalidates immediately
+      const { error: eIns } = await supabaseBrowser.from('sell_levels').insert(rows)
+      if (eIns) throw eIns
+
+      setMsg(
+        `Generated ${plan.length} levels: +${step}% steps, sell ${sellPct}% of remaining each level.`
+      )
+
+      // Emit a browser event so ladder cards can refresh
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('sellPlannerUpdated', { detail: { coinId: coingeckoId } }))
+        window.dispatchEvent(
+          new CustomEvent('sellPlannerUpdated', {
+            detail: { coinId: coingeckoId, plannerId: activeSell.id },
+          })
+        )
       }
-
-      setMsg(`Generated ${plan.length} levels: +${step}% steps, sell ${sellPct}% of remaining each level.`)
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to generate ladder.')
+      console.error(e)
+      setErr(e?.message || 'Failed to generate ladder.')
     } finally {
       setBusy(false)
     }
@@ -418,57 +426,59 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
 
       {/* Match BuyPlannerInputs layout: single column, tight gaps */}
       <div className="grid grid-cols-1 gap-2">
+        {/* Card 2: Coin Volatility (step size per level) */}
         <label className="block">
-          <span className="text-xs text-slate-300">Step size per level</span>
+          <span className="text-sm font-medium text-slate-100">Coin Volatility</span>
           <InlineSelect
             value={step}
             options={stepOptions}
             onChange={setStep}
-            ariaLabel="Select step size per level"
-            renderLabel={(v) => `+${v}%`}
+            ariaLabel="Select coin volatility"
+            renderLabel={(v) =>
+              v === 50
+                ? 'Low (50% step)'
+                : v === 100
+                ? 'Medium (100% step)'
+                : v === 150
+                ? 'High (150% step)'
+                : `${v}%`
+            }
           />
         </label>
 
+        {/* Card 1: Sell Intensity (% of remaining each level) */}
         <label className="block">
-          <span className="text-xs text-slate-300">Sell % of remaining each level</span>
+          <span className="text-sm font-medium text-slate-100">Sell Intensity</span>
           <InlineSelect
             value={sellPct}
             options={sellPctOptions}
             onChange={setSellPct}
-            ariaLabel="Select sell % of remaining each level"
-            renderLabel={(v) => `${v}%`}
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-xs text-slate-300">Number of levels</span>
-          <input
-            value={String(levels)}
-            onChange={(e) => setLevels(Number(e.target.value))}
-            className={fieldShell}
-            placeholder="e.g. 8"
-            inputMode="numeric"
+            ariaLabel="Select sell intensity"
+            renderLabel={(v) =>
+              v === 10
+                ? 'Light Trim (10%)'
+                : v === 15
+                ? 'Balanced Trim (15%)'
+                : v === 20
+                ? 'Firm Trim (20%)'
+                : v === 25
+                ? 'Max Trim (25%)'
+                : `${v}%`
+            }
           />
         </label>
       </div>
 
       <div className="flex items-center gap-3 pt-1">
-      <button
-  type="button"
-  onClick={onGenerate}
-  disabled={busy}
-  className="
-    inline-flex items-center justify-center
-    rounded-lg px-3.5 py-2.5 text-sm font-medium
-    transition-colors disabled:opacity-60 disabled:cursor-not-allowed
-    bg-[rgb(109,93,186)] hover:bg-[rgb(122,106,199)] active:bg-[rgb(98,84,175)]
-    text-[rgb(234,235,239)]
-    shadow-none ring-0 outline-none border-0
-  "
->
-  Generate ladder
-</button>
-
+        {/* Match Buy Planner "Save New" button UI */}
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={busy}
+          className="button disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <span className="button-content">Generate Ladder</span>
+        </button>
       </div>
 
       {err && <div className="text-xs text-red-300">{err}</div>}

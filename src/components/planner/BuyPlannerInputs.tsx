@@ -41,7 +41,7 @@ function DepthMeta(opt: RiskDepth) {
     return {
       shortLabel: 'Moderate',
       title: 'Moderate profile',
-      desc: '70% depth · 6 levels · growth ×1.25',
+      desc: '70% depth',
       levels,
       bars,
     }
@@ -53,7 +53,7 @@ function DepthMeta(opt: RiskDepth) {
     return {
       shortLabel: 'Aggressive',
       title: 'Aggressive profile',
-      desc: '75% depth · 3 levels · growth ×1.25',
+      desc: '75% depth',
       levels,
       bars,
     }
@@ -65,7 +65,7 @@ function DepthMeta(opt: RiskDepth) {
   return {
     shortLabel: 'Conservative',
     title: 'Conservative profile',
-    desc: '90% depth · 8 levels · growth ×1.25',
+    desc: '90% depth',
     levels,
     bars,
   }
