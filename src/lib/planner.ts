@@ -15,8 +15,9 @@ export function buildBuyLevels(
   topPrice: number,
   budgetUsd: number,
   ladderDepth: 70 | 75 | 90,
-  growthPctPerLevel: number = 25
+  growthPerLevel: number = 1.25
 ): BuyLevel[] {
+
   if (!(topPrice > 0) || !(budgetUsd > 0)) return []
 
   // Drawdowns by profile:
@@ -32,9 +33,21 @@ export function buildBuyLevels(
     dds = [20, 30, 40, 50, 60, 70, 80, 90]
   }
 
-  const r = 1 + (growthPctPerLevel / 100)         // geometric weight ratio
+  // Interpret growthPerLevel as a multiplier (default 1.25x).
+  // Backwards-compat:
+  // - If value is small (≤ 4), treat it as the multiplier (e.g. 1.25).
+  // - If value is large (e.g. 25), treat as a percent and convert to 1 + 25/100 = 1.25.
+  const rawGrowth = !Number.isFinite(growthPerLevel) || growthPerLevel <= 0
+    ? 1.25
+    : growthPerLevel
+
+  const r = rawGrowth > 4
+    ? 1 + rawGrowth / 100
+    : rawGrowth
+
   const weights = dds.map((_, i) => Math.pow(r, i))
   const sumW = weights.reduce((s, w) => s + w, 0) || 1
+
 
   // allocate budget by weights, floor to cents, fix remainder on the last level
   const raw = weights.map(w => (budgetUsd * w) / sumW)
@@ -116,10 +129,15 @@ export function computeBuyFills(
   tolerance: number = 0.0,
   _opts?: { tick?: number; absTickEps?: number }
 ): BuyFillResult {
+  // Small tolerance so tiny rounding differences / slightly-above-level prices
+  // (e.g. BTC buys right at a ladder level) still count as on-plan.
+  const AVG_EPS_PCT = 1.0// 1% price/average tolerance for rounding
+
   const plannedTotal = levels.reduce(
     (sum, lvl) => sum + Number(lvl.allocation || 0),
     0
   )
+
 
   // No levels or no budget → nothing to fill
   if (!levels.length || !(plannedTotal > 0)) {
@@ -283,7 +301,7 @@ export function computeBuyFills(
     return null
   }
 
-  function assignFromTrade(t: InternalTrade) {
+   function assignFromTrade(t: InternalTrade) {
     if (!(t.usdRemaining > 0)) return
 
     while (t.usdRemaining > 1e-9 && ladderUsd < plannedTotalUsd - EPS) {
@@ -292,6 +310,10 @@ export function computeBuyFills(
 
       const allowedAvg = targetAvg[blockIdx]
       if (!(allowedAvg > 0)) break
+
+      // Allow a tiny tolerance so that trades very slightly above the
+      // theoretical block average (e.g. due to rounding) still count.
+      const allowedAvgWithTol = allowedAvg * (1 + AVG_EPS_PCT)
 
       const blockCap = cumUsd[blockIdx] - ladderUsd
       const globalCap = plannedTotalUsd - ladderUsd
@@ -311,16 +333,16 @@ export function computeBuyFills(
       let x: number
 
       // If we can take the whole hi inside this block and still respect
-      // the block's planned average, just take it.
-      if (avgIfAdd(hi) <= allowedAvg + EPS) {
+      // the block's planned average (with small tolerance), just take it.
+      if (avgIfAdd(hi) <= allowedAvgWithTol + EPS) {
         x = hi
       } else {
-        // Otherwise, find the largest x ∈ [0, hi] such that avg(x) ≤ allowedAvg.
+        // Otherwise, find the largest x ∈ [0, hi] such that avg(x) ≤ allowedAvgWithTol.
         let lo = 0
         let hiLocal = hi
         for (let iter = 0; iter < 50; iter++) {
           const mid = (lo + hiLocal) / 2
-          if (avgIfAdd(mid) <= allowedAvg + EPS) {
+          if (avgIfAdd(mid) <= allowedAvgWithTol + EPS) {
             lo = mid
           } else {
             hiLocal = mid
@@ -342,6 +364,7 @@ export function computeBuyFills(
       t.usdRemaining -= x
     }
   }
+
 
   // Step 1: use candidate on-plan trades IN ORDER (oldest → newest)
   for (const t of candidateOnPlan) {

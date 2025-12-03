@@ -293,7 +293,7 @@ const depth = (depthNum === 90
     ? 75
     : 70) as 70 | 75 | 90
 
-const growth = Number((bp as any).growth_per_level ?? 25)
+const growth = Number((bp as any).growth_per_level ?? 1.25)
 
 const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
 

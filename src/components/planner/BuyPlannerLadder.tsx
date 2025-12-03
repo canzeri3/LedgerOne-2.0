@@ -72,7 +72,7 @@ const plan: BuyLevel[] = useMemo(() => {
       ? 75
       : 70) as 70 | 75 | 90
 
-  const growth = Number(planner.growth_per_level ?? 25)
+  const growth = Number(planner.growth_per_level ?? 1.25)
   return buildBuyLevels(top, budget, depth, growth)
 }, [
   planner?.id,

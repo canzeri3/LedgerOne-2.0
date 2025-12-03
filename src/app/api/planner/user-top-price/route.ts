@@ -284,15 +284,19 @@ export async function GET(req: NextRequest) {
   const pointCount = points.length
 
   // ── 3) Priority tree for effective top price ───────────────────────────────
-  const adminTopPrice =
+    const adminTopPrice =
     anchor && typeof anchor.anchor_top_price === 'number'
       ? anchor.anchor_top_price
       : null
   const forceManual = !!anchor?.force_manual_anchor
 
   let topPrice: number | null = null
-  let source: 'auto_pump' | 'admin_anchor_forced' | 'admin_anchor' | 'none' =
-    'none'
+  let source:
+    | 'auto_pump'
+    | 'admin_anchor_forced'
+    | 'admin_anchor'
+    | 'fallback_high'
+    | 'none' = 'none'
 
   if (forceManual && adminTopPrice && adminTopPrice > 0) {
     // 1) Force manual override: admin top wins over auto
@@ -309,12 +313,18 @@ export async function GET(req: NextRequest) {
     topPrice = adminTopPrice
     source = 'admin_anchor'
     debugNotes.push('topPrice.source=admin_anchor_fallback')
+  } else if (fallbackMaxHigh && fallbackMaxHigh > 0) {
+    // 4) Hard fallback: use max high seen in the sampled window
+    topPrice = fallbackMaxHigh
+    source = 'fallback_high'
+    debugNotes.push('topPrice.source=fallback_high')
   } else {
-    // 4) No usable price yet
+    // 5) No usable price yet
     topPrice = null
     source = 'none'
     debugNotes.push('topPrice.source=none')
   }
+
 
   const payload: any = {
     id,
