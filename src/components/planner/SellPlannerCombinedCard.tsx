@@ -152,7 +152,7 @@ export default function SellPlannerCombinedCard({
               >
                 Active
               </button>
-              {labels.map((n) => {
+             {labels.map((n) => {
   const hasAlertForLabel = alertLabels.includes(n)
   return (
     <button
@@ -164,15 +164,17 @@ export default function SellPlannerCombinedCard({
         selected === n
           ? 'bg-white/15 text-white border-white/20'
           : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
-        hasAlertForLabel
-          ? 'border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
+               hasAlertForLabel
+          ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
           : '',
+
       ].join(' ')}
     >
       {n}
     </button>
   )
 })}
+
 
             </div>
 

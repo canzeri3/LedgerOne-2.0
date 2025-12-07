@@ -183,31 +183,33 @@ export default function SellPlannerCombinedCardPlanner({
               Active
             </button>
 
-                 {/* Version selectors (numbers only; no "V") */}
-            <div className="ml-1 flex items-center gap-1">
-              {labels.map((n) => {
-                const hasAlertForLabel = alertLabels.includes(n)
-                return (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setSelected(n)}
-                    className={[
-                      'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
-                      selected === n
-                        ? 'bg-white/10 border-white/20'
-                        : 'bg-white/5 hover:bg-white/10 border-white/10',
-                      hasAlertForLabel
-                        ? 'border-[rgb(242,205,73)] text-[rgb(242,205,73)]'
-                        : '',
-                      // text inherits TEXT_RGB
-                    ].join(' ')}
-                  >
-                    {n}
-                  </button>
-                )
-              })}
-            </div>
+           {/* Version selectors (numbers only; no "V") */}
+<div className="ml-1 flex items-center gap-1">
+  {labels.map((n) => {
+    const hasAlertForLabel = alertLabels.includes(n)
+    return (
+      <button
+        key={n}
+        type="button"
+        onClick={() => setSelected(n)}
+        className={[
+          'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
+          selected === n
+            ? 'bg-white/10 border-white/20'
+            : 'bg-white/5 hover:bg-white/10 border-white/10',
+              hasAlertForLabel
+            ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
+            : '',
+
+          // text inherits TEXT_RGB
+        ].join(' ')}
+      >
+        {n}
+      </button>
+    )
+  })}
+</div>
+
 
           </div>
         </HeaderPortal>
