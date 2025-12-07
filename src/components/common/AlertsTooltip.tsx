@@ -123,33 +123,75 @@ export function AlertsTooltip({
   )
 
   const { data: activeSellPlanners } = useSWR<{ id: string; coingecko_id: string; is_active: boolean | null }[]>(
-    user ? ['/alerts/sell-planners', user.id] : null,
-    async () => {
-      try {
-        const { data, error } = await supabaseBrowser
-          .from('sell_planners')
-          .select('id,coingecko_id,is_active,user_id')
-          .eq('user_id', user!.id)
-          .eq('is_active', true)
-        if (error) throw error
-        return (data ?? []).map((p: any) => ({ id: p.id, coingecko_id: p.coingecko_id, is_active: p.is_active }))
-      } catch {
-        return []
-      }
-    },
-    {
-      revalidateOnMount: true,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-      keepPreviousData: true,
-      dedupingInterval: 10_000,
+  user ? ['/alerts/sell-planners', user.id] : null,
+  async () => {
+    try {
+      const { data, error } = await supabaseBrowser
+        .from('sell_planners')
+        .select('id,coingecko_id,is_active,user_id')
+        .eq('user_id', user!.id)
+        .eq('is_active', true)
+      if (error) throw error
+      return (data ?? []).map((p: any) => ({
+        id: p.id,
+        coingecko_id: p.coingecko_id,
+        is_active: p.is_active,
+      }))
+    } catch {
+      return []
     }
-  )
+  },
+  {
+    revalidateOnMount: true,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    keepPreviousData: true,
+    dedupingInterval: 10_000,
+  }
+)
 
-  const sellPlannerIds = useMemo(
-    () => (activeSellPlanners ?? []).map(p => p.id).sort(), // stable order for a stable SWR key below
-    [activeSellPlanners]
-  )
+// NEW: include frozen (history) sell planners as well for alerts
+const { data: historySellPlanners } = useSWR<{ id: string; coingecko_id: string; is_active: boolean | null }[]>(
+  user ? ['/alerts/sell-planners-history', user.id] : null,
+  async () => {
+    try {
+      const { data, error } = await supabaseBrowser
+        .from('sell_planners')
+        .select('id,coingecko_id,is_active,user_id')
+        .eq('user_id', user!.id)
+        .eq('is_active', false)
+      if (error) throw error
+      return (data ?? []).map((p: any) => ({
+        id: p.id,
+        coingecko_id: p.coingecko_id,
+        is_active: p.is_active,
+      }))
+    } catch {
+      return []
+    }
+  },
+  {
+    revalidateOnMount: true,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    keepPreviousData: true,
+    dedupingInterval: 10_000,
+  }
+)
+
+const sellPlannerIds = useMemo(
+  () => {
+    const all = [
+      ...(activeSellPlanners ?? []),
+      ...(historySellPlanners ?? []),
+    ]
+    const ids = all.map(p => p.id)
+    // stable order for a stable SWR key below
+    return Array.from(new Set(ids)).sort()
+  },
+  [activeSellPlanners, historySellPlanners]
+)
+
 
   const { data: sellLevels } = useSWR<{ sell_planner_id: string; level: number; price: number; sell_tokens: number | null }[]>(
     user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
@@ -174,14 +216,16 @@ export function AlertsTooltip({
     }
   )
 
-  const alertCoinIds = useMemo(() => {
-    const s = new Set<string>()
-    ;(activeBuyPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
-    ;(activeSellPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
-    return Array.from(s).sort() // sorted for stable SWR key below
-  }, [activeBuyPlanners, activeSellPlanners])
+const alertCoinIds = useMemo(() => {
+  const s = new Set<string>()
+  ;(activeBuyPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
+  ;(activeSellPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
+  ;(historySellPlanners ?? []).forEach(p => p?.coingecko_id && s.add(String(p.coingecko_id)))
+  return Array.from(s).sort() // sorted for stable SWR key below
+}, [activeBuyPlanners, activeSellPlanners, historySellPlanners])
 
-  // Canonicalize ids for the new core
+// Canonicalize ids for the new core
+
   const alertCoinIdsCanon = useMemo(
     () => alertCoinIds.map(x => String(x || '').toLowerCase().trim()).filter(Boolean),
     [alertCoinIds]
@@ -309,57 +353,72 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     }
 
     // SELL alerts
-    const lvlsByPlanner = new Map<string, { level: number; price: number; sell_tokens: number | null }[]>()
-    for (const l of sellLevels ?? []) {
-      const arr = lvlsByPlanner.get(l.sell_planner_id) ?? []
-      arr.push(l)
-      lvlsByPlanner.set(l.sell_planner_id, arr)
-    }
+const lvlsByPlanner = new Map<string, { level: number; price: number; sell_tokens: number | null }[]>()
+for (const l of sellLevels ?? []) {
+  const arr = lvlsByPlanner.get(l.sell_planner_id) ?? []
+  arr.push(l)
+  lvlsByPlanner.set(l.sell_planner_id, arr)
+}
 
-    for (const sp of activeSellPlanners ?? []) {
-      const cid = sp.coingecko_id
-      const cidCanon = canonId(cid)
-      const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
-      if (!(live > 0)) continue
+const allSellPlanners = [
+  ...(activeSellPlanners ?? []),
+  ...(historySellPlanners ?? []),
+]
 
-      const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a,b)=>a.level-b.level)
-      if (!raw.length) continue
+const seenSellPlannerIds = new Set<string>()
 
-      const levels: PlannerSellLevel[] = raw.map(l => ({
-        target_price: Number(l.price),
-        planned_tokens: Math.max(0, Number(l.sell_tokens ?? 0)),
-      }))
+for (const sp of allSellPlanners) {
+  if (!sp?.id || seenSellPlannerIds.has(sp.id)) continue
+  seenSellPlannerIds.add(sp.id)
 
-      const sells: PlannerSellTrade[] = (tradesByCoinRich.get(cid) ?? [])
-        .filter(t => t.side === 'sell' && t.sell_planner_id === sp.id)
-        .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
+  const cid = sp.coingecko_id
+  const cidCanon = canonId(cid)
+  const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
+  if (!(live > 0)) continue
 
-      const fill = computeSellFills(levels, sells, 0.05)
+  const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a, b) => a.level - b.level)
+  if (!raw.length) continue
 
-      const hit = levels.some((lv, i) => {
-        const lvl = Number(lv.target_price)
-        if (!(lvl > 0)) return false
-        const within = live >= lvl * 0.97
-        const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
-        return within && notFilled
-      })
-      if (hit) out.push({ side: 'Sell', symbol: sym(cid), cid })
-    }
+  const levels: PlannerSellLevel[] = raw.map(l => ({
+    target_price: Number(l.price),
+    planned_tokens: Math.max(0, Number(l.sell_tokens ?? 0)),
+  }))
+
+  const sells: PlannerSellTrade[] = (tradesByCoinRich.get(cid) ?? [])
+    .filter(t => t.side === 'sell' && t.sell_planner_id === sp.id)
+    .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
+
+  const fill = computeSellFills(levels, sells, 0.05)
+
+  const hit = levels.some((lv, i) => {
+    const lvl = Number(lv.target_price)
+    if (!(lvl > 0)) return false
+    const within = live >= lvl * 0.97
+    const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
+    return within && notFilled
+  })
+  if (hit) out.push({ side: 'Sell', symbol: sym(cid), cid })
+}
+
 
     const buysOut = out.filter(x => x.side === 'Buy').sort((a,b)=>a.symbol.localeCompare(b.symbol))
     const sellsOut = out.filter(x => x.side === 'Sell').sort((a,b)=>a.symbol.localeCompare(b.symbol))
     return [...buysOut, ...sellsOut]
-  }, [
-    JSON.stringify(activeBuyPlanners),
-    JSON.stringify(activeSellPlanners),
-    JSON.stringify(sellLevels),
-    JSON.stringify(pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []),
-    JSON.stringify([...tradesByCoinRich.entries()].map(([k,v]) => [k, v.length])),
-  ])
+}, [
+  JSON.stringify(activeBuyPlanners),
+  JSON.stringify(activeSellPlanners),
+  JSON.stringify(historySellPlanners),
+  JSON.stringify(sellLevels),
+  JSON.stringify(pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []),
+  JSON.stringify([...tradesByCoinRich.entries()].map(([k,v]) => [k, v.length])),
+])
+
 
   const totalAlerts = alertItems.length
+  const hasAlerts = totalAlerts > 0
 
-  const Badge = ({ kind }: { kind: 'Buy' | 'Sell' }) => {
+
+    const Badge = ({ kind }: { kind: 'Buy' | 'Sell' }) => {
     const isBuy = kind === 'Buy'
     return (
       <span
@@ -377,7 +436,7 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            className="w-3 h-3 opacity-90"
+            className="w-3 h-3 opacity-90 text-emerald-200 !text-emerald-200"
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -393,7 +452,7 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            className="w-3 h-3 opacity-90"
+            className="w-3 h-3 opacity-90 text-rose-200 !text-rose-200"
             strokeWidth={1.8}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -408,6 +467,7 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       </span>
     )
   }
+
 
   const CountPill = ({ n }: { n: number }) => {
     if (!n) return null
@@ -426,21 +486,34 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       onPointerEnter={openNow}
       onPointerLeave={(e) => scheduleClose(e)}
     >
-      {/* Button (only this and the panel can open the tooltip) */}
+          {/* Button (only this and the panel can open the tooltip) */}
       <button
-        className="relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 ring-slate-600/40 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2"
+        className={[
+          "relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2",
+                  hasAlerts
+            ? "ring-[rgb(242,205,73)]/40"
+            : "ring-slate-600/40",
+
+
+        ].join(" ")}
         type="button"
         aria-haspopup="true"
         aria-expanded={open}
         onPointerEnter={openNow}
       >
+
         <div className="absolute inset-0 bg-gradient-to-r from-indigo-400/10 via-indigo-400/10 to-indigo-300/10 blur-xl transition-opacity" />
         <span className="relative flex items-center gap-2">
-          <svg
+                            <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            className="w-4 h-4"
+            className={[
+              "w-4 h-4 transition-colors",
+              hasAlerts
+                ? "text-[rgb(242,205,73)] opacity-80"
+                : "text-slate-300/80",
+            ].join(" ")}
             strokeWidth={1.6}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -450,6 +523,8 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
             <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
             <path d="M10.3 21a1.7 1.7 0 0 0 3.4 0" />
           </svg>
+
+
           <span>Alerts</span>
           <CountPill n={totalAlerts} />
         </span>
@@ -481,9 +556,18 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     <Badge kind={it.side} />
     <span className="text-sm text-slate-100/95">{it.symbol}</span>
   </span>
-  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-300/80">
-    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-  </svg>
+        <svg
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        className="w-4 h-4 text-slate-300/80 !text-slate-300/80 hover:text-slate-100/95"
+      >
+        <path
+          fillRule="evenodd"
+          d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+          clipRule="evenodd"
+        />
+      </svg>
+
 </Link>
 
               ))
