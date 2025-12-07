@@ -64,10 +64,10 @@ function NavLink({
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const [coinsOpen, setCoinsOpen] = useState<boolean>(
-    pathname?.startsWith('/coins') ?? false
-  )
+  // Open Coins section by default on all pages
+  const [coinsOpen, setCoinsOpen] = useState<boolean>(true)
   const [query, setQuery] = useState('')
+
 
   const { data: coins } = useSWR<Coin[]>('/api/coins', fetcher)
   const { set: favSet } = useFavorites()

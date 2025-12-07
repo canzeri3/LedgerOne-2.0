@@ -31,27 +31,56 @@ export default function SellPlannerCombinedCard({
 
   const [selected, setSelected] = useState<'active' | number>('active')
   const [historyLength, setHistoryLength] = useState(0)
+  const [alertLabels, setAlertLabels] = useState<number[]>([])
   const activeRootRef = useRef<HTMLDivElement | null>(null)
   const historyRootRef = useRef<HTMLDivElement | null>(null)
+
 
   const { user } = useUser()
 
   useEffect(() => {
     const root = historyRootRef.current
     if (!root) return
+
     const update = () => {
-      const els = root.querySelectorAll('[data-history-id]')
-      setHistoryLength(els.length)
+      const els = Array.from(
+        root.querySelectorAll<HTMLElement>('[data-history-id]')
+      )
+      const N = els.length
+      setHistoryLength(N)
+
+      // Keep current selection valid
       if (selected !== 'active') {
         const n = typeof selected === 'number' ? selected : 1
-        if (n > els.length) setSelected(els.length > 0 ? 1 : 'active')
+        if (n > N) setSelected(N > 0 ? 1 : 'active')
       }
+
+      // Map data-has-alert flags on history items => pill labels
+      if (N === 0) {
+        setAlertLabels([])
+        return
+      }
+
+      const alerted: number[] = []
+      els.forEach((el, idx) => {
+        const flag = el.getAttribute('data-has-alert')
+        const hasAlert = flag === '1' || flag === 'true'
+        if (hasAlert) {
+          const domIndex = idx + 1 // 1-based position in DOM (newest -> oldest)
+          const labelForThis = newestFirst ? N - domIndex + 1 : domIndex
+          alerted.push(labelForThis)
+        }
+      })
+
+      setAlertLabels(alerted)
     }
+
     const mo = new MutationObserver(update)
     mo.observe(root, { childList: true, subtree: true })
     update()
     return () => mo.disconnect()
-  }, [selected])
+  }, [selected, newestFirst])
+
 
   const labels = useMemo(() => {
     const N = Math.min(10, Math.max(0, historyLength))
@@ -123,22 +152,30 @@ export default function SellPlannerCombinedCard({
               >
                 Active
               </button>
-              {labels.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setSelected(n)}
-                  className={[
-                    'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
-                    selected === n
-                      ? 'bg-white/15 text-white border-white/20'
-                      : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
-                  ].join(' ')}
-                >
-                  {n}
-                </button>
-              ))}
+              {labels.map((n) => {
+  const hasAlertForLabel = alertLabels.includes(n)
+  return (
+    <button
+      key={n}
+      type="button"
+      onClick={() => setSelected(n)}
+      className={[
+        'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
+        selected === n
+          ? 'bg-white/15 text-white border-white/20'
+          : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
+        hasAlertForLabel
+          ? 'border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
+          : '',
+      ].join(' ')}
+    >
+      {n}
+    </button>
+  )
+})}
+
             </div>
+
           ) : undefined
         }
         className={className}

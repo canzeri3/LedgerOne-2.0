@@ -201,95 +201,136 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
     )
   }
 
-  return (
+   return (
     <div className="w-full h-full flex flex-col">
       <div className="flex-1 overflow-auto space-y-6">
-        {(views ?? []).map((v) => (
-          <div
-            key={v.planner.id}
-            data-history-id={v.planner.id}
-            className="overflow-x-auto"
-          >
-            <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-      <thead className="text-[rgba(237, 237, 237, 1)]">
+        {(views ?? []).map((v) => {
+          const hasLive =
+            Number.isFinite(livePrice as number) && (livePrice as number) > 0
+          const live = hasLive ? (livePrice as number) : null
 
-                <tr>
-                  <th className="w-1/6 px-3 py-2">Lvl</th>
-                  <th className="w-1/6 px-3 py-2">Target Price</th>
-                  <th className="w-1/6 px-3 py-2">Planned Tokens</th>
-                  <th className="w-1/6 px-3 py-2">Planned USD</th>
-                  <th className="w-1/6 px-3 py-2">Missing USD</th>
-                  <th className="w-1/6 px-3 py-2 text-right">Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                        {v.rows.map((r, i) => {
-                  const green = r.pct >= 0.97
-                  const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
-                  // YELLOW when live price is anywhere from 1.5% below the level or anything above it
-                  const yellow =
-                    !green &&
-                    hasLive &&
-                    r.targetPrice > 0 &&
-                    (livePrice as number) >= r.targetPrice * 0.985
+          const rows = v.rows ?? []
+          const plannerHasAlert =
+            !!live &&
+            rows.some((r) => {
+              const lvl = r.targetPrice
+              if (!(lvl > 0)) return false
+              // “Alert” if live price is within ~3% of target and level not fully filled
+              const within = (live as number) >= lvl * 0.97
+              const notFilled = r.pct < 0.97
+              return within && notFilled
+            })
 
-                  const rowClass = green
-                    ? 'text-[rgb(121,171,89)]'
-                    : yellow
-                    ? 'text-[rgb(207,180,45)]'
-                    : ''
+          return (
+            <div
+              key={v.planner.id}
+              data-history-id={v.planner.id}
+              data-has-alert={plannerHasAlert ? '1' : '0'}
+              className="overflow-x-auto"
+            >
+              <table className="min-w-full table-fixed text-left text-sm text-slate-300">
+                <thead className="text-[rgba(237, 237, 237, 1)]">
+                  <tr>
+                    <th className="w-1/6 px-3 py-2">Lvl</th>
+                    <th className="w-1/6 px-3 py-2">Target Price</th>
+                    <th className="w-1/6 px-3 py-2">Planned Tokens</th>
+                    <th className="w-1/6 px-3 py-2">Planned USD</th>
+                    <th className="w-1/6 px-3 py-2">Missing USD</th>
+                    <th className="w-1/6 px-3 py-2 text-right">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.rows.map((r, i) => {
+                    const green = r.pct >= 0.97
+                    const hasLiveRow =
+                      Number.isFinite(livePrice as number) &&
+                      (livePrice as number) > 0
+                    // YELLOW when live price is anywhere from 1.5% below the level or anything above it
+                    const yellow =
+                      !green &&
+                      hasLiveRow &&
+                      r.targetPrice > 0 &&
+                      (livePrice as number) >= r.targetPrice * 0.985
 
-                  return (
-                    <tr key={i} className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}>
-                      <td className="px-3 py-2">{r.level}</td>
-                      <td className="px-3 py-2">{fmtCurrency(r.targetPrice)}</td>
-                      <td className="px-3 py-2">{r.plannedTokens.toFixed(6)}</td>
-                      <td className="px-3 py-2">{fmtCurrency(r.plannedUsd)}</td>
-                      <td className="px-3 py-2">{fmtCurrency(r.missingUsd)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex justify-end items-center gap-2">
-                          <div className="w-40"><ProgressBar pct={r.pct} /></div>
-                          <span className="w-10 text-right tabular-nums">
-                            {Math.round(r.pct * 100)}%
+                    const rowClass = green
+                      ? 'text-[rgb(121,171,89)]'
+                      : yellow
+                      ? 'text-[rgb(207,180,45)]'
+                      : ''
+
+                    return (
+                      <tr
+                        key={i}
+                        className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}
+                      >
+                        <td className="px-3 py-2">{r.level}</td>
+                        <td className="px-3 py-2">
+                          {fmtCurrency(r.targetPrice)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.plannedTokens.toFixed(6)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {fmtCurrency(r.plannedUsd)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {fmtCurrency(r.missingUsd)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end items-center gap-2">
+                            <div className="w-40">
+                              <ProgressBar pct={r.pct} />
+                            </div>
+                            <span className="w-10 text-right tabular-nums">
+                              {Math.round(r.pct * 100)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[rgb(51,52,54)]">
+                    <td colSpan={6} className="px-3 py-3">
+                      <div className="flex items-center justify-between text-slate-400 text-xs">
+                        {/* Bottom-left: Average lock ONLY (for this frozen planner) */}
+                        <div className="inline-flex items-center gap-2">
+                          <span>Average lock:</span>
+                          <span className="tabular-nums text-slate-300">
+                            {v.planner.avg_lock_price != null
+                              ? fmtCurrency(num(v.planner.avg_lock_price))
+                              : '—'}
                           </span>
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-[rgb(51,52,54)]">
-                  <td colSpan={6} className="px-3 py-3">
-                    <div className="flex items-center justify-between text-slate-400 text-xs">
-                      {/* Bottom-left: Average lock ONLY (for this frozen planner) */}
-                      <div className="inline-flex items-center gap-2">
-                        <span>Average lock:</span>
-                        <span className="tabular-nums text-slate-300">
-                          {v.planner.avg_lock_price != null ? fmtCurrency(num(v.planner.avg_lock_price)) : '—'}
-                        </span>
-                      </div>
 
-                      <div className="inline-flex items-center gap-2">
-                        <span>Total planned</span>
-                        <span className="tabular-nums">{v.totals.plannedTokens.toFixed(6)}</span>
-                        <span className="text-slate-600">/</span>
-                        <span className="tabular-nums">{fmtCurrency(v.totals.plannedUsd)}</span>
-                      </div>
+                        <div className="inline-flex items-center gap-2">
+                          <span>Total planned</span>
+                          <span className="tabular-nums">
+                            {v.totals.plannedTokens.toFixed(6)}
+                          </span>
+                          <span className="text-slate-600">/</span>
+                          <span className="tabular-nums">
+                            {fmtCurrency(v.totals.plannedUsd)}
+                          </span>
+                        </div>
 
-                      <div className="inline-flex items-center gap-2 text-xs text-slate-400">
-                        <span className="text-amber-300">Off-Plan</span>
-                        <span className="tabular-nums">0.000000</span>
-                        <span className="text-slate-600">/</span>
-                        <span className="tabular-nums">{fmtCurrency(v.offPlanUsd)}</span>
+                        <div className="inline-flex items-center gap-2 text-xs text-slate-400">
+                          <span className="text-amber-300">Off-Plan</span>
+                          <span className="tabular-nums">0.000000</span>
+                          <span className="text-slate-600">/</span>
+                          <span className="tabular-nums">
+                            {fmtCurrency(v.offPlanUsd)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        ))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
