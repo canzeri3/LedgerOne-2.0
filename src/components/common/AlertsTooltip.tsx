@@ -272,7 +272,7 @@ const alertCoinIds = useMemo(() => {
   const canonId = (id: string | null | undefined) =>
     String(id ?? '').trim().toLowerCase()
 
-  type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
+type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
 
     // ⬇ rich trades to compute fills exactly like Portfolio (fail-soft)
   type TradeRow = {
@@ -464,7 +464,7 @@ const alertCoinIds = useMemo(() => {
   const hasAlerts = totalAlerts > 0
 
 
-    const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
+const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
       if (kind === 'Buy') {
         return (
           <span
