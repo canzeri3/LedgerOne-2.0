@@ -367,19 +367,88 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   )
 
   // Card 2: Coin Volatility (step size per level)
+  // Default when there is NO active sell planner: Low (50% step)
   const [step, setStep] = useState<number>(50)
+
   // Card 1: Sell Intensity (% of remaining each level)
-  const [sellPct, setSellPct] = useState<number>(10)
+  // Default when there is NO active sell planner: Balanced Trim (15% per level)
+  const [sellPct, setSellPct] = useState<number>(15)
+
   // Always use 12 levels for the ladder (no user control)
   const levels = 12
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Clear transient messages when coin or active planner changes
   useEffect(() => {
     setMsg(null)
     setErr(null)
   }, [coingeckoId, activeSell?.id])
+
+  // When an active sell planner exists, infer presets from its ladder;
+  // otherwise default to Low volatility + Balanced Trim.
+  useEffect(() => {
+    if (!user || !coingeckoId) return
+
+    const plannerId = activeSell?.id
+    // No active planner -> explicit defaults: Low + Balanced Trim
+    if (!plannerId) {
+      setStep(50)
+      setSellPct(15)
+      return
+    }
+
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('sell_levels')
+          .select('rise_pct,sell_pct_of_remaining')
+          .eq('user_id', user.id)
+          .eq('coingecko_id', coingeckoId)
+          .eq('sell_planner_id', plannerId)
+          .order('level', { ascending: true })
+
+        if (cancelled) return
+
+        if (error || !data || !data.length) {
+          // If we can't read the ladder, fall back to defaults.
+          setStep(50)
+          setSellPct(15)
+          return
+        }
+
+        const first = data[0] as any
+
+        const rawStep = Number(first.rise_pct ?? 0)
+        // We generate rise_pct = step * level (level 1 → rise_pct = step),
+        // so the first level’s rise_pct is the step size in %.
+        const stepCandidate = stepOptions.includes(rawStep) ? rawStep : 50
+
+        const rawPct = Number(first.sell_pct_of_remaining ?? 0) * 100
+        // Snap to the closest of our allowed options (10, 15, 20, 25)
+        const closestSellPct = sellPctOptions.reduce((best, opt) => {
+          return Math.abs(opt - rawPct) < Math.abs(best - rawPct) ? opt : best
+        }, sellPctOptions[0])
+
+        setStep(stepCandidate)
+        setSellPct(closestSellPct)
+      } catch {
+        if (cancelled) return
+        // On any error, fall back to defaults
+        setStep(50)
+        setSellPct(15)
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, coingeckoId, activeSell?.id])
 
   const help = useMemo(() => {
     const a = activeSell?.avg_lock_price

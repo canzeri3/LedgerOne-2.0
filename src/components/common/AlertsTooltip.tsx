@@ -58,7 +58,8 @@ type TradeRow = {
   sell_planner_id: string | null
 }
 
-type AlertItem = { side: 'Buy' | 'Sell'; symbol: string; cid: string }
+type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
+
 
 export function AlertsTooltip({
   coinIds,
@@ -85,17 +86,25 @@ export function AlertsTooltip({
     }
     setOpen(true)
   }
-  const scheduleClose = (e?: PointerEvent | React.PointerEvent) => {
-    // Only schedule if pointer truly left the wrapper
-    const to = (e?.relatedTarget as Node | null) ?? null
-    const wrap = wrapRef.current as unknown as Node | null
-    if (to && wrap && wrap.contains(to)) return
-    if (closeTimer.current) window.clearTimeout(closeTimer.current)
+   const scheduleClose = (e?: React.PointerEvent<HTMLDivElement>) => {
+    const target = (e?.relatedTarget as EventTarget | null) ?? null
+    const wrap = wrapRef.current
+
+    // Only close if we're actually leaving the tooltip wrapper.
+    // Guard against non-Node targets (e.g. window) which cause "parameter 1 is not of type 'Node'".
+    if (wrap && target instanceof Node && wrap.contains(target)) {
+      return
+    }
+
+    if (closeTimer.current) {
+      window.clearTimeout(closeTimer.current)
+    }
+
     closeTimer.current = window.setTimeout(() => {
       setOpen(false)
-      closeTimer.current = null
-    }, 120) as unknown as number
+    }, 90)
   }
+
 
   // --- DATA FETCHES (same sources already used on this page) ---
   const { data: activeBuyPlanners } = useSWR<BuyPlannerRow[]>(
@@ -310,9 +319,25 @@ const alertCoinIds = useMemo(() => {
     return m
   }, [richTrades])
 
-  // ➜ EXACT SAME ALERTS LOGIC AS PORTFOLIO PAGE
+    // ➜ EXACT SAME ALERTS LOGIC AS PORTFOLIO PAGE
   const alertItems: AlertItem[] = useMemo(() => {
     const out: AlertItem[] = []
+
+    // ── NEW CYCLE alerts: current price has moved above the ladder's top price ──
+    const seenCycleCids = new Set<string>()
+    for (const p of activeBuyPlanners ?? []) {
+      const cid = p.coingecko_id
+      const cidCanon = canonId(cid)
+      const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
+      const top = Number(p.top_price ?? 0)
+      if (!cidCanon) continue
+      if (!(live > 0) || !(top > 0)) continue
+      // Match the planner page: treat any move above top_price as a new price cycle.
+      if (live <= top) continue
+      if (seenCycleCids.has(cidCanon)) continue
+      seenCycleCids.add(cidCanon)
+      out.push({ side: 'Cycle', symbol: sym(cid), cid })
+    }
 
     // BUY alerts
     for (const p of activeBuyPlanners ?? []) {
@@ -322,23 +347,28 @@ const alertCoinIds = useMemo(() => {
       if (!(live > 0)) continue
 
       const top = Number(p.top_price ?? 0)
-const budget = Number(p.budget_usd ?? p.total_budget ?? 0)
+      const budget = Number(p.budget_usd ?? p.total_budget ?? 0)
 
-const depthNum = Number(p.ladder_depth || 70)
-const depth = (depthNum === 90
-  ? 90
-  : depthNum === 75
-    ? 75
-    : 70) as 70 | 75 | 90
+      const depthNum = Number(p.ladder_depth || 70)
+      const depth = (depthNum === 90
+        ? 90
+        : depthNum === 75
+          ? 75
+          : 70) as 70 | 75 | 90
 
-const growth = Number(p.growth_per_level ?? 0)
-if (!(top > 0) || !(budget > 0)) continue
+      const growth = Number(p.growth_per_level ?? 0)
+      if (!(top > 0) || !(budget > 0)) continue
 
-const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+      const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
 
       const buys: BuyTrade[] = (tradesByCoinRich.get(cid) ?? [])
         .filter(t => t.side === 'buy' && t.buy_planner_id === p.id)
-        .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
+        .map(t => ({
+          price: t.price,
+          quantity: t.quantity,
+          fee: t.fee ?? 0,
+          trade_time: t.trade_time,
+        }))
 
       const fills = computeBuyFills(plan, buys, 0)
 
@@ -352,121 +382,175 @@ const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       if (hit) out.push({ side: 'Buy', symbol: sym(cid), cid })
     }
 
-    // SELL alerts
-const lvlsByPlanner = new Map<string, { level: number; price: number; sell_tokens: number | null }[]>()
-for (const l of sellLevels ?? []) {
-  const arr = lvlsByPlanner.get(l.sell_planner_id) ?? []
-  arr.push(l)
-  lvlsByPlanner.set(l.sell_planner_id, arr)
-}
+    // SELL alerts (active + history)
+    const lvlsByPlanner = new Map<string, { level: number; price: number; sell_tokens: number | null }[]>()
+    for (const l of sellLevels ?? []) {
+      const arr = lvlsByPlanner.get(l.sell_planner_id) ?? []
+      arr.push(l)
+      lvlsByPlanner.set(l.sell_planner_id, arr)
+    }
 
-const allSellPlanners = [
-  ...(activeSellPlanners ?? []),
-  ...(historySellPlanners ?? []),
-]
+    const allSellPlanners = [
+      ...(activeSellPlanners ?? []),
+      ...(historySellPlanners ?? []),
+    ]
 
-const seenSellPlannerIds = new Set<string>()
+    const seenSellPlannerIds = new Set<string>()
 
-for (const sp of allSellPlanners) {
-  if (!sp?.id || seenSellPlannerIds.has(sp.id)) continue
-  seenSellPlannerIds.add(sp.id)
+    for (const sp of allSellPlanners) {
+      if (!sp?.id || seenSellPlannerIds.has(sp.id)) continue
+      seenSellPlannerIds.add(sp.id)
 
-  const cid = sp.coingecko_id
-  const cidCanon = canonId(cid)
-  const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
-  if (!(live > 0)) continue
+      const cid = sp.coingecko_id
+      const cidCanon = canonId(cid)
+      const live = pricesMap instanceof Map ? (pricesMap.get(cidCanon) ?? 0) : 0
+      if (!(live > 0)) continue
 
-  const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a, b) => a.level - b.level)
-  if (!raw.length) continue
+      const raw = (lvlsByPlanner.get(sp.id) ?? []).sort((a, b) => a.level - b.level)
+      if (!raw.length) continue
 
-  const levels: PlannerSellLevel[] = raw.map(l => ({
-    target_price: Number(l.price),
-    planned_tokens: Math.max(0, Number(l.sell_tokens ?? 0)),
-  }))
+      const levels: PlannerSellLevel[] = raw.map(l => ({
+        target_price: Number(l.price),
+        planned_tokens: Math.max(0, Number(l.sell_tokens ?? 0)),
+      }))
 
-  const sells: PlannerSellTrade[] = (tradesByCoinRich.get(cid) ?? [])
-    .filter(t => t.side === 'sell' && t.sell_planner_id === sp.id)
-    .map(t => ({ price: t.price, quantity: t.quantity, fee: t.fee ?? 0, trade_time: t.trade_time }))
+      const sells: PlannerSellTrade[] = (tradesByCoinRich.get(cid) ?? [])
+        .filter(t => t.side === 'sell' && t.sell_planner_id === sp.id)
+        .map(t => ({
+          price: t.price,
+          quantity: t.quantity,
+          fee: t.fee ?? 0,
+          trade_time: t.trade_time,
+        }))
 
-  const fill = computeSellFills(levels, sells, 0.05)
+      const fill = computeSellFills(levels, sells, 0.05)
 
-  const hit = levels.some((lv, i) => {
-    const lvl = Number(lv.target_price)
-    if (!(lvl > 0)) return false
-    const within = live >= lvl * 0.97
-    const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
-    return within && notFilled
-  })
-  if (hit) out.push({ side: 'Sell', symbol: sym(cid), cid })
-}
+      const hit = levels.some((lv, i) => {
+        const lvl = Number(lv.target_price)
+        if (!(lvl > 0)) return false
+        const within = live >= lvl * 0.97
+        const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
+        return within && notFilled
+      })
+      if (hit) out.push({ side: 'Sell', symbol: sym(cid), cid })
+    }
 
+    // Order: new cycles first (most structural), then Buy, then Sell
+    const cyclesOut = out
+      .filter(x => x.side === 'Cycle')
+      .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    const buysOut = out
+      .filter(x => x.side === 'Buy')
+      .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    const sellsOut = out
+      .filter(x => x.side === 'Sell')
+      .sort((a, b) => a.symbol.localeCompare(b.symbol))
 
-    const buysOut = out.filter(x => x.side === 'Buy').sort((a,b)=>a.symbol.localeCompare(b.symbol))
-    const sellsOut = out.filter(x => x.side === 'Sell').sort((a,b)=>a.symbol.localeCompare(b.symbol))
-    return [...buysOut, ...sellsOut]
-}, [
-  JSON.stringify(activeBuyPlanners),
-  JSON.stringify(activeSellPlanners),
-  JSON.stringify(historySellPlanners),
-  JSON.stringify(sellLevels),
-  JSON.stringify(pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []),
-  JSON.stringify([...tradesByCoinRich.entries()].map(([k,v]) => [k, v.length])),
-])
+    return [...cyclesOut, ...buysOut, ...sellsOut]
+  }, [
+    JSON.stringify(activeBuyPlanners),
+    JSON.stringify(activeSellPlanners),
+    JSON.stringify(historySellPlanners),
+    JSON.stringify(sellLevels),
+    JSON.stringify(
+      pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []
+    ),
+    JSON.stringify([...tradesByCoinRich.entries()].map(([k, v]) => [k, v.length])),
+  ])
+
 
 
   const totalAlerts = alertItems.length
   const hasAlerts = totalAlerts > 0
 
 
-    const Badge = ({ kind }: { kind: 'Buy' | 'Sell' }) => {
-    const isBuy = kind === 'Buy'
-    return (
-      <span
-        className={[
-          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-          isBuy
-            ? 'bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30'
-            : 'bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30',
-        ].join(' ')}
-      >
-        {/* Updated icons */}
-        {isBuy ? (
-          // Buy arrow pointing UP (professional clean style)
+    const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
+      if (kind === 'Buy') {
+        return (
+          <span
+            className={[
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              'bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30',
+            ].join(' ')}
+          >
+            {/* Buy arrow pointing UP */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              className="w-3 h-3 opacity-90 text-emerald-200 !text-emerald-200"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M12 19V5" />
+              <path d="M6 11l6-6 6 6" />
+            </svg>
+            <span>Buy</span>
+          </span>
+        )
+      }
+
+      if (kind === 'Sell') {
+        return (
+          <span
+            className={[
+              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              'bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30',
+            ].join(' ')}
+          >
+            {/* Sell arrow pointing UP-RIGHT */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              className="w-3 h-3 opacity-90 text-rose-200 !text-rose-200"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M7 17L17 7" />
+              <path d="M13 7h4v4" />
+            </svg>
+            <span>Sell</span>
+          </span>
+        )
+      }
+
+      // New CYCLE badge – subtle purple, matches cycle banner + planner info tooltip
+      return (
+        <span
+          className={[
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+            'bg-[rgb(63,56,126)]/35 text-[rgb(214,210,255)] ring-1 ring-[rgb(136,128,213)]/60',
+          ].join(' ')}
+        >
+                 {/* Simple circular cycle icon */}
           <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            className="w-3 h-3 opacity-90 text-emerald-200 !text-emerald-200"
-            strokeWidth={1.8}
+            className="w-3 h-3 opacity-90 text-[rgb(214,210,255)] !text-[rgb(214,210,255)]"
+            strokeWidth={1.7}
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
             focusable="false"
           >
-            <path d="M12 19V5" />
-            <path d="M6 11l6-6 6 6" />
+
+            <path d="M5 11a7 7 0 0 1 11-5" />
+            <path d="M16 3.5V8h-4.5" />
+            <path d="M19 13a7 7 0 0 1-11 5" />
+            <path d="M8 20.5V16h4.5" />
           </svg>
-        ) : (
-          // Sell arrow pointing UP-RIGHT (stylish outward direction)
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            className="w-3 h-3 opacity-90 text-rose-200 !text-rose-200"
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path d="M7 17L17 7" />
-            <path d="M13 7h4v4" />
-          </svg>
-        )}
-        {kind}
-      </span>
-    )
-  }
+          <span>New cycle</span>
+        </span>
+      )
+    }
 
 
   const CountPill = ({ n }: { n: number }) => {
@@ -546,7 +630,12 @@ for (const sp of allSellPlanners) {
               alertItems.map((it, idx) => (
          <Link
   key={`${it.cid}:${it.side}:${idx}`}
-  href={`/coins/${it.cid}`}
+href={
+  it.side === 'Sell'
+    ? `/planner?id=${encodeURIComponent(it.cid)}&tab=sell`
+    : `/planner?id=${encodeURIComponent(it.cid)}&tab=buy`
+}
+
   prefetch
   className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
   onPointerEnter={openNow} /* keeps tooltip open while moving toward it */
@@ -556,6 +645,8 @@ for (const sp of allSellPlanners) {
     <Badge kind={it.side} />
     <span className="text-sm text-slate-100/95">{it.symbol}</span>
   </span>
+
+
         <svg
         viewBox="0 0 20 20"
         fill="currentColor"
