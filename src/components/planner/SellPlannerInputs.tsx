@@ -82,115 +82,270 @@ type Planner = {
   is_active: boolean
 }
 
-// Simple inline select component (numeric options)
-type InlineSelectProps = {
+// ─────────────────────────────────────────────────────────────
+// Shared "pill" dropdown UI for Sell planner (matches Buy risk)
+// ─────────────────────────────────────────────────────────────
+
+type SellMeta = {
+  title: string
+  desc: string
+  chip: string
+  bars: number
+}
+
+type SellDropdownProps = {
   value: number
   options: number[]
   onChange: (v: number) => void
-  renderLabel: (v: number) => string
   ariaLabel: string
+  getMeta: (v: number) => SellMeta
 }
 
-function InlineSelect({ value, options, onChange, renderLabel, ariaLabel }: InlineSelectProps) {
+// Coin Volatility meta (chip shows only 50% / 100% / 150% step)
+function sellVolatilityMeta(v: number): SellMeta {
+  if (v === 50) {
+    return {
+      title: 'Low',
+      desc: '50% step between targets',
+      chip: '50% step',
+      bars: 3,
+    }
+  }
+  if (v === 100) {
+    return {
+      title: 'Medium',
+      desc: '100% step between targets',
+      chip: '100% step',
+      bars: 5,
+    }
+  }
+  if (v === 150) {
+    return {
+      title: 'High',
+      desc: '150% step between targets',
+      chip: '150% step',
+      bars: 7,
+    }
+  }
+  // Fallback (should not hit in normal use)
+  return {
+    title: `${v}%`,
+    desc: 'Custom step between targets',
+    chip: `${v}% step`,
+    bars: 4,
+  }
+}
+
+// Sell Intensity meta (Light Trim / Balanced / Firm / Max)
+function sellIntensityMeta(v: number): SellMeta {
+  if (v === 10) {
+    return {
+      title: 'Light Trim',
+      desc: 'Sell 10% at each target',
+      chip: '10% / level',
+      bars: 3,
+    }
+  }
+  if (v === 15) {
+    return {
+      title: 'Balanced Trim',
+      desc: 'Sell 15% at each target',
+      chip: '15% / level',
+      bars: 4,
+    }
+  }
+  if (v === 20) {
+    return {
+      title: 'Firm Trim',
+      desc: 'Sell 20% at each target',
+      chip: '20% / level',
+      bars: 5,
+    }
+  }
+  if (v === 25) {
+    return {
+      title: 'Max Trim',
+      desc: 'Sell 25% at each target',
+      chip: '25% / level',
+      bars: 6,
+    }
+  }
+  // Fallback
+  return {
+    title: `${v}%`,
+    desc: 'Custom trim pattern',
+    chip: `${v}% / level`,
+    bars: 4,
+  }
+}
+
+// Pill-style dropdown (mirrors Buy LadderDepthDropdown UI)
+function SellDropdown({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  getMeta,
+}: SellDropdownProps) {
   const [open, setOpen] = useState(false)
-  const [active, setActive] = useState<number>(value)
-  const btnRef = useRef<HTMLButtonElement | null>(null)
-  const listRef = useRef<HTMLDivElement | null>(null)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
 
-  // Single effect to keep dependency array size/order constant
+  // Close on click outside
   useEffect(() => {
-    // keep active aligned to value
-    setActive(value)
+    if (!open) return
 
-    // close on outside click
     const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node
-      if (btnRef.current?.contains(t)) return
-      if (listRef.current?.contains(t)) return
+      const target = e.target as Node
+      if (wrapRef.current && wrapRef.current.contains(target)) return
       setOpen(false)
     }
+
     document.addEventListener('mousedown', onDoc)
     return () => {
       document.removeEventListener('mousedown', onDoc)
     }
-  }, [value])
+  }, [open])
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!open && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
-      e.preventDefault()
-      setOpen(true)
-      return
-    }
-    if (!open) return
-    const idx = options.indexOf(active)
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      const next = idx < 0 ? 0 : Math.min(options.length - 1, idx + 1)
-      setActive(options[next])
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      const prev = idx < 0 ? 0 : Math.max(0, idx - 1)
-      setActive(options[prev])
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onChange(active)
-      setOpen(false)
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      setOpen(false)
-    }
-  }
+  const currentMeta = getMeta(value)
+
+  const baseBg = 'bg-[rgb(41,42,43)]'
+  const baseText = 'text-slate-200'
+  const noBorder =
+    'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
+  const heightPad = 'px-3 py-2.5'
+  const radiusClosed = 'rounded-lg'
+  const muted = 'text-slate-400'
 
   return (
-    <div className={inlineSelectShell}>
+    <div ref={wrapRef} className="relative mt-1">
+      {/* Control (pill-style button) */}
       <button
+        ref={buttonRef}
         type="button"
-        ref={btnRef}
-        className={inlineSelectBtn}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={onKeyDown}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen((o) => !o)
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setOpen(false)
+          }
+        }}
+        className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none ${radiusClosed}`}
       >
-        {/* Label only – no arrow icon */}
-        <span className="truncate">{renderLabel(value)}</span>
+        <div className="inline-flex w-full items-center gap-1">
+          {/* Left: option name (Low / Medium / High, Light Trim, etc.) */}
+          <span className="text-sm" style={{ width: 'auto' }}>
+            {currentMeta.title}
+          </span>
+
+          {/* Chip immediately next to the name */}
+          <span
+            className="ml-1 text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
+            style={{ width: 'auto', flexShrink: 0 }}
+          >
+            {currentMeta.chip}
+          </span>
+
+          {/* Arrow pushed to far right, fixed-size circle */}
+          <span
+            className="inline-flex items-center justify-center rounded-full bg-[rgb(54,55,56)] ml-auto"
+            aria-hidden="true"
+            style={{ width: 20, height: 20, flexShrink: 0 }}
+          >
+            <svg
+              className={`h-3 w-3 text-slate-200 transition-transform ${
+                open ? 'rotate-180' : 'rotate-0'
+              }`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.19l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.25 4.53a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        </div>
       </button>
 
+                 {/* Dropdown menu – 2-line structure, no mini bars */}
       {open && (
         <div
-          ref={listRef}
           role="listbox"
           aria-label={ariaLabel}
-          tabIndex={-1}
-          className={inlineSelectMenu}
+          className={`${baseBg} ${baseText} ${noBorder} mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg`}
         >
-          {options.map((opt) => {
-            const selected = opt === value
-            return (
-              <button
-                key={opt}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={`${inlineSelectOption} ${selected ? 'bg-[rgb(41,42,45)]' : ''}`}
-                onClick={() => {
-                  onChange(opt)
-                  setOpen(false)
-                }}
-              >
-                {renderLabel(opt)}
-              </button>
-            )
-          })}
+          <div className="py-1">
+            {options.map((opt) => {
+              const meta = getMeta(opt)
+              const selected = opt === value
+
+              // For Sell Intensity we want [10%], [15%], etc
+              // For Coin Volatility we use meta.chip -> [50% step], etc
+              const bracketChip =
+                ariaLabel === 'Select sell intensity' ? `${opt}%` : meta.chip
+
+              // Dropdown label:
+              // - Coin Volatility: "Low Volatility", "Medium Volatility", "High Volatility"
+              // - Sell Intensity: keep "Light Trim", "Balanced Trim", etc.
+              const label =
+                ariaLabel === 'Select coin volatility'
+                  ? `${meta.title} Volatility`
+                  : meta.title
+
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(opt)
+                    setOpen(false)
+                    buttonRef.current?.focus()
+                  }}
+                  className={`w-full text-left px-3 py-2 transition ${
+                    selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'
+                  }`}
+                >
+                  {/* First line: Name ............ [chip] (right-aligned) */}
+                  <div className="inline-flex w-full items-center">
+                    <span className="text-sm" style={{ width: 'auto' }}>
+                      {label}
+                    </span>
+                    <span
+                      className="ml-auto text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
+                      style={{ width: 'auto', flexShrink: 0 }}
+                    >
+                      {bracketChip}
+                    </span>
+                  </div>
+
+                  {/* Second line: description */}
+                  <div className={`mt-1 text-[12px] ${muted}`}>{meta.desc}</div>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
+
+
     </div>
   )
 }
 
 // Main Sell planner inputs
 export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
+
   const { user } = useUser()
 
   const { data: activeSell } = useSWR<Planner | null>(
@@ -426,48 +581,31 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
       {/* Match BuyPlannerInputs layout: single column, tight gaps */}
       <div className="grid grid-cols-1 gap-2">
-        {/* Card 2: Coin Volatility (step size per level) */}
-        <label className="block">
-          <span className="text-sm font-medium text-slate-100">Coin Volatility</span>
-          <InlineSelect
-            value={step}
-            options={stepOptions}
-            onChange={setStep}
-            ariaLabel="Select coin volatility"
-            renderLabel={(v) =>
-              v === 50
-                ? 'Low (50% step)'
-                : v === 100
-                ? 'Medium (100% step)'
-                : v === 150
-                ? 'High (150% step)'
-                : `${v}%`
-            }
-          />
-        </label>
+  {/* Card 2: Coin Volatility (step size per level) */}
+  <label className="block">
+    <span className="text-sm font-medium text-slate-100">Coin Volatility</span>
+    <SellDropdown
+      value={step}
+      options={stepOptions}
+      onChange={setStep}
+      ariaLabel="Select coin volatility"
+      getMeta={sellVolatilityMeta}
+    />
+  </label>
 
-        {/* Card 1: Sell Intensity (% of remaining each level) */}
-        <label className="block">
-          <span className="text-sm font-medium text-slate-100">Sell Intensity</span>
-          <InlineSelect
-            value={sellPct}
-            options={sellPctOptions}
-            onChange={setSellPct}
-            ariaLabel="Select sell intensity"
-            renderLabel={(v) =>
-              v === 10
-                ? 'Light Trim (10%)'
-                : v === 15
-                ? 'Balanced Trim (15%)'
-                : v === 20
-                ? 'Firm Trim (20%)'
-                : v === 25
-                ? 'Max Trim (25%)'
-                : `${v}%`
-            }
-          />
-        </label>
-      </div>
+  {/* Card 1: Sell Intensity (% of remaining each level) */}
+  <label className="block">
+    <span className="text-sm font-medium text-slate-100">Sell Intensity</span>
+    <SellDropdown
+      value={sellPct}
+      options={sellPctOptions}
+      onChange={setSellPct}
+      ariaLabel="Select sell intensity"
+      getMeta={sellIntensityMeta}
+    />
+  </label>
+</div>
+
 
       <div className="flex items-center gap-3 pt-1">
         {/* Match Buy Planner "Save New" button UI */}
