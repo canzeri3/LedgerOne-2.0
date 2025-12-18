@@ -78,28 +78,51 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [pathname])
 
   // Watch the header AlertsTooltip text and detect if there is any numeric count > 0
+  // Important: re-attach on route changes because the header tooltip subtree can be replaced.
   useEffect(() => {
     if (typeof document === 'undefined') return
-    const root = document.querySelector('[data-header-alerts]')
-    if (!root) return
 
-    const update = () => {
-      const text = root.textContent || ''
-      const match = text.match(/(\d+)/)
-      const count = match ? parseInt(match[1], 10) : 0
-      setHasHeaderAlerts(count > 0)
+    let observer: MutationObserver | null = null
+    let cancelled = false
+
+    const attach = (attempt = 0) => {
+      if (cancelled) return
+
+      const root = document.querySelector('[data-header-alerts]')
+
+      // During route transitions, the node may not exist yet; retry briefly.
+      if (!root) {
+        setHasHeaderAlerts(false)
+        if (attempt < 30) {
+          setTimeout(() => attach(attempt + 1), 50)
+        }
+        return
+      }
+
+      const update = () => {
+        const text = root.textContent || ''
+        const match = text.match(/(\d+)/)
+        const count = match ? parseInt(match[1], 10) : 0
+        setHasHeaderAlerts(count > 0)
+      }
+
+      update()
+
+      observer = new MutationObserver(update)
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      })
     }
 
-    update()
+    attach()
 
-    const observer = new MutationObserver(update)
-    observer.observe(root, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-    return () => observer.disconnect()
-  }, [])
+    return () => {
+      cancelled = true
+      if (observer) observer.disconnect()
+    }
+  }, [pathname])
 
   return (
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>

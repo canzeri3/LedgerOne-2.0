@@ -74,6 +74,31 @@ export function AlertsTooltip({
   const { user } = useUser()
   const router = useRouter()
 
+    // coins meta for ticker symbols (used for display only)
+  // Prefer the `coins` prop (dashboard), but fall back to /api/coins so the header tooltip also shows tickers.
+  const { data: coinsFallback } = useSWR<CoinMeta[]>(
+    user && (!coins || coins.length === 0) ? ['/portfolio/coins'] : null,
+    async () => {
+      try {
+        const res = await fetch('/api/coins', { cache: 'no-store' })
+        if (!res.ok) throw new Error(String(res.status))
+        const j = await res.json()
+        return (j ?? []) as CoinMeta[]
+      } catch {
+        return []
+      }
+    },
+    {
+      revalidateOnMount: true,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      keepPreviousData: true,
+      dedupingInterval: 30_000,
+    }
+  )
+
+  const coinsResolved = coins && coins.length > 0 ? coins : coinsFallback
+
   // Strictly control visibility to avoid "near hover" and allow panel hover
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -265,12 +290,33 @@ const alertCoinIds = useMemo(() => {
     }
   )
 
-  const sym = (cid: string) =>
-    coins?.find(c => c.coingecko_id === cid)?.symbol?.toUpperCase() ?? cid.toUpperCase()
-
   // Canonicalize coin IDs so alerts work even if DB has casing/whitespace quirks
   const canonId = (id: string | null | undefined) =>
     String(id ?? '').trim().toLowerCase()
+
+  // Ensure alert labels always use tickers (BTC, ETH, XRP, ...) once coin meta is available.
+  // This also fixes the "sometimes name until refresh" issue by forcing alertItems to recompute when symbols load.
+  const symbolsSig = useMemo(
+    () =>
+      JSON.stringify(
+        (coinsResolved ?? []).map(c => [canonId(c.coingecko_id), String(c.symbol ?? '').toUpperCase()])
+      ),
+    [coinsResolved]
+  )
+
+  const symbolById = useMemo(() => {
+    const m = new Map<string, string>()
+    ;(coinsResolved ?? []).forEach(c => {
+      const id = canonId(c.coingecko_id)
+      const s = String(c.symbol ?? '').trim()
+      if (id && s) m.set(id, s.toUpperCase())
+    })
+    return m
+  }, [coinsResolved])
+
+  const sym = (cid: string) =>
+    symbolById.get(canonId(cid)) ?? String(cid ?? '').trim().toUpperCase()
+
 
 type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
 
@@ -455,8 +501,10 @@ type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
     JSON.stringify(
       pricesMap instanceof Map ? [...(pricesMap as Map<string, number>).entries()] : []
     ),
-    JSON.stringify([...tradesByCoinRich.entries()].map(([k, v]) => [k, v.length])),
+      JSON.stringify([...tradesByCoinRich.entries()].map(([k, v]) => [k, v.length])),
+    symbolsSig,
   ])
+
 
 
 
@@ -631,10 +679,11 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
          <Link
   key={`${it.cid}:${it.side}:${idx}`}
 href={
-  it.side === 'Sell'
-    ? `/planner?id=${encodeURIComponent(it.cid)}&tab=sell`
-    : `/planner?id=${encodeURIComponent(it.cid)}&tab=buy`
+  it.side === 'Cycle'
+    ? `/planner?id=${encodeURIComponent(it.cid)}`
+    : `/coins/${encodeURIComponent(it.cid)}`
 }
+
 
   prefetch
   className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"

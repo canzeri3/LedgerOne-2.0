@@ -114,10 +114,11 @@ export default function HowToPage() {
                 <ChecklistCard
                   title="1) Configure Buy Planner"
                   items={[
-                    'Open the Buy Planner for your coin.',
-                    'Set Top Price, Total Budget, Ladder Depth (70% or 90%), and Growth per level.',
-                    'Review generated levels and toggle Active.',
-                    'Alerts will appear on the Dashboard when a level is near / time to buy.',
+                    'Open the Buy/Sell Planner page for your coin.',
+                    'Set a Total Budget and choose your Risk Metric.',
+                    'Click Save New to generate New Planner.',
+                    'Alerts will appear on the Dashboard when it is Time To Buy.',
+                     'Made a mistake? Just update the values and click Save New.',
                   ]}
                   icon={<Layers className="h-4 w-4" />}
                 />
@@ -127,8 +128,8 @@ export default function HowToPage() {
                   title="2) Add or import trades"
                   items={[
                     'To buy a coin: go to that coin’s page → “Add Trade” tab.',
+                    'Enter the exact quantity and price shown in your exchange’s filled order.',
                     'Or import multiple with CSV (Portfolio → CSV → Import).',
-                    'Use the executed quantity/price from your exchange fills.',
                   ]}
                   icon={<Wallet className="h-4 w-4" />}
                 />
@@ -136,9 +137,11 @@ export default function HowToPage() {
                 <ChecklistCard
                   title="3) Create Sell Planner"
                   items={[
-                    'Define profit targets (tiers) and %/tokens per tier.',
-                    'Associate sells to the planner when executing.',
-                    'Alerts will notify you as price approaches targets.',
+                    'Open the Buy/Sell Planner page for your coin.',
+                    'Set the Coin Volitility and choose your Sell Intensity.',
+                    'Only once a Buy has been recorded, Click Generate Ladder.',
+                    'Alerts will appear on the Dashboard when it is Time To Sell.',
+                     'Made a mistake? Just update the values and Generate Ladder again.'
                   ]}
                   icon={<BarChart2 className="h-4 w-4" />}
                 />
@@ -146,9 +149,10 @@ export default function HowToPage() {
                 <ChecklistCard
                   title="4) Monitor Risk & Performance"
                   items={[
-                    'Risk card: Structure × Volatility × Tail × Correlation × Liquidity.',
-                    'Use Combined Risk score for sizing and rebalancing.',
-                    'Portfolio Growth shows performance by timeframe.',
+                   'When a New Cycle alert appears, click it to open that coin’s Buy/Sell Planner.',
+    'Enter your New Budget and New Risk Metric, then click Generate New.',
+    'Your previous Sell Planner is saved automatically and a new one is created.',
+    'No Sell Planner updates are needed after the first setup.',
                   ]}
                   icon={<Shield className="h-4 w-4" />}
                 />

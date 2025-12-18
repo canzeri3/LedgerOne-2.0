@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { usePrice } from '@/lib/dataCore'
@@ -230,12 +231,57 @@ export default function PlannerPage() {
   // ── Local state: inline search query for filtering the selector ───────────
   const [coinQuery, setCoinQuery] = useState<string>('')
 
-  // Prime selection once coins load
+  // ── URL selection + persistence ───────────────────────────────────────────
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Deep-link support: /planner?id=<coingecko_id> (used by Alerts tooltip)
+  const requestedId = useMemo(() => {
+    const raw = searchParams.get('id') ?? searchParams.get('coin') ?? ''
+    return raw.trim()
+  }, [searchParams])
+
+  // Apply requestedId once per navigation, but do NOT lock the user into it afterward.
+  const lastAppliedRequestedId = useRef<string>('')
+
+  // Track explicit user selection so we only persist to URL when the user actually chose a coin.
+  const userSelectedRef = useRef<boolean>(false)
+
   useEffect(() => {
-    if (!coingeckoId && coins && coins.length > 0) {
-      setCoingeckoId(coins[0].coingecko_id)
-    }
-  }, [coins, coingeckoId])
+    if (!requestedId) return
+    if (lastAppliedRequestedId.current === requestedId) return
+    lastAppliedRequestedId.current = requestedId
+    userSelectedRef.current = false
+    setCoingeckoId(requestedId)
+  }, [requestedId])
+
+  // Persist selection into the URL so refresh keeps the same coin.
+  // (No UI changes; this only updates the query string.)
+  useEffect(() => {
+    if (!coingeckoId) return
+    if (!userSelectedRef.current) return
+
+    const current = (searchParams.get('id') ?? '').trim()
+    if (current === coingeckoId) return
+
+    const sp = new URLSearchParams(searchParams.toString())
+    sp.set('id', coingeckoId)
+    sp.delete('coin')
+
+    router.replace(`/planner?${sp.toString()}`, { scroll: false })
+  }, [coingeckoId, router, searchParams])
+
+  // Prime selection once coins load (prefer deep-link if present)
+  useEffect(() => {
+    if (coingeckoId) return
+    if (!coins || coins.length === 0) return
+
+    const fromQuery = requestedId
+      ? coins.find(c => c.coingecko_id === requestedId)
+      : null
+
+    setCoingeckoId(fromQuery?.coingecko_id ?? coins[0].coingecko_id)
+  }, [coins, coingeckoId, requestedId])
 
   const selected = useMemo(
     () => coins?.find(c => c.coingecko_id === coingeckoId),
@@ -368,12 +414,16 @@ export default function PlannerPage() {
             </label>
 
             {/* Connected, professional dropdown */}
-            <CoinDropdown
+               <CoinDropdown
               items={filteredCoins}
               selectedId={coingeckoId}
-              onChange={setCoingeckoId}
+              onChange={(id) => {
+                userSelectedRef.current = true
+                setCoingeckoId(id)
+              }}
               disabled={!coins?.length}
             />
+
           </div>
         </div>
 
