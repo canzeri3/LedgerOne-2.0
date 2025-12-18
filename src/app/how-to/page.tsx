@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import {
   Info, BookOpen, Video, ImageIcon, CheckCircle2, ListChecks, HelpCircle,
-  LayoutDashboard, BarChart2, Shield, Layers, Wallet, Cpu, ExternalLink, Bell
+  LayoutDashboard, BarChart2, RefreshCw, Layers, Wallet, Cpu, ExternalLink, Bell
 } from 'lucide-react'
 
 /**
@@ -112,7 +112,7 @@ export default function HowToPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 {/* #1 Configure Buy Planner */}
                 <ChecklistCard
-                  title="1) Configure Buy Planner"
+                  title="1) Configure a Buy Planner"
                   items={[
                     'Open the Buy/Sell Planner page for your coin.',
                     'Set a Total Budget and choose your Risk Metric.',
@@ -135,7 +135,7 @@ export default function HowToPage() {
                 />
 
                 <ChecklistCard
-                  title="3) Create Sell Planner"
+                  title="3) Create a Sell Planner"
                   items={[
                     'Open the Buy/Sell Planner page for your coin.',
                     'Set the Coin Volitility and choose your Sell Intensity.',
@@ -147,14 +147,15 @@ export default function HowToPage() {
                 />
 
                 <ChecklistCard
-                  title="4) Monitor Risk & Performance"
+                  title="4) Update Coin Cycle"
                   items={[
                    'When a New Cycle alert appears, click it to open that coin’s Buy/Sell Planner.',
     'Enter your New Budget and New Risk Metric, then click Generate New.',
     'Your previous Sell Planner is saved automatically and a new one is created.',
     'No Sell Planner updates are needed after the first setup.',
                   ]}
-                  icon={<Shield className="h-4 w-4" />}
+                  icon={<RefreshCw className="h-4 w-4" />}
+
                 />
               </div>
 
@@ -177,27 +178,27 @@ export default function HowToPage() {
                 <GuideTile
                   href="#guide-buy-planner"
                   title="Buy Planner"
-                  blurb="Configure ladder levels from Top Price, Budget, Depth, Growth."
+                  blurb="Configure ladder levels based on Total Budget and your Risk Profile; Generate New."
                 />
                 <GuideTile
                   href="#guide-add-trade"
                   title="Add a Trade (per coin)"
-                  blurb="Go to the coin page → Add Trade tab; log your executed order."
+                  blurb="Open the coin page → Add Trade tab; record your executed order."
                 />
                 <GuideTile
                   href="#guide-sell-planner"
                   title="Sell Planner"
-                  blurb="Define profit tiers and %/tokens; get alerts on approach."
+                  blurb="Define Coin Volatility and Sell Intensity settings; generate the sell ladder."
                 />
                 <GuideTile
                   href="#guide-risk"
                   title="Risk Score (What it means)"
-                  blurb="Structure, Volatility, Tail, Correlation, Liquidity → Combined."
+                  blurb="Structure, Volatility, Tail, Correlation, Liquidity → Combined Score."
                 />
                 <GuideTile
                   href="#guide-data"
-                  title="Price & History Data"
-                  blurb="Intervals and freshness in the new data core."
+                  title="New Coin Cycle"
+                  blurb="New cycle detected → review the alert, update Buy Planner inputs, and create a new ladder."
                 />
                 <GuideTile
                   href="#guide-shortcuts"
