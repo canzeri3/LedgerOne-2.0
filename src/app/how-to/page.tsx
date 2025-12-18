@@ -162,7 +162,7 @@ export default function HowToPage() {
               {/* Tiny legend for planner row states */}
               <div className="mt-4 text-xs text-slate-300 flex flex-wrap items-center gap-3">
                 <span className="inline-flex items-center gap-1"><Bell className="h-3.5 w-3.5" /> Alerts surface on the Dashboard.</span>
-                <Legend />
+<Legend showCycle />
               </div>
             </Card>
           </section>
@@ -219,7 +219,8 @@ export default function HowToPage() {
                     'System generates buy ladder; toggle Active on levels you want.',
                     'Watch the Dashboard Alerts: your Buy Planner row turns yellow when it’s time to buy, and green after that level is filled.',
                   ]}/>
-                  <div className="mt-3"><Legend /></div>
+<div className="mt-3"><LegendBuyPlanner /></div>
+
                 </GuideDetail>
 
                 <GuideDetail id="guide-add-trade" title="Add a Trade (per coin)">
@@ -541,6 +542,7 @@ function BadgeYellow({ label = 'yellow' }: { label?: string }) {
     </span>
   )
 }
+
 function BadgeGreen({ label = 'green' }: { label?: string }) {
   return (
     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30">
@@ -548,15 +550,59 @@ function BadgeGreen({ label = 'green' }: { label?: string }) {
     </span>
   )
 }
-function Legend() {
+
+/** Matches the New Cycle alert purple badge in src/components/common/AlertsTooltip.tsx */
+function BadgeCycle({ label = 'create new cycle' }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[rgb(63,56,126)]/35 text-[rgb(214,210,255)] ring-1 ring-[rgb(136,128,213)]/60">
+      {label}
+    </span>
+  )
+}
+
+/** Matches Sell badge red (rose) used in src/components/common/AlertsTooltip.tsx */
+function BadgeRed({ label = 'sell' }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30">
+      {label}
+    </span>
+  )
+}
+
+function Legend({ showCycle = false }: { showCycle?: boolean }) {
   return (
     <div className="inline-flex items-center gap-2 text-xs">
       <span className="text-slate-400">Planner row states:</span>
       <BadgeYellow label="time to buy" />
       <BadgeGreen label="level filled" />
+
+      <span className="text-slate-400">Alerts:</span>
+      <BadgeGreen label="Buy" />
+      <BadgeRed label="Sell" />
+      {showCycle ? <BadgeCycle label="create new cycle" /> : null}
     </div>
   )
 }
+
+/**
+ * Buy Planner card legend ONLY:
+ * - No Sell pill
+ * - Show "create new cycle" next to Alerts
+ */
+function LegendBuyPlanner() {
+  return (
+    <div className="inline-flex items-center gap-2 text-xs">
+      <span className="text-slate-400">Planner row states:</span>
+      <BadgeYellow label="time to buy" />
+      <BadgeGreen label="level filled" />
+
+      <span className="text-slate-400">Alerts:</span>
+      <BadgeGreen label="Buy" />
+      <BadgeCycle label="create new cycle" />
+    </div>
+  )
+}
+
 
 /* Bullets helper used in guide sections */
 function Bullets({ items }: { items: string[] }) {
