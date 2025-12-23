@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import Papa from 'papaparse'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -16,11 +16,10 @@ type ParsedRow = {
   sell_planner_id?: string | ''
 }
 
-const REQUIRED = ['coingecko_id','side','price','quantity','trade_time'] as const
+const REQUIRED = ['coingecko_id', 'side', 'price', 'quantity', 'trade_time'] as const
 
 function isRequiredMissing(headers: string[]) {
-  const missing = REQUIRED.filter(h => !headers.includes(h))
-  return missing
+  return REQUIRED.filter(h => !headers.includes(h))
 }
 
 function parseNumber(v: any): number {
@@ -38,12 +37,19 @@ export default function ImportTrades() {
   const append = (s: string) => setLog(prev => (prev ? prev + '\n' : '') + s)
 
   const handleFile = async (file: File) => {
+    if (!user) {
+      append('❌ You must be logged in to import trades.')
+      return
+    }
+
     setBusy(true)
     setLog('')
+
     try {
       append(`Reading ${file.name}…`)
       const text = await file.text()
       const parsed = Papa.parse(text, { header: true, skipEmptyLines: true })
+
       if (parsed.errors?.length) {
         append(`Parser warnings: ${parsed.errors.length}`)
       }
@@ -79,13 +85,13 @@ export default function ImportTrades() {
 
         rows.push({
           coingecko_id: cid,
-          side: side as 'buy'|'sell',
+          side: side as 'buy' | 'sell',
           price: Number(price),
           quantity: Number(qty),
           fee: fee === '' ? '' : Number(fee),
           trade_time: dt.toISOString(),
-          buy_planner_id: (r.buy_planner_id ?? '').trim(),
-          sell_planner_id: (r.sell_planner_id ?? '').trim(),
+          buy_planner_id: String(r.buy_planner_id ?? '').trim(),
+          sell_planner_id: String(r.sell_planner_id ?? '').trim(),
         })
       }
 
@@ -94,15 +100,26 @@ export default function ImportTrades() {
         return
       }
 
+      // NEW: deterministic ordering for ledger safety (time ascending, coin, buys before sells when timestamps tie)
+      rows.sort((a, b) => {
+        const t = a.trade_time.localeCompare(b.trade_time)
+        if (t) return t
+        const c = a.coingecko_id.localeCompare(b.coingecko_id)
+        if (c) return c
+        if (a.side === b.side) return 0
+        return a.side === 'buy' ? -1 : 1
+      })
+
       append(`Validated ${rows.length} rows. Inserting…`)
 
       // Batch inserts (e.g., chunks of 200)
       const BATCH = 200
       let inserted = 0
+
       for (let i = 0; i < rows.length; i += BATCH) {
         const slice = rows.slice(i, i + BATCH)
         const payload = slice.map(r => ({
-          user_id: user!.id,
+          user_id: user.id,
           coingecko_id: r.coingecko_id,
           side: r.side,
           price: r.price,
@@ -115,25 +132,44 @@ export default function ImportTrades() {
 
         const { error } = await supabaseBrowser.from('trades').insert(payload)
         if (error) {
-          append(`❌ Insert error (rows ${i+1}–${i+slice.length}): ${error.message}`)
-          return
+          append(`❌ Batch insert error (rows ${i + 1}–${i + slice.length}): ${error.message}`)
+          append('Trying row-by-row to identify the first failing record…')
+
+          for (let j = 0; j < payload.length; j++) {
+            const rowNum = i + j + 1
+            const one = payload[j]
+            const { error: eOne } = await supabaseBrowser.from('trades').insert(one)
+            if (eOne) {
+              append(`❌ Failed row ${rowNum}: ${eOne.message}`)
+              append(`Row data: ${JSON.stringify(slice[j])}`)
+              return
+            }
+            inserted += 1
+            append(`✅ Inserted ${inserted}/${rows.length}`)
+          }
+
+          // This batch completed row-by-row; continue to next batch.
+          continue
         }
-        inserted += slice.length
+
+        // Batch succeeded
+        inserted += payload.length
         append(`✅ Inserted ${inserted}/${rows.length}`)
       }
 
-      append('Done.')
+      append('✅ Import complete.')
     } catch (e: any) {
-      append(`❌ ${e?.message || e}`)
+      append(`❌ Import failed: ${e?.message || String(e)}`)
     } finally {
       setBusy(false)
+      // Reset file input so you can re-import the same file without manual clearing
       if (fileRef.current) fileRef.current.value = ''
     }
   }
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPick = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
-    if (f && user) handleFile(f)
+    if (f) handleFile(f)
   }
 
   return (
@@ -142,7 +178,8 @@ export default function ImportTrades() {
         <div>
           <div className="text-base font-medium">Import Trades (CSV)</div>
           <div className="text-xs text-slate-400">
-            Required columns: <code>coingecko_id, side, price, quantity, trade_time</code>. Optional: <code>fee, buy_planner_id, sell_planner_id</code>.
+            Required columns: <code>coingecko_id, side, price, quantity, trade_time</code>. Optional:{' '}
+            <code>fee, buy_planner_id, sell_planner_id</code>.
           </div>
         </div>
         <div>
@@ -159,7 +196,9 @@ export default function ImportTrades() {
 
       <div className="rounded-lg bg-[#0a162c] border border-[#0b1830] p-3">
         <div className="text-xs text-slate-300 mb-1">Console</div>
-        <pre className="text-xs text-slate-400 whitespace-pre-wrap break-words max-h-56 overflow-auto">{log || '—'}</pre>
+        <pre className="text-xs text-slate-400 whitespace-pre-wrap break-words max-h-56 overflow-auto">
+          {log || '—'}
+        </pre>
       </div>
 
       <div className="text-xs text-slate-500">
@@ -172,4 +211,3 @@ bitcoin,buy,45000,0.01,0.5,2025-09-10T14:23:00Z,,
     </div>
   )
 }
-

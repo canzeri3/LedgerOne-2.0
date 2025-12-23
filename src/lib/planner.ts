@@ -131,7 +131,7 @@ export function computeBuyFills(
 ): BuyFillResult {
   // Small tolerance so tiny rounding differences / slightly-above-level prices
   // (e.g. BTC buys right at a ladder level) still count as on-plan.
-  const AVG_EPS_PCT = 1.0// 1% price/average tolerance for rounding
+const AVG_EPS_PCT = 0.02 // 1% price/average tolerance for rounding
 
   const plannedTotal = levels.reduce(
     (sum, lvl) => sum + Number(lvl.allocation || 0),
