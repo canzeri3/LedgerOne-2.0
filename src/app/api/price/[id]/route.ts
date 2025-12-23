@@ -9,8 +9,11 @@ export const revalidate = 0;
 
 export async function GET(
   req: Request,
-  { params }: any
-) {  const id = (params.id || "").toLowerCase();
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: rawId } = await params
+  const id = (rawId || '').toLowerCase()
+
 
   // Log adapter usage (see dev terminal or Vercel logs)
   logInfo("adapter_price_hit", { id });

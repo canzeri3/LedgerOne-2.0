@@ -13,12 +13,11 @@ type RouteParams = { id: string }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 
 // Build an absolute base URL for server-side fetches (works locally and in prod)
+// Per mandate: server-to-server calls must use INTERNAL_BASE_URL (fallback localhost).
 function getBaseUrl() {
-  const h: any = headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
-  const proto = h.get('x-forwarded-proto') ?? 'http'
-  return `${proto}://${host}`
+  return process.env.INTERNAL_BASE_URL || 'http://localhost:3000'
 }
+
 
 
 export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
