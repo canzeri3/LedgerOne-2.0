@@ -179,6 +179,49 @@ const onFeeChange = makeLiveNumericChangeHandler(
   const [err, setErr] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
 
+  // NEW: per-coin holdings safeguard (tokens)
+  const [holdingsTokens, setHoldingsTokens] = useState<number>(0)
+  const [holdingsLoading, setHoldingsLoading] = useState<boolean>(false)
+
+  function fmtTokens(x: number): string {
+    if (!Number.isFinite(x)) return '0'
+    const s = x.toFixed(8)
+    return s.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')
+  }
+
+  async function fetchHoldingsTokensNow(): Promise<number> {
+    if (!user) return 0
+    const { data, error } = await supabaseBrowser
+      .from('trades')
+      .select('side,quantity')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', id)
+    if (error) throw error
+
+    let buys = 0
+    let sells = 0
+    for (const r of (data ?? []) as any[]) {
+      const q = Number(r.quantity || 0)
+      if (r.side === 'buy') buys += q
+      else if (r.side === 'sell') sells += q
+    }
+    return Math.max(0, buys - sells)
+  }
+
+  async function refreshHoldingsTokens() {
+    if (!user) { setHoldingsTokens(0); return }
+    try {
+      setHoldingsLoading(true)
+      const v = await fetchHoldingsTokensNow()
+      setHoldingsTokens(v)
+    } catch {
+      // DB trigger is the hard enforcement; this is a UX hint only
+    } finally {
+      setHoldingsLoading(false)
+    }
+  }
+
+
   function broadcast() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('buyPlannerUpdated', { detail: { coinId: id } }))
@@ -229,7 +272,10 @@ const onFeeChange = makeLiveNumericChangeHandler(
     setLoading(false)
   }
 
-  useEffect(() => { loadPlanners() }, [user, id])
+  useEffect(() => {
+    loadPlanners()
+    refreshHoldingsTokens()
+  }, [user, id])
 
   // NEW: whenever side changes, force canonical mode + re-lock
   useEffect(() => {
@@ -450,12 +496,27 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       // NEW: Immediately regenerate ACTIVE sell ladder so rows/prices move with new average
       try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
 
-      setOk('Buy recorded.')
+           setOk('Buy recorded.')
       broadcast()
+      refreshHoldingsTokens()
       resetAfterSubmit()
-    } else {
+
+      } else {
       const chosen = selectedSellPlannerId || activeSell?.id || null
       if (!chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
+
+      // NEW: client-side precheck (DB trigger is the hard enforcement)
+      try {
+        const available = await fetchHoldingsTokensNow()
+        if (quantityTokens > available + 1e-12) {
+          setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
+          setSaving(false)
+          return
+        }
+      } catch {
+        // If this fails, allow DB trigger to enforce.
+      }
+
       const payload = {
         user_id: user.id, coingecko_id: id, side: 'sell',
         price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
@@ -463,10 +524,13 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       }
       const { error } = await supabaseBrowser.from('trades').insert(payload as any)
       if (error) { setErr(error.message); setSaving(false); return }
+
       setOk('Sell recorded.')
       broadcast()
+      refreshHoldingsTokens()
       resetAfterSubmit()
     }
+
     setSaving(false)
   }
 
@@ -675,8 +739,20 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       {/* SELL override (unchanged focus coloring based on side) */}
       {side === 'sell' && (
         <div className="grid gap-2 md:grid-cols-8">
-          <div className="md:col-span-5 text-[11px] text-slate-400">
-            Sells default to the <span className="font-medium">Active</span> Sell Planner. You can override below.
+                 <div className="md:col-span-5 text-[11px] text-slate-400 leading-snug">
+            <div>
+              Sells default to the <span className="font-medium">Active</span> Sell Planner. You can override below.
+            </div>
+
+            {user && (
+              <div>
+                Available to sell:{' '}
+                <span className="text-slate-200">
+                  {holdingsLoading ? '…' : fmtTokens(holdingsTokens)}
+                </span>{' '}
+                tokens
+              </div>
+            )}
           </div>
 
           {/* Single dropdown with version-aligned labels */}
@@ -708,6 +784,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
           </select>
         </div>
       )}
+
 
       <div className="flex gap-2">
         <button
