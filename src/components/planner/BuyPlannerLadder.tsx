@@ -130,19 +130,61 @@ const plan: BuyLevel[] = useMemo(() => {
     return sumTokens > 0 ? sumUsd / sumTokens : 0
   }, [fills, plan])
 
+  // Avg cost should only reflect the buys that are actually allocated to this ladder
+  // (exclude the overflow portion that becomes fills.offPlanUsd).
+  //
+  // We allocate up to `fills.allocatedTotal` USD across the recorded buys in order.
+  // Partial trade allocation is handled proportionally (fee included in usdTotal).
+  const allocSummary = useMemo(() => {
+    const trades = buys ?? []
+
+    let totalUsd = 0
+    let totalTokens = 0
+
+    for (const tr of trades) {
+      const price = Number(tr.price || 0)
+      const qty = Number(tr.quantity || 0)
+      const fee = Number(tr.fee || 0)
+      const usdTotal = price * qty + fee
+      if (!(usdTotal > 0) || !(qty > 0)) continue
+      totalUsd += usdTotal
+      totalTokens += qty
+    }
+
+    const onUsdRaw = Number(fills?.allocatedTotal ?? 0)
+    const onUsd = Math.min(Math.max(0, onUsdRaw), totalUsd)
+
+    let remainingUsd = onUsd
+    let onTokens = 0
+
+    for (const tr of trades) {
+      if (!(remainingUsd > 0)) break
+      const price = Number(tr.price || 0)
+      const qty = Number(tr.quantity || 0)
+      const fee = Number(tr.fee || 0)
+      const usdTotal = price * qty + fee
+      if (!(usdTotal > 0) || !(qty > 0)) continue
+
+      const takeUsd = Math.min(remainingUsd, usdTotal)
+      const frac = takeUsd / usdTotal
+      onTokens += qty * frac
+      remainingUsd -= takeUsd
+    }
+
+    const onPlanAvgCost = onTokens > 0 ? onUsd / onTokens : 0
+
+    let offPlanTokens = totalTokens - onTokens
+    if (offPlanTokens < 1e-8) offPlanTokens = 0
+
+    return { onPlanAvgCost, offPlanTokens }
+  }, [JSON.stringify(buys), fills?.allocatedTotal])
+
+  const onPlanAvgCost = allocSummary.onPlanAvgCost
+  const offPlanTokens = allocSummary.offPlanTokens
+
   const EPS = 1e-8
 
-  /* ---------- Off-Plan tokens (unchanged) ---------- */
-  const offPlanTokens = useMemo(() => {
-    const totalBoughtTokens = (buys ?? []).reduce((s, tr) => s + Number(tr.quantity || 0), 0)
-    const allocatedUsd = fills?.allocatedUsd ?? []
-    const allocatedTokensSum = plan.reduce((s, lv, i) => {
-      const usd = allocatedUsd[i] ?? 0
-      return s + (lv.price > 0 ? usd / lv.price : 0)
-    }, 0)
-    const diff = totalBoughtTokens - allocatedTokensSum
-    return diff > 0 ? diff : 0
-  }, [JSON.stringify(buys), JSON.stringify(fills?.allocatedUsd), JSON.stringify(plan)])
+
 
   return (
     // Full-bleed inner card: fill parent width/height; keep requested bg color
@@ -223,9 +265,10 @@ const plan: BuyLevel[] = useMemo(() => {
                 <div className="flex flex-col items-end gap-1 text-xs text-slate-400">
                   <div className="inline-flex items-center gap-2">
                     <span>Avg cost</span>
-                    <span className="tabular-nums">
-                      {liveAvgPrice > 0 ? fmtCurrency(liveAvgPrice) : '—'}
-                    </span>
+                   <span className="tabular-nums">
+  {onPlanAvgCost > 0 ? fmtCurrency(onPlanAvgCost) : '—'}
+</span>
+
                   </div>
                   <div className="inline-flex items-center gap-2">
                     <span className="text-amber-300">Off-Plan</span>
