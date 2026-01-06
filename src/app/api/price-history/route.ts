@@ -361,20 +361,33 @@ export async function GET(req: NextRequest) {
       if (interval === "daily") {
         // Phase 4B: try DB daily candles first
         if (HAS_SUPABASE_ADMIN) {
-          const dbDaily = await fetchDailyFromDb(
-            canonicalId,
-            currency,
-            days
-          );
+          const dbDaily = await fetchDailyFromDb(canonicalId, currency, days);
+
           if (dbDaily && dbDaily.length >= 2) {
-            notes.push("db.daily.hit");
-            points = dbDaily;
+            // Guardrail: only treat DB as a "hit" if it covers the requested window.
+            // This prevents 1Y from looking identical to 90D when the DB only has ~90 days populated.
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const HOUR_MS = 60 * 60 * 1000;
+            const windowStartMs = Date.now() - days * DAY_MS;
+
+            // Allow a small tolerance (DB might not have an exact point at window start)
+            const coverageOk = dbDaily[0].t <= windowStartMs + 36 * HOUR_MS;
+
+            if (coverageOk) {
+              notes.push("db.daily.hit");
+              points = dbDaily;
+            } else {
+              // Partial DB coverage: fall back to CG for the full window and opportunistically backfill DB.
+              notes.push("db.daily.partial");
+              notes.push("db.daily.miss");
+            }
           } else {
             notes.push("db.daily.miss");
           }
         } else {
           notes.push("db.disabled");
         }
+
 
         // If DB didn't satisfy, fall back to Coingecko daily path
         if (points.length === 0) {
