@@ -19,7 +19,23 @@ type PriceResp = {
   stale?: boolean
 }
 
+// New data core (/api/prices) shape
+type CorePricesRow = {
+  id: string
+  price: number | null
+  price_24h?: number | null
+  pct24h?: number | null
+  source?: string | null
+  stale?: boolean
+}
+
+type CorePricesResp = {
+  rows?: CorePricesRow[]
+  updatedAt?: string
+}
+
 type HistoryPoint = { t: number; p: number }
+
 
 const fetcher = async (url: string) => {
   const r = await fetch(url, { cache: 'no-store' })
@@ -244,9 +260,37 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
     try { await toggle(id) } catch { setIsFav(prev => !prev) }
   }
 
-  // Live price
-  const { data: priceData } = useSWR<PriceResp>(
-    `/api/price/${id}`,
+  // Coin note (UI-only): stored locally per coin so users can tag exchange/notes
+  const noteKey = useMemo(() => `lg1:coin_note:${id}`, [id])
+  const [noteDraft, setNoteDraft] = useState<string>('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setNoteDraft(window.localStorage.getItem(noteKey) ?? '')
+  }, [noteKey])
+
+  // Key spacing fix: shrink width to content so the text can sit close to the star.
+  // Keep a minimum width that fits "(Exchange)" and cap it so it never grows too wide.
+  const noteWidthCh = useMemo(() => {
+    const v = (noteDraft ?? '').trim()
+    const min = '(Exchange)'.length
+    const len = Math.max(v.length, min)
+    return Math.min(len + 1, 22)
+  }, [noteDraft])
+
+  const commitNote = (next: string) => {
+    if (typeof window === 'undefined') return
+    const v = (next ?? '').trim()
+    if (!v) window.localStorage.removeItem(noteKey)
+    else window.localStorage.setItem(noteKey, v)
+    setNoteDraft(v)
+  }
+
+
+
+  // Live price (NEW data core)
+  const { data: pricesRaw } = useSWR<CorePricesResp>(
+    `/api/prices?ids=${encodeURIComponent(id)}&currency=USD`,
     fetcher,
     {
       refreshInterval: 15_000,          // poll faster, but lightweight
@@ -257,11 +301,29 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
       errorRetryInterval: 5_000,
     }
   )
+
+  const priceData = useMemo<PriceResp | undefined>(() => {
+    const row = pricesRaw?.rows?.find((r) => r?.id === id) ?? pricesRaw?.rows?.[0]
+    if (!row) return undefined
+    return {
+      price: row.price ?? null,
+      change_24h_pct: row.pct24h ?? null,   // percent number (converted to fraction downstream)
+      price_24h: row.price_24h ?? null,
+      captured_at: pricesRaw?.updatedAt ?? null,
+      provider: row.source ?? 'consensus',
+      stale: !!row.stale,
+    }
+  }, [pricesRaw, id])
+
     const price = priceData?.price ?? null
 
-  // 24h history (for authoritative comparison / fallback)
-  const { data: histRaw } = useSWR<any>(`/api/coin-history?id=${encodeURIComponent(id)}&days=1`, fetcher, { refreshInterval: 300_000 })
-  const hist = useMemo(() => normalizeHistory(histRaw), [histRaw])
+  // 24h history (NEW data core)
+  const { data: histRaw } = useSWR<any>(
+    `/api/price-history?id=${encodeURIComponent(id)}&days=1&interval=hourly&currency=USD`,
+    fetcher,
+    { refreshInterval: 300_000 }
+  )
+  const hist = useMemo(() => normalizeHistory(histRaw?.points ?? histRaw), [histRaw])
 
   // Final 24h percent (fraction)
   const pctFrac = useMemo(() => derive24hFraction(priceData, hist), [priceData, hist])
@@ -281,16 +343,39 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
         <div className="flex items-center gap-3 pl-3 md:pl-6">
           {/* HD coin logo (UI-only) with robust fallbacks + HiDPI */}
           <CoinLogo symbol={symbol} name={name} />
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-            {name}
-            <span className="ml-2 align-middle text-sm uppercase text-slate-400">
-              {symbol}
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+            <span className="block">
+              {name}
+              <span className="ml-2 align-middle text-sm uppercase text-slate-400">
+                {symbol}
+              </span>
             </span>
+
+            <input
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onBlur={() => commitNote(noteDraft)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                if (e.key === 'Escape') {
+                  if (typeof window !== 'undefined') setNoteDraft(window.localStorage.getItem(noteKey) ?? '')
+                  (e.currentTarget as HTMLInputElement).blur()
+                }
+              }}
+              placeholder="(Exchange)"
+              aria-label="(Exchange)"
+              className="mt-0.5 block h-4 w-[160px] max-w-[52vw] bg-transparent px-0 text-[11px] font-normal text-slate-400 placeholder:text-slate-600 focus:outline-none"
+            />
           </h1>
+
         </div>
 
         {/* Right: star + price + % change */}
-        <div className="flex items-baseline gap-3 pr-3 md:pr-6">
+        <div className="flex items-baseline gap-0.5 pr-3 md:pr-6">
+      
+
+
+
           <button
             type="button"
             aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
@@ -306,6 +391,7 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
             )}
           </button>
 
+
           <div className="tabular-nums text-xl md:text-2xl font-semibold">
             {price != null ? (
               fmtCurrency(price)
@@ -314,10 +400,11 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
             )}
           </div>
 
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${pctClasses}`}
+                   <span
+            className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${pctClasses}`}
             aria-live="polite"
           >
+
             {pctFrac == null ? (
               '—'
             ) : pctPositive ? (
