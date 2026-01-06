@@ -530,17 +530,12 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
       </div>
 
         {/* Empty/zero states */}
-      {historyLoading && (
-        <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
-          Loading price history…
-        </div>
-      )}
-
       {!historyLoading && !history?.length && (
         <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
           No price history available for this window.
         </div>
       )}
+
 
       {history?.length > 0 && (!trades || trades.length === 0) && (
         <div className="mt-2 text-[11px] text-slate-400">

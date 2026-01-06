@@ -30,11 +30,12 @@ export default function AuditPage() {
     }
   )
 
-  return (
-    <div className="space-y-6">
+   return (
+    <div className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold">Audit Log</h1>
 
-      <div className="rounded-2xl border border-[#081427] p-4 overflow-x-auto">
+
+      <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 p-4 overflow-x-auto shadow-[inset_0_0_0_1px_rgba(51,65,85,0.35)]">
         <table className="w-full min-w-[960px] text-sm">
           <thead className="text-slate-300">
             <tr className="text-left">
@@ -49,7 +50,7 @@ export default function AuditPage() {
             {error && <tr><td className="py-3 text-rose-400" colSpan={5}>Error loading logs.</td></tr>}
             {!data && !error && <tr><td className="py-3 text-slate-400" colSpan={5}>Loading…</td></tr>}
             {data?.map(row => (
-              <tr key={row.id} className="border-t border-[#081427] align-top">
+              <tr key={row.id} className="border-t border-slate-700/40 align-top">
                 <td className="py-2 pr-2">{new Date(row.created_at).toLocaleString()}</td>
                 <td className="py-2 pr-2">{row.coingecko_id ?? '—'}</td>
                 <td className="py-2 pr-2">{row.entity}</td>

@@ -6,10 +6,10 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import PortfolioGrowthChart, { type Point } from '@/components/dashboard/PortfolioGrowthChart'
 import { fmtCurrency } from '@/lib/format'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
+
 import {
   buildBuyLevels,
   computeBuyFills,
@@ -23,7 +23,7 @@ import {
 type PlannerSellLevel = any
 type PlannerSellTrade = any
 
-type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; quantity: number; trade_time: string }
+type TradeLite = { coingecko_id: string; side: 'buy' | 'sell'; price: number; quantity: number; fee: number; trade_time: string }
 type Timeframe = '24h' | '7d' | '30d' | '90d' | '1y' | 'YTD' | 'Max'
 const TIMEFRAMES: Timeframe[] = ['24h', '7d', '30d', '90d', '1y', 'YTD', 'Max']
 
@@ -293,16 +293,19 @@ export default function Page() {
     async () => {
       try {
         const { data, error } = await supabaseBrowser
-          .from('trades')
-          .select('coingecko_id,side,quantity,trade_time')
+           .from('trades')
+          .select('coingecko_id,side,price,quantity,fee,trade_time')
           .eq('user_id', user!.id)
         if (error) throw error
         return (data ?? []).map((t: any) => ({
           coingecko_id: String(t.coingecko_id),
           side: (String(t.side).toLowerCase() === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
+          price: Number(t.price ?? 0),
           quantity: Number(t.quantity ?? 0),
+          fee: Number(t.fee ?? 0),
           trade_time: String(t.trade_time),
         })) as TradeLite[]
+
       } catch {
         return []
       }
@@ -437,6 +440,43 @@ export default function Page() {
     return Math.max(0, total)
   }, [historiesMapLive, trades, coinIds.join(',')])
 
+  // Portfolio profits (full portfolio): realized, unrealized, total
+  const { totalProfit, realizedProfit, unrealizedProfit } = useMemo(() => {
+    if (!trades || trades.length === 0) return { totalProfit: 0, realizedProfit: 0, unrealizedProfit: 0 }
+
+    const byId = new Map<string, TradeLite[]>()
+    for (const tr of trades) {
+      if (!byId.has(tr.coingecko_id)) byId.set(tr.coingecko_id, [])
+      byId.get(tr.coingecko_id)!.push(tr)
+    }
+
+    let realized = 0
+    let unrealized = 0
+
+    for (const [id, list] of byId.entries()) {
+      const pnl = computePnl(
+        list.map((t): PnlTrade => ({
+          side: t.side,
+          price: t.price,
+          quantity: t.quantity,
+          fee: t.fee,
+          trade_time: t.trade_time,
+        }))
+      )
+
+      realized += pnl.realizedPnl
+
+      const series = historiesMapLive?.[id] ?? []
+      const last = series.length ? series[series.length - 1].v : null
+      if (last != null && Number.isFinite(last)) {
+        const currentValue = pnl.positionQty * last
+        unrealized += currentValue - pnl.costBasis
+      }
+    }
+
+    return { totalProfit: realized + unrealized, realizedProfit: realized, unrealizedProfit: unrealized }
+  }, [trades, historiesMapLive])
+
   // Timeframe performance (from current aggregated series)
   const { delta, pct } = useMemo(() => {
     if (!aggregated || aggregated.length < 2) return { delta: 0, pct: 0 }
@@ -453,29 +493,35 @@ export default function Page() {
 return (
     <div data-dashboard-page className="space-y-6">
 
-      {/* Top row: three mini-cards */}
+      {/* Top row: portfolio profits */}
       <div className="mx-4 md:mx-6 lg:mx-8 mb-8 md:mb-10 lg:mb-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">x</span>
+            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Profits</div>
+              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {fmtCurrency(totalProfit)}
+              </div>
             </div>
           </div>
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">y</span>
-            </div>
-          </div>
-               <Link
-            href="/how-to"
-            prefetch
-            className="rounded-md border border-transparent ring-0 focus:ring-2 focus:ring-[rgba(51,65,85,0.35)] focus:outline-none bg-[rgb(28,29,31)] hover:bg-[rgba(28,29,31,0.9)] transition block"
-          >
-            <div className="p-3 h-16 flex items-center justify-center">
-              <span className="text-slate-200 text-base md:text-lg font-medium">How to Use</span>
-            </div>
-          </Link>
 
+          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
+            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Realized Profits</div>
+              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {fmtCurrency(realizedProfit)}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
+            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Unrealized Profits</div>
+              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {fmtCurrency(unrealizedProfit)}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

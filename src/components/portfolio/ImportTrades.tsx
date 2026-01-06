@@ -172,8 +172,8 @@ export default function ImportTrades() {
     if (f) handleFile(f)
   }
 
-  return (
-    <div className="rounded-2xl border border-[#081427] p-4 space-y-3">
+    return (
+    <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 p-4 space-y-3 shadow-[inset_0_0_0_1px_rgba(51,65,85,0.35)]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-base font-medium">Import Trades (CSV)</div>
@@ -194,7 +194,7 @@ export default function ImportTrades() {
         </div>
       </div>
 
-      <div className="rounded-lg bg-[#0a162c] border border-[#0b1830] p-3">
+      <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] p-3">
         <div className="text-xs text-slate-300 mb-1">Console</div>
         <pre className="text-xs text-slate-400 whitespace-pre-wrap break-words max-h-56 overflow-auto">
           {log || '—'}
@@ -203,7 +203,7 @@ export default function ImportTrades() {
 
       <div className="text-xs text-slate-500">
         <div className="mb-1">Example header:</div>
-        <pre className="bg-[#0a162c] border border-[#0b1830] p-2 rounded">
+        <pre className="bg-[rgb(42,43,44)] border border-[rgba(255,255,255,0.06)] p-2 rounded">
 coingecko_id,side,price,quantity,fee,trade_time,buy_planner_id,sell_planner_id
 bitcoin,buy,45000,0.01,0.5,2025-09-10T14:23:00Z,,
         </pre>

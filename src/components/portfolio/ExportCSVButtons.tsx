@@ -207,14 +207,15 @@ export default function ExportCSVButtons() {
   return (
     <div className="space-y-3">
       {/* Scope selector */}
-      <div className="rounded-2xl border border-[#081427] p-3">
+           <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 p-3 shadow-[inset_0_0_0_1px_rgba(51,65,85,0.35)]">
         <div className="text-sm text-slate-300 mb-2">Scope</div>
         <div className="flex gap-3 flex-wrap items-center">
           <select
-            className="rounded-md border border-[#0b1830] bg-[#0a162c] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#18305f]"
+            className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-slate-600/40"
             value={selectedCid}
             onChange={(e) => setSelectedCid(e.target.value as any)}
           >
+
             <option value="ALL">All coins</option>
             {coinOptions.map(c => (
               <option key={c.coingecko_id} value={c.coingecko_id}>
@@ -231,7 +232,7 @@ export default function ExportCSVButtons() {
         <button
           onClick={doAll}
           disabled={!user || loading !== null}
-          className="rounded-lg border border-[#081427] bg-[#0a162c] px-3 py-2 text-sm hover:bg-[#102448] disabled:opacity-50"
+          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
           title="Download trades, planners, and levels"
         >
           {loading === 'all' ? 'Exporting…' : 'Export All CSVs'}
@@ -242,7 +243,7 @@ export default function ExportCSVButtons() {
         <button
           onClick={doTrades}
           disabled={!user || loading !== null}
-          className="rounded-lg border border-[#081427] bg-[#0a162c] px-3 py-2 text-sm hover:bg-[#102448] disabled:opacity-50"
+          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
           title="Download trades.csv"
         >
           {loading === 'trades' ? 'Exporting…' : 'Trades CSV'}
@@ -251,7 +252,7 @@ export default function ExportCSVButtons() {
         <button
           onClick={doPlanners}
           disabled={!user || loading !== null}
-          className="rounded-lg border border-[#081427] bg-[#0a162c] px-3 py-2 text-sm hover:bg-[#102448] disabled:opacity-50"
+          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
           title="Download sell_planners.csv"
         >
           {loading === 'planners' ? 'Exporting…' : 'Sell Planners CSV'}
@@ -260,7 +261,7 @@ export default function ExportCSVButtons() {
         <button
           onClick={doLevels}
           disabled={!user || loading !== null}
-          className="rounded-lg border border-[#081427] bg-[#0a162c] px-3 py-2 text-sm hover:bg-[#102448] disabled:opacity-50"
+          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
           title="Download sell_levels.csv"
         >
           {loading === 'levels' ? 'Exporting…' : 'Sell Levels CSV'}
