@@ -69,14 +69,29 @@ function stepMsFor(tf: Timeframe): number {
   }
 }
 function daysParamFor(tf: Timeframe): string {
+  const now = Date.now()
+  const day = 24 * 60 * 60 * 1000
+
   switch (tf) {
     case '24h': return '1'
     case '7d': return '7'
     case '30d': return '30'
     case '90d': return '90'
     case '1y': return '365'
-    case 'YTD': return 'max'
-    case 'Max': return 'max'
+
+    // IMPORTANT: Avoid days="max" for YTD — it can fetch far more than needed and stall charts.
+    // We compute a numeric day count from Jan 1 to today.
+    case 'YTD': {
+      const start = startOfYTD()
+      const days = Math.max(1, Math.ceil((now - start) / day) + 1)
+      return String(days)
+    }
+
+    // IMPORTANT: Avoid days="max" for Max — it can be extremely heavy.
+    // Use a large-but-bounded window (10 years) which is effectively "max" for almost all users.
+    case 'Max': {
+      return '3650'
+    }
   }
 }
 
@@ -84,7 +99,8 @@ function daysParamFor(tf: Timeframe): string {
 // Choose a sensible interval for /api/price-history based on days
 function intervalForDays(days: string): 'minute' | 'hourly' | 'daily' {
   if (days === '1') return 'minute'
-  if (days === '7' || days === '30' || days === '90') return 'hourly'
+  const n = Number(days)
+  if (Number.isFinite(n) && n <= 7) return 'hourly'
   return 'daily'
 }
 
@@ -113,6 +129,7 @@ async function fetchHistories(ids: string[], days: string): Promise<Record<strin
   })
   return byId
 }
+
 
 /* ── alignment-based aggregation (smooth, with interpolation) ───────────── */
 function buildAlignedPortfolioSeries(
@@ -352,15 +369,18 @@ export default function Page() {
 
   const historyRevalidateOnFocus = isDev ? false : tf === '24h'
 
+   const daysParam = useMemo(() => daysParamFor(tf), [tf])
+
   const { data: historiesMap } = useSWR<Record<string, Point[]>>(
-    coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParamFor(tf)] : null,
-    () => fetchHistories(coinIds, daysParamFor(tf)),
+    coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParam] : null,
+    () => fetchHistories(coinIds, daysParam),
     {
       revalidateOnFocus: historyRevalidateOnFocus,
       refreshInterval: historyRefreshInterval,
       keepPreviousData: true,
     }
   )
+
 
 
   // TF-INDEPENDENT live histories for live balance display only (refresh 30s)
@@ -430,8 +450,9 @@ export default function Page() {
   const pctAbsText = Math.abs(pct).toFixed(2)
   const deltaDigitsOnly = Math.abs(delta).toFixed(2)
 
-  return (
-    <div data-portfolio-page className="space-y-6">
+return (
+    <div data-dashboard-page className="space-y-6">
+
       {/* Top row: three mini-cards */}
       <div className="mx-4 md:mx-6 lg:mx-8 mb-8 md:mb-10 lg:mb-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -511,9 +532,15 @@ export default function Page() {
 
         {/* Card body */}
         <div className="p-4">
-          <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px]">
+                 <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px] relative">
+            {coinIds.length > 0 && !historiesMap && (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
+                Loading portfolio history…
+              </div>
+            )}
             <PortfolioGrowthChart data={aggregated} />
           </div>
+
         </div>
 
       </div>

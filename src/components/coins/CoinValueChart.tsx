@@ -15,27 +15,46 @@ type Props = {
 
 type HistoryPoint = { t: number; p: number } // unix ms, price
 type WindowKey = '24h' | '7d' | '30d' | '90d' | '1y' | 'ytd' | 'max'
-
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+type Interval = 'minute' | 'hourly' | 'daily'
 
 /* --------------------------------- helpers -------------------------------- */
-
-function daysFor(win: WindowKey): string {
-  switch (win) {
-    case '24h': return '1'
-    case '7d': return '7'
-    case '30d': return '30'
-    case '90d': return '90'
-    case '1y': return '365'
-    case 'ytd': return 'max' // we will filter to this year client-side
-    case 'max': return 'max'
-    default: return '30'
-  }
-}
 
 function startOfYTD(): number {
   const n = new Date()
   return new Date(n.getFullYear(), 0, 1).getTime()
+}
+
+/**
+ * Map UI window → NEW data core args (days + interval).
+ * - Avoids legacy /api/coin-history entirely.
+ * - Uses smaller intervals for short ranges to keep the line smooth.
+ */
+function historySpec(win: WindowKey): { days: number; interval?: Interval; ytdStart?: number } {
+  const DAY = 24 * 60 * 60 * 1000
+
+  if (win === 'ytd') {
+    const y0 = startOfYTD()
+    const days = Math.max(1, Math.ceil((Date.now() - y0) / DAY) + 1)
+    return { days, interval: 'daily', ytdStart: y0 }
+  }
+
+  switch (win) {
+    case '24h':
+      return { days: 1, interval: 'minute' }
+    case '7d':
+      return { days: 7, interval: 'hourly' }
+    case '30d':
+      return { days: 30, interval: 'daily' }
+    case '90d':
+      return { days: 90, interval: 'daily' }
+    case '1y':
+      return { days: 365, interval: 'daily' }
+    case 'max':
+      // Cap at ~10y to keep payloads stable; adjust if you truly need more.
+      return { days: 3650, interval: 'daily' }
+    default:
+      return { days: 30, interval: 'daily' }
+  }
 }
 
 function dedupByTime(points: HistoryPoint[]): HistoryPoint[] {
@@ -55,47 +74,11 @@ function n(v: any): number {
   return Number.isFinite(x) ? x : 0
 }
 
+
 /* ---------------------------- data fetch routines ------------------------- */
+// (intentionally empty) Price history comes from useHistory() below.
 
-async function fetchHistoryForWindow(id: string, win: WindowKey): Promise<HistoryPoint[]> {
-  // Your existing route expects ?id=<slug>&days=<N|max>
-  const days = daysFor(win)
-  const url = `/api/coin-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(days)}`
-  const r = await fetch(url, { cache: 'no-store' })
-  if (!r.ok) return []
-  const json = await r.json()
-  // server returns { data: [{t,v}], meta }, but we also normalize common shapes
-  const raw = (json?.data ?? json) as any
 
-  // Case A: array of objects { t, v }
-  if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object' && 'v' in raw[0]) {
-    const out = raw.map((d: any) => ({ t: Number(d.t), p: Number(d.v) }))
-      .filter(d => Number.isFinite(d.t) && Number.isFinite(d.p))
-    out.sort((a, b) => a.t - b.t)
-    return dedupByTime(out)
-  }
-
-  // Case B: Array payload — could be [[t,p], ...] OR [{ t, v }] OR [{ t, price/value/p }]
-  if (Array.isArray(raw)) {
-    const out: HistoryPoint[] = []
-    for (const row of raw) {
-      if (Array.isArray(row) && row.length >= 2) {
-        const t = Number(row[0]); const p = Number(row[1])
-        if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p })
-        continue
-      }
-      if (row && typeof row === 'object') {
-        const t = Number((row as any).t ?? (row as any).time ?? (row as any).timestamp)
-        const p = Number((row as any).p ?? (row as any).price ?? (row as any).value ?? (row as any).v)
-        if (Number.isFinite(t) && Number.isFinite(p)) out.push({ t, p })
-      }
-    }
-    out.sort((a, b) => a.t - b.t)
-    return dedupByTime(out)
-  }
-
-  return []
-}
 
 /* ---------------------------------- UI ------------------------------------ */
 
@@ -381,22 +364,30 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     return steps
   }, [trades])
 
-  // Price history for the selected window
-  const { data: histRaw } = useSWR<HistoryPoint[]>(
-    coinId ? ['hist', coinId, win] : null,
-    () => fetchHistoryForWindow(coinId, win),
+  // Price history for the selected window (NEW data core: /api/price-history)
+  const spec = useMemo(() => historySpec(win), [win])
+
+  const { points: histRaw, isLoading: historyLoading } = useHistory(
+    coinId ? coinId : null,
+    spec.days,
+    spec.interval,
+    'USD',
     { refreshInterval: 60_000 }
   )
 
-  // Filter YTD on client if needed
+  // Filter YTD on client if needed (defensive) + normalize ordering/dupes
   const history = useMemo(() => {
     const arr = Array.isArray(histRaw) ? histRaw : []
-    if (win === 'ytd') {
-      const s = startOfYTD()
-      return arr.filter(pt => pt.t >= s)
-    }
-    return arr
-  }, [histRaw, win])
+    const norm = arr
+      .map((pt: any) => ({ t: Number(pt.t), p: Number(pt.p) }))
+      .filter((pt: any) => Number.isFinite(pt.t) && Number.isFinite(pt.p))
+      .sort((a: any, b: any) => a.t - b.t)
+
+    const deduped = dedupByTime(norm)
+    if (spec.ytdStart != null) return deduped.filter(pt => pt.t >= spec.ytdStart!)
+    return deduped
+  }, [histRaw, spec.ytdStart])
+
 
   // Compose the value series: at each price timestamp, multiply by qty at that time
   type SeriesPoint = { t: number; price: number; value: number }
@@ -443,7 +434,7 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     return (last as number) - (first as number)
   }, [series])
 
-  const isShortWin = win === '24h' || win === '7d'
+// isShortWin removed (unused)
 
   // Y-axis domain padding (avoid flat line)
   const yDomain = useMemo<(number | 'auto')[]>(() => {
@@ -461,23 +452,18 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     return [min - range * pad, max + range * pad]
   }, [series])
 
-  const gradientId = `valueGrad_${(coinId || '').replace(/[^a-z0-9]/gi, '')}`
+   // Unique gradient id so other charts can't override our fill on client navigations
+  const gradientId = useMemo(() => 'cvfill-' + Math.random().toString(36).slice(2), [])
 
-  // Re-animate the line when coin/window changes (or when the visible series range changes)
-  const areaKey = useMemo(() => {
-    const firstT = series.length ? series[0].t : 0
-    const lastT = series.length ? series[series.length - 1].t : 0
-    return `${coinId || ''}-${win}-${firstT}-${lastT}`
-  }, [coinId, win, series])
 
   return (
 <div className="rounded-2xl border border-[rgb(28,29,31)] bg-[rgb(28,29,31)] px-3 py-4 md:px-4 md:py-5">
 
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-col items-start gap-0.5">
-        <div className="text-lg md:text-xl font-semibold leading-tight text-slate-200">P&L</div>
+<div className="text-xl md:text-2xl font-semibold leading-tight text-slate-200">P&L</div>
         {typeof perf === 'number' && (
-  <span className="text-xs md:text-sm font-medium text-[rgb(87,181,66)] flex items-baseline gap-2 tabular-nums">
+  <span className="text-s md:text-sm font-medium text-[rgb(87,181,66)] flex items-baseline gap-2 tabular-nums">
     <span className="tabular-nums">
       <PercentTicker value={perf * 100} />
     </span>
@@ -526,8 +512,7 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
 />
 
 
-            <Area
-              key={areaKey}
+                    <Area
               type="monotone"
               dataKey="value"
               stroke="rgb(139 128 219)"
@@ -535,25 +520,34 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
               strokeWidth={2}
               dot={false}
               isAnimationActive={true}
-              animationBegin={100}
-              animationDuration={800}
+              animationDuration={500}
+              animationBegin={0}
               animationEasing="ease-in-out"
             />
+
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Empty/zero states */}
-      {!history?.length && (
+        {/* Empty/zero states */}
+      {historyLoading && (
+        <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
+          Loading price history…
+        </div>
+      )}
+
+      {!historyLoading && !history?.length && (
         <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
           No price history available for this window.
         </div>
       )}
+
       {history?.length > 0 && (!trades || trades.length === 0) && (
         <div className="mt-2 text-[11px] text-slate-400">
           No trades yet for this coin. The balance line will appear after your first buy.
         </div>
       )}
+
     </div>
   )
 }
