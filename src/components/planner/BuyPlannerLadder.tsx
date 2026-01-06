@@ -130,54 +130,28 @@ const plan: BuyLevel[] = useMemo(() => {
     return sumTokens > 0 ? sumUsd / sumTokens : 0
   }, [fills, plan])
 
-  // Avg cost should only reflect the buys that are actually allocated to this ladder
-  // (exclude the overflow portion that becomes fills.offPlanUsd).
-  //
-  // We allocate up to `fills.allocatedTotal` USD across the recorded buys in order.
-  // Partial trade allocation is handled proportionally (fee included in usdTotal).
+    // Avg cost + Off-Plan tokens must reflect the SAME trade slices used by the
+  // fill engine (computeBuyFills). Otherwise, the UI can show an average that
+  // appears to violate the plan even when the fill engine correctly capped it.
   const allocSummary = useMemo(() => {
     const trades = buys ?? []
 
-    let totalUsd = 0
     let totalTokens = 0
-
     for (const tr of trades) {
-      const price = Number(tr.price || 0)
       const qty = Number(tr.quantity || 0)
-      const fee = Number(tr.fee || 0)
-      const usdTotal = price * qty + fee
-      if (!(usdTotal > 0) || !(qty > 0)) continue
-      totalUsd += usdTotal
+      const price = Number(tr.price || 0)
+      if (!(qty > 0) || !(price > 0)) continue
       totalTokens += qty
     }
 
-    const onUsdRaw = Number(fills?.allocatedTotal ?? 0)
-    const onUsd = Math.min(Math.max(0, onUsdRaw), totalUsd)
+    const onPlanAvgCost = Number(fills?.onPlanAvgCost ?? 0)
+    const onPlanTokens = Number(fills?.onPlanTokens ?? 0)
 
-    let remainingUsd = onUsd
-    let onTokens = 0
-
-    for (const tr of trades) {
-      if (!(remainingUsd > 0)) break
-      const price = Number(tr.price || 0)
-      const qty = Number(tr.quantity || 0)
-      const fee = Number(tr.fee || 0)
-      const usdTotal = price * qty + fee
-      if (!(usdTotal > 0) || !(qty > 0)) continue
-
-      const takeUsd = Math.min(remainingUsd, usdTotal)
-      const frac = takeUsd / usdTotal
-      onTokens += qty * frac
-      remainingUsd -= takeUsd
-    }
-
-    const onPlanAvgCost = onTokens > 0 ? onUsd / onTokens : 0
-
-    let offPlanTokens = totalTokens - onTokens
+    let offPlanTokens = totalTokens - onPlanTokens
     if (offPlanTokens < 1e-8) offPlanTokens = 0
 
     return { onPlanAvgCost, offPlanTokens }
-  }, [JSON.stringify(buys), fills?.allocatedTotal])
+  }, [JSON.stringify(buys), fills?.onPlanAvgCost, fills?.onPlanTokens])
 
   const onPlanAvgCost = allocSummary.onPlanAvgCost
   const offPlanTokens = allocSummary.offPlanTokens
@@ -210,6 +184,15 @@ const plan: BuyLevel[] = useMemo(() => {
               const plannedTokens = lv.est_tokens ?? (lv.price > 0 ? plannedUsd / lv.price : 0)
               const pct = plannedUsd > 0 ? Math.min(1, filledUsd / plannedUsd) : 0
 
+              // Display rule:
+              // - Green can still trigger at ≥98% filled (see `full` below)
+              // - But the label should only show 100% when truly fully filled (missing ~ $0)
+              const fullyFilled = plannedUsd > 0 && (missingUsd <= (0.005 + EPS)) // ~half-cent tolerance
+              const pctLabel =
+                plannedUsd > 0
+                  ? (fullyFilled ? 100 : Math.min(99, Math.round(pct * 100)))
+                  : 0
+
               // GREEN when ≥98% filled
               const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
 
@@ -234,7 +217,7 @@ const plan: BuyLevel[] = useMemo(() => {
                   <td className="px-3 py-2">
                     <div className="flex justify-end items-center gap-2">
                       <div className="w-40"><ProgressBar pct={pct} /></div>
-                      <span className="w-10 text-right tabular-nums">{Math.round(pct * 100)}%</span>
+                      <span className="w-10 text-right tabular-nums">{pctLabel}%</span>
                     </div>
                   </td>
                 </tr>

@@ -62,21 +62,62 @@ export default function TradesList({ id }: Props) {
     if (!user) return
     const ok = confirm('Delete this trade?')
     if (!ok) return
+
     try {
       setDeletingId(tradeId)
+
+      // Fetch minimal metadata so we can refresh the correct planner caches
+      const { data: meta, error: metaErr } = await supabaseBrowser
+        .from('trades')
+        .select('side,buy_planner_id,sell_planner_id')
+        .eq('id', tradeId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (metaErr) throw metaErr
+
+      const buyPlannerId = (meta as any)?.buy_planner_id ?? null
+      const sellPlannerId = (meta as any)?.sell_planner_id ?? null
+
+      // Delete (scoped to current user)
       const { error } = await supabaseBrowser
         .from('trades')
         .delete()
         .eq('id', tradeId)
-        .eq('user_id', user.id) // safety: only delete current user's trade
+        .eq('user_id', user.id)
       if (error) throw error
+
+      // Refresh the recent trades list
       if (swrKey) await globalMutate(swrKey)
+
+      // Refresh planner/ladders that depend on trades
+      const uid = user.id
+      const cid = id
+
+      void globalMutate(['/buy-planner/active', uid, cid])
+      void globalMutate(['/buy-planner/active-ladder', uid, cid])
+      if (buyPlannerId) {
+        void globalMutate(['/trades/buys/by-planner', uid, cid, buyPlannerId])
+        void globalMutate(['/trades/buys/for-ladder', uid, cid, buyPlannerId])
+      }
+
+      void globalMutate(['/sell-active', uid, cid])
+      if (sellPlannerId) {
+        void globalMutate(['/sell-levels', uid, cid, sellPlannerId])
+        void globalMutate(['/sells', uid, cid, sellPlannerId])
+      }
+
+      // Broadcast to any listeners (including holdings refresh in TradesPanel)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('buyPlannerUpdated', { detail: { coinId: id } }))
+        window.dispatchEvent(new CustomEvent('sellPlannerUpdated', { detail: { coinId: id } }))
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setDeletingId(null)
     }
   }
+
 
   // === Visual-only grouping: by day ===
   const groups = useMemo(() => {

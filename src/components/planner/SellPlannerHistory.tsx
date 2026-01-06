@@ -58,6 +58,7 @@ function num(n: any): number {
   const v = Number(n)
   return Number.isFinite(v) ? v : 0
 }
+const EPS = 1e-8
 
 export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
@@ -217,7 +218,7 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
               if (!(lvl > 0)) return false
               // “Alert” if live price is within ~3% of target and level not fully filled
               const within = (live as number) >= lvl * 0.97
-              const notFilled = r.pct < 0.97
+              const notFilled = r.pct < 0.98
               return within && notFilled
             })
 
@@ -241,7 +242,16 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
                 </thead>
                 <tbody>
                   {v.rows.map((r, i) => {
-                    const green = r.pct >= 0.97
+                    const green = r.pct >= 0.98
+
+                    // Display rule:
+                    // - Row can be green at ≥98%
+                    // - But only show 100% when truly fully filled (missing USD ~ 0)
+                    const fullyFilled = r.plannedUsd > 0 && r.missingUsd <= (0.005 + EPS) // ~half-cent tolerance
+                    const pctLabel =
+                      r.plannedUsd > 0
+                        ? (fullyFilled ? 100 : Math.min(99, Math.round(r.pct * 100)))
+                        : 0
                     const hasLiveRow =
                       Number.isFinite(livePrice as number) &&
                       (livePrice as number) > 0
@@ -281,9 +291,10 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
                             <div className="w-40">
                               <ProgressBar pct={r.pct} />
                             </div>
-                            <span className="w-10 text-right tabular-nums">
-                              {Math.round(r.pct * 100)}%
+                                                       <span className="w-10 text-right tabular-nums">
+                              {pctLabel}%
                             </span>
+
                           </div>
                         </td>
                       </tr>

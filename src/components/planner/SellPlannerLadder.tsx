@@ -55,6 +55,8 @@ function num(n: any): number {
 }
 
 const SELL_TOLERANCE = 0.0005 // strict for active
+const EPS = 1e-8
+
 
 export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
@@ -129,8 +131,10 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       const detailCoin = e?.detail?.coinId
       if (detailCoin && detailCoin !== coingeckoId) return
       if (!user || !active) return
-      globalMutate(['/sell-active', user.id, coingeckoId])
+           globalMutate(['/sell-active', user.id, coingeckoId])
       globalMutate(['/sell-levels', user.id, coingeckoId, active.id])
+      globalMutate(['/sells', user.id, coingeckoId, active.id])
+
     }
     window.addEventListener('sellPlannerUpdated', bump)
     window.addEventListener('buyPlannerUpdated', bump)
@@ -195,7 +199,16 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const green = r.pct >= 0.97
+              const green = r.pct >= 0.98
+
+              // Display rule:
+              // - Row can be green at ≥98%
+              // - But only show 100% when truly fully filled (missing USD ~ 0)
+              const fullyFilled = r.plannedUsd > 0 && r.missingUsd <= (0.005 + EPS) // ~half-cent tolerance
+              const pctLabel =
+                r.plannedUsd > 0
+                  ? (fullyFilled ? 100 : Math.min(99, Math.round(r.pct * 100)))
+                  : 0
               const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
               // YELLOW when live price is anywhere from 1.5% below the level or anything above it
               const yellow =
@@ -220,9 +233,10 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
                   <td className="px-3 py-2">
                     <div className="flex justify-end items-center gap-2">
                       <div className="w-40"><ProgressBar pct={r.pct} /></div>
-                      <span className="w-10 text-right tabular-nums">
-                        {Math.round(r.pct * 100)}%
+                                           <span className="w-10 text-right tabular-nums">
+                        {pctLabel}%
                       </span>
+
                     </div>
                   </td>
                 </tr>

@@ -89,7 +89,15 @@ export type BuyFillResult = {
   offPlanUsd: number       // overflow USD
   plannedTotal: number     // sum of planned USD across levels
   allocatedTotal: number   // sum of allocatedUsd actually used by ladder
+
+  // Derived from the SAME trade slices the fill engine used.
+  // These are intended for UI display (Avg cost / Off-Plan tokens) so the
+  // displayed values match the actual fill allocation decisions.
+  onPlanUsd?: number
+  onPlanTokens?: number
+  onPlanAvgCost?: number
 }
+
 
 /** Helpers for stable, tick-aware comparisons (kept for API compatibility) */
 function decimalPlaces(n: number): number {
@@ -407,9 +415,19 @@ const AVG_EPS_PCT = 0.02 // 1% price/average tolerance for rounding
     return p > 0 ? Math.min(1, u / p) : 0
   })
 
-  const allocatedTotal = allocatedUsd.reduce((s, v) => s + v, 0)
+   const allocatedTotal = allocatedUsd.reduce((s, v) => s + v, 0)
   const rawOffPlanUsd = Math.max(0, totalUsdAllTrades - allocatedTotal)
   const offPlanUsd = Number(rawOffPlanUsd.toFixed(2))
+
+  // IMPORTANT: Use the SAME internal assignment (ladderUsd/ladderTokens) to
+  // derive the on-plan average. We scale tokens to the rounded allocatedTotal
+  // so the displayed USD ties to the UI totals, while the average remains
+  // consistent with the fill engine's enforced constraint.
+  const onPlanUsd = allocatedTotal
+  const onPlanAvgCost = ladderTokens > 0 ? (ladderUsd / ladderTokens) : 0
+  const onPlanTokens = ladderUsd > 0
+    ? (ladderTokens * (onPlanUsd / ladderUsd))
+    : 0
 
   return {
     allocatedUsd,
@@ -417,8 +435,12 @@ const AVG_EPS_PCT = 0.02 // 1% price/average tolerance for rounding
     offPlanUsd,
     plannedTotal,
     allocatedTotal,
+    onPlanUsd,
+    onPlanTokens,
+    onPlanAvgCost,
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // SELL LADDER (unchanged)

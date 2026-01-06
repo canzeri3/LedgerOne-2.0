@@ -5,6 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { LockKeyhole, LockKeyholeOpen } from 'lucide-react'
+import { mutate as globalMutate } from 'swr'
+
+
 
 // NEW: reuse existing math so the dynamic average respects ON-PLAN allocation
 import {
@@ -222,12 +225,59 @@ const onFeeChange = makeLiveNumericChangeHandler(
   }
 
 
+   function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
+    if (!user) return
+    const uid = user.id
+    const cid = id
+
+    // Buy planner cards/ladders
+    void globalMutate(['/buy-planner/active', uid, cid])
+    void globalMutate(['/buy-planner/active-ladder', uid, cid])
+    if (opts.buyPlannerId) {
+      void globalMutate(['/trades/buys/by-planner', uid, cid, opts.buyPlannerId])
+      void globalMutate(['/trades/buys/for-ladder', uid, cid, opts.buyPlannerId])
+    }
+
+    // Sell planner ladder/progress
+    void globalMutate(['/sell-active', uid, cid])
+    if (opts.sellPlannerId) {
+      void globalMutate(['/sell-levels', uid, cid, opts.sellPlannerId])
+      void globalMutate(['/sells', uid, cid, opts.sellPlannerId])
+    }
+  }
+
+  function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
+    if (!user) return
+    const uid = user.id
+    const cid = id
+
+    // Recent trades list
+    void globalMutate(['coin-trades', uid, cid])
+
+    // Buy planner + ladder
+    void globalMutate(['/buy-planner/active', uid, cid])
+    void globalMutate(['/buy-planner/active-ladder', uid, cid])
+    if (opts.buyPlannerId) {
+      void globalMutate(['/trades/buys/by-planner', uid, cid, opts.buyPlannerId])
+      void globalMutate(['/trades/buys/for-ladder', uid, cid, opts.buyPlannerId])
+    }
+
+    // Sell planner + ladder
+    void globalMutate(['/sell-active', uid, cid])
+    if (opts.sellPlannerId) {
+      void globalMutate(['/sell-levels', uid, cid, opts.sellPlannerId])
+      void globalMutate(['/sells', uid, cid, opts.sellPlannerId])
+    }
+  }
+
   function broadcast() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('buyPlannerUpdated', { detail: { coinId: id } }))
       window.dispatchEvent(new CustomEvent('sellPlannerUpdated', { detail: { coinId: id } }))
     }
   }
+
+
 
   async function loadPlanners() {
     if (!user) {
@@ -272,10 +322,24 @@ const onFeeChange = makeLiveNumericChangeHandler(
     setLoading(false)
   }
 
-  useEffect(() => {
+    useEffect(() => {
     loadPlanners()
     refreshHoldingsTokens()
+
+    if (typeof window === 'undefined') return
+    const bump = (e: any) => {
+      const detailCoin = e?.detail?.coinId
+      if (detailCoin && detailCoin !== id) return
+      refreshHoldingsTokens()
+    }
+    window.addEventListener('buyPlannerUpdated', bump)
+    window.addEventListener('sellPlannerUpdated', bump)
+    return () => {
+      window.removeEventListener('buyPlannerUpdated', bump)
+      window.removeEventListener('sellPlannerUpdated', bump)
+    }
   }, [user, id])
+
 
   // NEW: whenever side changes, force canonical mode + re-lock
   useEffect(() => {
@@ -496,10 +560,12 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       // NEW: Immediately regenerate ACTIVE sell ladder so rows/prices move with new average
       try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
 
-           setOk('Buy recorded.')
+          setOk('Buy recorded.')
       broadcast()
+      refreshUiAfterTrade({ buyPlannerId: activeBuy.id, sellPlannerId: activeSell?.id ?? null })
       refreshHoldingsTokens()
       resetAfterSubmit()
+
 
       } else {
       const chosen = selectedSellPlannerId || activeSell?.id || null
@@ -527,8 +593,10 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
 
       setOk('Sell recorded.')
       broadcast()
+      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosen })
       refreshHoldingsTokens()
       resetAfterSubmit()
+
     }
 
     setSaving(false)
