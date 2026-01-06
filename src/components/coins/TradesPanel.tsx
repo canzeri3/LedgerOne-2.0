@@ -225,26 +225,6 @@ const onFeeChange = makeLiveNumericChangeHandler(
   }
 
 
-   function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
-    if (!user) return
-    const uid = user.id
-    const cid = id
-
-    // Buy planner cards/ladders
-    void globalMutate(['/buy-planner/active', uid, cid])
-    void globalMutate(['/buy-planner/active-ladder', uid, cid])
-    if (opts.buyPlannerId) {
-      void globalMutate(['/trades/buys/by-planner', uid, cid, opts.buyPlannerId])
-      void globalMutate(['/trades/buys/for-ladder', uid, cid, opts.buyPlannerId])
-    }
-
-    // Sell planner ladder/progress
-    void globalMutate(['/sell-active', uid, cid])
-    if (opts.sellPlannerId) {
-      void globalMutate(['/sell-levels', uid, cid, opts.sellPlannerId])
-      void globalMutate(['/sells', uid, cid, opts.sellPlannerId])
-    }
-  }
 
   function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
     if (!user) return
