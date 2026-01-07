@@ -159,6 +159,19 @@ html, body {
   /* Instruct the browser to render its built-in popup in dark mode */
   color-scheme: dark;
 }
+/* --- Dark theme for the native date picker popup (Transactions filters only) --- */
+.transactions-card input[type="date"] {
+  /* Instruct the browser to render its built-in calendar popup in dark mode */
+  color-scheme: dark;
+  font-family: inherit;
+}
+
+/* Make the native calendar icon match the grey UI in Chromium/WebKit */
+.transactions-card input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  /* Same filter you use for Add Trade */
+  filter: invert(19%) sepia(8%) saturate(914%) hue-rotate(178deg) brightness(91%) contrast(92%);
+}
 
 /* Optional: make the calendar icon fit dark UI in WebKit/Chromium */
 /* Recolor the native calendar icon to rgb(45,56,72) without changing its shape/position */

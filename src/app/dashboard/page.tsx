@@ -9,6 +9,7 @@ import { fmtCurrency } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
+import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
 
 import {
   buildBuyLevels,
@@ -610,7 +611,10 @@ return (
   </div>
 
 </div>
-
+{/* Transactions (all coins) — exact UI from coin page */}
+<div className="mx-4 md:mx-6 lg:mx-8">
+  <RecentTradesCard />
+</div>
  
     </div>
   )

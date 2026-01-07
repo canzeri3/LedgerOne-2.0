@@ -159,7 +159,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
           <li>
             <NavLink
               href="/portfolio"
-              label="Portfolio / Risk"
+              label="Portfolio "
               icon={<Wallet className="h-4 w-4 opacity-80" />}
             />
           </li>

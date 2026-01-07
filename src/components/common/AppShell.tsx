@@ -12,6 +12,7 @@ import AuthButton from '@/components/auth/AuthButton'
 import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
+import HeaderCalculator from '@/components/common/HeaderCalculator'
 import SWRRouteCover from '@/components/common/SWRRouteCover'
 
 
@@ -303,6 +304,8 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
                       coins={undefined}
                     />
                   </div>
+
+<HeaderCalculator />
 
                   {/* Settings gear – icon only (no circle) */}
                   <Link
