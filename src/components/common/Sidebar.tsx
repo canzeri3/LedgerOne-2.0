@@ -62,6 +62,14 @@ function NavLink({
   )
 }
 
+// Logo sizing knob (adjust ONLY this to make the logo bigger; no borders/containers change)
+const LOGO_SCALE = 1.25
+const LOGO_SHIFT_PX = -30 // negative = move visible logo LEFT, positive = move RIGHT (size unchanged)
+const LOGO_SHIFT_Y_PX = 10 // positive = move image DOWN, negative = move UP (borders/slot unchanged)
+
+
+
+
 export default function Sidebar() {
   const pathname = usePathname()
   // Open Coins section by default on all pages
@@ -100,17 +108,31 @@ export default function Sidebar() {
     // Sidebar scrolls independently if content exceeds viewport
     <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto">
         {/* Brand logo */}
-      <div className="px-3 pt-4 pb-3">
-        <div className="flex items-center">
+<div className="pt-4 pb-3 px-0 -ml-4 w-[calc(100%+16px)]">
+        {/* Brand logo */}
+     <div className="pl-0 pr-1 pt-0 pb-0">
+
+        <div className="relative h-14 w-full overflow-hidden">
           <Image
             src="/lg1-logo.png"
             alt="LedgerOne · portfolio planner"
-            width={260}
-            height={70}
-            className="h-14 w-auto"
+            fill
             priority
+            sizes="(min-width: 1024px) 16vw, (min-width: 768px) 25vw, 100vw"
+            style={{
+              objectFit: 'cover', // ensures it fills the full slot width
+              objectPosition: 'left center', // keeps the mark anchored to the left
+transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
+              transformOrigin: 'left center',
+            }}
           />
         </div>
+      </div>
+
+
+
+
+
       </div>
 
 

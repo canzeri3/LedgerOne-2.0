@@ -25,6 +25,19 @@ const BORDER_SCROLL = 'rgb(43,44,45)'
 // Glow tone (downward only) when scrolled — very dark
 const GLOW_SCROLL = 'rgb(20,21,22)'
 
+  // Logo sizing knobs (adjust these only)
+  const LOGO_W = 320;         // px width of the logo slot (base)
+  const LOGO_W_SM = 380;      // px width on sm+
+  const LOGO_H = 56;          // px height (base)
+  const LOGO_H_SM = 64;       // px height on sm+
+  // Logo sizing knob: increase to make logo bigger WITHOUT changing the container/border size
+   const LOGO_SCALE = 4.7
+  // Logo horizontal nudge (px). Negative moves LEFT; does not change slot/border sizes.
+  const LOGO_SHIFT_X_PX = -60
+  // Logo vertical nudge (px). Positive moves DOWN; does not change slot/border sizes.
+  const LOGO_SHIFT_Y_PX = 3
+
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const [scrolled, setScrolled] = useState(false)
   const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
@@ -141,16 +154,50 @@ export default function AppShell({ children }: { children: ReactNode }) {
               // Landing-page header (no sidebar, marketing style)
               <div className="flex w-full items-center gap-8 px-4 py-4">
                 {/* Left: Logo (pinned to far left) */}
-                <div className="flex flex-1 items-center">
+<div className="flex flex-1 items-center -ml-4">
                   <Link href="/" className="flex items-center gap-2" aria-label="LedgerOne home">
-                    <Image
-                      src="/lg1-logo.png"
-                      alt="LedgerOne"
-                      width={260}
-                      height={100}
-                      priority
-                      className="h-12 w-auto sm:h-14"
-                    />
+               {/* Base */}
+<div className="relative h-12 w-full max-w-[420px] overflow-hidden sm:h-14 sm:hidden">
+  <Image
+    src="/lg1-logo.png"
+    alt="LedgerOne"
+    fill
+    priority
+    sizes="420px"
+    style={{
+      objectFit: 'cover',
+      objectPosition: 'left center',
+transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
+      transformOrigin: 'left center',
+    }}
+  />
+</div>
+
+
+{/* sm+ */}
+<div
+  className="relative hidden overflow-hidden sm:block"
+  style={{ width: LOGO_W_SM, height: LOGO_H_SM }}
+>
+  <Image
+    src="/lg1-logo.png"
+    alt="LedgerOne"
+    fill
+    sizes={`${LOGO_W_SM}px`}
+    priority
+    style={{
+      objectFit: 'contain',
+      objectPosition: 'left center',
+transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
+      transformOrigin: 'left center',
+    }}
+  />
+</div>
+
+
+
+
+
                   </Link>
                 </div>
 
