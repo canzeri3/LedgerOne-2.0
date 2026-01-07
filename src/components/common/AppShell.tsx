@@ -31,11 +31,11 @@ const GLOW_SCROLL = 'rgb(20,21,22)'
   const LOGO_H = 56;          // px height (base)
   const LOGO_H_SM = 64;       // px height on sm+
   // Logo sizing knob: increase to make logo bigger WITHOUT changing the container/border size
-   const LOGO_SCALE = 4.7
+   const LOGO_SCALE = 4.5
   // Logo horizontal nudge (px). Negative moves LEFT; does not change slot/border sizes.
   const LOGO_SHIFT_X_PX = -60
   // Logo vertical nudge (px). Positive moves DOWN; does not change slot/border sizes.
-  const LOGO_SHIFT_Y_PX = 3
+  const LOGO_SHIFT_Y_PX = 12
 
 
 export default function AppShell({ children }: { children: ReactNode }) {
