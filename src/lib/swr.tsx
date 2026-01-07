@@ -1,5 +1,6 @@
 'use client'
 import { SWRConfig } from 'swr'
+import { swrLoadingMiddleware } from '@/lib/swrLoadingMiddleware'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -15,10 +16,12 @@ export default function SWRProvider({ children }: { children: React.ReactNode })
         shouldRetryOnError: true,
         dedupingInterval: 10_000,
         revalidateOnFocus: false,
+        // Track in-flight SWR requests so we can keep the full-screen cover
+        // visible until data-backed components are actually ready.
+        use: [swrLoadingMiddleware],
       }}
     >
       {children}
     </SWRConfig>
   )
 }
-
