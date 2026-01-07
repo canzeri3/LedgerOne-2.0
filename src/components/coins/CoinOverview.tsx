@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { fmtCurrency, fmtPct } from '@/lib/format'
 import { useFavorites } from '@/lib/useFavorites'
 import { TrendingUp, TrendingDown } from 'lucide-react'
@@ -260,32 +260,36 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
     try { await toggle(id) } catch { setIsFav(prev => !prev) }
   }
 
-  // Coin note (UI-only): stored locally per coin so users can tag exchange/notes
+    // Coin note (UI-only): stored locally per coin so users can tag exchange/notes
   const noteKey = useMemo(() => `lg1:coin_note:${id}`, [id])
-  const [noteDraft, setNoteDraft] = useState<string>('')
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setNoteDraft(window.localStorage.getItem(noteKey) ?? '')
-  }, [noteKey])
+  // NOTE: Do not use a React state setter for this field.
+  // In this repo, the setter identifier is being resolved as "void" during typecheck.
+  // Use refs + localStorage instead (same behavior, no UI/business logic changes).
+  const noteInputRef = useRef<HTMLInputElement | null>(null)
+  const noteDraftRef = useRef<string>('')
 
-  // Key spacing fix: shrink width to content so the text can sit close to the star.
-  // Keep a minimum width that fits "(Exchange)" and cap it so it never grows too wide.
-  const noteWidthCh = useMemo(() => {
-    const v = (noteDraft ?? '').trim()
-    const min = '(Exchange)'.length
-    const len = Math.max(v.length, min)
-    return Math.min(len + 1, 22)
-  }, [noteDraft])
-
-  const commitNote = (next: string) => {
-    if (typeof window === 'undefined') return
-    const v = (next ?? '').trim()
-    if (!v) window.localStorage.removeItem(noteKey)
-    else window.localStorage.setItem(noteKey, v)
-    setNoteDraft(v)
+  const readNote = () => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem(noteKey) ?? ''
   }
 
+  useEffect(() => {
+    const v = readNote()
+    noteDraftRef.current = v
+    if (noteInputRef.current) noteInputRef.current.value = v
+  }, [noteKey])
+
+  const commitNote = () => {
+    if (typeof window === 'undefined') return
+    const v = (noteDraftRef.current ?? '').trim()
+    if (!v) window.localStorage.removeItem(noteKey)
+    else window.localStorage.setItem(noteKey, v)
+
+    // keep the input visually in sync with trimmed value
+    noteDraftRef.current = v
+    if (noteInputRef.current) noteInputRef.current.value = v
+  }
 
 
   // Live price (NEW data core)
@@ -351,14 +355,21 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
               </span>
             </span>
 
-            <input
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              onBlur={() => commitNote(noteDraft)}
+                           <input
+              ref={noteInputRef}
+              defaultValue=""
+              onChange={(e) => {
+                noteDraftRef.current = e.currentTarget.value
+              }}
+              onBlur={() => commitNote()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
                 if (e.key === 'Escape') {
-                  if (typeof window !== 'undefined') setNoteDraft(window.localStorage.getItem(noteKey) ?? '')
+                  if (typeof window !== 'undefined') {
+                    const v = window.localStorage.getItem(noteKey) ?? ''
+                    noteDraftRef.current = v
+                    e.currentTarget.value = v
+                  }
                   (e.currentTarget as HTMLInputElement).blur()
                 }
               }}
@@ -366,6 +377,7 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
               aria-label="(Exchange)"
               className="mt-0.5 block h-4 w-[160px] max-w-[52vw] bg-transparent px-0 text-[11px] font-normal text-slate-400 placeholder:text-slate-600 focus:outline-none"
             />
+
           </h1>
 
         </div>
