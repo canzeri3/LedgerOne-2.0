@@ -139,60 +139,64 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
 
 
             <nav className="px-2 py-3">
-        {/* Primary nav with icons on the left */}
-       <ul className="space-y-1">
-  <li>
-    <NavLink
-      href="/dashboard"
-      label="Dashboard"
-      icon={<LayoutDashboard className="h-4 w-4 opacity-80" />}
-    />
-  </li>
+  {/* Primary nav with icons on the left */}
+  <ul className="space-y-1">
+    <li>
+      <NavLink
+        href="/dashboard"
+        label="Dashboard"
+        icon={<LayoutDashboard className="h-4 w-4 opacity-80" />}
+      />
+    </li>
 
-          <li>
-            <NavLink
-              href="/planner"
-              label="Buy/Sell Planner"
-              icon={<Target className="h-4 w-4 opacity-80" />}
-            />
-          </li>
-          <li>
-            <NavLink
-              href="/portfolio"
-              label="Portfolio "
-              icon={<Wallet className="h-4 w-4 opacity-80" />}
-            />
-          </li>
-          <li>
-            <NavLink
-              href="/audit"
-              label="Audit Log"
-              icon={<ScrollText className="h-4 w-4 opacity-80" />}
-            />
-          </li>
-          <li>
-            <NavLink
-              href="/csv"
-              label="CSV Export / Import"
-              icon={<FileSpreadsheet className="h-4 w-4 opacity-80" />}
-            />
-          </li>
-          <li>
-            <NavLink
-              href="/settings"
-              label="Settings"
-              icon={<SettingsIcon className="h-4 w-4 opacity-80" />}
-            />
-          </li>
-        </ul>
-          <li>
-            <NavLink
-              href="/how-to"
-              label="How to Use"
-              icon={<HelpCircle className="h-4 w-4 opacity-80" />}
-            />
-          </li>
+    <li>
+      <NavLink
+        href="/planner"
+        label="Buy/Sell Planner"
+        icon={<Target className="h-4 w-4 opacity-80" />}
+      />
+    </li>
 
+    <li>
+      <NavLink
+        href="/portfolio"
+        label="Portfolio "
+        icon={<Wallet className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+
+    <li>
+      <NavLink
+        href="/audit"
+        label="Audit Log"
+        icon={<ScrollText className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+
+    <li>
+      <NavLink
+        href="/csv"
+        label="CSV Export / Import"
+        icon={<FileSpreadsheet className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+
+    <li>
+      <NavLink
+        href="/settings"
+        label="Settings"
+        icon={<SettingsIcon className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+
+    <li>
+      <NavLink
+        href="/how-to"
+        label="How to Use"
+        icon={<HelpCircle className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+  </ul>
 
         {/* Coins dropdown */}
         <div className="mt-6">

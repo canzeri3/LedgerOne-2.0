@@ -141,7 +141,7 @@ export default function HowToPage() {
                   title="3) Create a Sell Planner"
                   items={[
                     'Open the Buy/Sell Planner page for your coin.',
-                    'Set the Coin Volitility and choose your Sell Intensity.',
+'Set the Coin Volatility and choose your Sell Intensity.',
                     'Only once a Buy has been recorded, Click Generate Ladder.',
                     'Alerts will appear on the Dashboard when it is Time To Sell.',
                      'Made a mistake? Just update the values and Generate Ladder again.'
@@ -171,49 +171,60 @@ export default function HowToPage() {
           </section>
 
           {/* Learn the Features (linkable blocks) */}
-          <section id="walkthrough" aria-label="Learn the Features" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<LayoutDashboard className="h-5 w-5" />} title="Learn the Features" />
-              <p className="text-slate-300 text-sm leading-6 mt-2">
-                Short guides with a 2–3 min clip and an annotated screenshot. Keep it simple and action-driven.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
-                           <GuideTile
-                  href="#guide-buy-planner"
-                  title="Buy Planner"
-                  blurb="Institutional-style accumulation ladder."
-                />
+<section id="walkthrough" aria-label="Learn the Features" className="scroll-mt-24">
+  {/* Title + description (no full card behind the tiles) */}
+  <div className="px-1">
+    <SectionTitle icon={<LayoutDashboard className="h-5 w-5" />} title="Learn the Features" />
+    <p className="text-slate-300 text-sm leading-6 mt-2">
+      Short guides with a 2–3 min clip and an annotated screenshot. Keep it simple and action-driven.
+    </p>
+  </div>
 
-                <GuideTile
-                  href="#guide-add-trade"
-                  title="Add a Trade (per coin)"
-                  blurb="Record your external executed orders."
-                />
-                <GuideTile
-                  href="#guide-sell-planner"
-                  title="Sell Planner"
-                  blurb="Institutional-style scale out ladder"
-                />
-                         <GuideTile
-  href="#New Cycle"
-  title="New Coin Cycle"
-  blurb="LedgerOne’s cycle detection system."
-/>
-                <GuideTile
-                  href="#guide-risk"
-                  title="Risk Score (What it means)"
-                  blurb="Quantifiable portfolio risk metric."
-                />
-     
-                <GuideTile
-                  href="#guide-shortcuts"
-                  title="Shortcuts & Tips"
-                  blurb="Search, sorting, keyboard hints."
-                />
-              </div>
+  {/* Floating tiles */}
+  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
+    <GuideTile
+      href="#guide-buy-planner"
+      title="Buy Planner"
+      blurb="Institutional-style accumulation ladder."
+    />
 
-              {/* Detailed Guide Sections */}
-              <div className="mt-8 space-y-8">
+    <GuideTile
+      href="#guide-add-trade"
+      title="Add a Trade (per coin)"
+      blurb="Record your external executed orders."
+    />
+
+    <GuideTile
+      href="#guide-sell-planner"
+      title="Sell Planner"
+      blurb="Institutional-style scale out ladder"
+    />
+
+    <GuideTile
+      href="#New Cycle"
+      title="New Coin Cycle"
+      blurb="LedgerOne’s cycle detection system."
+    />
+
+    <GuideTile
+      href="#guide-risk"
+      title="Risk Score (What it means)"
+      blurb="Quantifiable portfolio risk metric."
+    />
+
+    <GuideTile
+      href="#guide-shortcuts"
+      title="Shortcuts & Tips"
+      blurb="Search, sorting, keyboard hints."
+    />
+  </div>
+
+  {/* End Learn the Features section here (tiles stay standalone/floating) */}
+</section>
+
+{/* Detailed Guide Sections (separate floating cards per feature) */}
+<section aria-label="Detailed Guides" className="scroll-mt-24 mt-6 space-y-6">
+
                           <GuideDetail id="guide-buy-planner" title="Buy Planner">
                   <TwoCol>
                     <VideoSlot label="2–3 min: Configure Buy Planner" />
@@ -223,7 +234,7 @@ export default function HowToPage() {
                   <p className="mt-3 text-sm text-slate-300 leading-6">
                     The Buy Planner is a rules-based accumulation framework. You define a fixed capital budget and select a risk profile; LedgerOne
                     then constructs a ladder of pre-defined levels from the current cycle, tracks fills against each tranche, and
-                    displays execution signals through Dashboard alerts.
+                    displays execution signals through Dashboard alerts and yellow rows on the planner.
                   </p>
 
                 <Bullets items={[
@@ -242,23 +253,25 @@ export default function HowToPage() {
                 </GuideDetail>
 
 
-             <GuideDetail id="guide-add-trade" title="Add a Trade (per coin)">
+<GuideDetail id="guide-add-trade" title="Add a Trade (per coin)">
   <TwoCol>
     <VideoSlot label="1–2 min: Add a trade on a coin page" />
     <ShotSlot label="Coin page → Add Trade tab (annotated)" />
   </TwoCol>
 
   <p className="mt-3 text-sm text-slate-300 leading-6">
-      Add Trade is a tab on each coin’s page and serves as your book of record for executed activity. LedgerOne does not
-  place orders; it captures what you executed and uses those records to keep holdings, planner progress, and performance
-  reporting accurate and auditable.
+    Add Trade is your book of record for executed orders. LedgerOne does not place orders; it records what you executed
+    and uses those entries to keep holdings, planner progress, realized/unrealized P&L, and reporting accurate and auditable.
   </p>
 
   <Bullets items={[
-    'Navigate to the relevant coin’s page, then locate the Add Trade tab.',
-    'Enter the executed details (buy/sell, quantity, price, and date/time) → click Add Trade.',
-    'On Sell trades you will be prompted to attach the trade to a planner, select the relevant planner so progress reflects correctly.',
-    'For historical backfills, use Portfolio → CSV → Import.',
+    'Navigate to the coin you executed on → open the Add Trade tab.',
+    'Select Side (Buy / Sell).',
+    'Enter the exact filled Price and Quantity. For Buys, Quantity can be entered as USD or Tokens (use the lock icon to unlock and switch modes). For Sells, Quantity is recorded in Tokens.',
+    'Optionally add Fee and set the correct Date/Time to keep sequencing and reporting clean.',
+    'Sell attribution: sells default to the Active Sell Planner, but you can override and select a Frozen planner version so the correct ladder’s progress updates.',
+    'Click Add Trade and confirm the success message; holdings and planner fill states refresh immediately.',
+    'For historical backfills or bulk entry, use Portfolio → CSV → Import.',
   ]}/>
 
   <div className="mt-4">
@@ -283,7 +296,7 @@ export default function HowToPage() {
   items={[
     'Navigate: open the Buy/Sell Planner page for the coin and switch to the Sell Planner section.',
     'Configure: choose Coin Volatility and Sell Intensity, then click Generate Ladder to produce your Sell Planner.',
-    'Execute: when a row turns yellow (“time to sell”), execute the sell with your exchange/broker, then record the sell under that coin → Add Trade (attach it to the correct planner).',
+'Execute: when a row turns yellow (“time to sell”), execute the sell with your exchange/broker, then record it under that coin → Add Trade (select Active or the relevant Frozen planner version so fills apply to the correct ladder).',
     'Track: the planner shows progress through fill percentage; a row turns green (“level filled”) once that level is complete.',
     'Governance: Coin Volatility and Sell Intensity define how patient or assertive your distribution plan is.',
   ]}
@@ -300,14 +313,16 @@ export default function HowToPage() {
   <div className="space-y-1">
     <div className="font-semibold text-slate-200">When you generate a new Buy Planner</div>
     <ul className="list-disc list-inside space-y-1">
-      <li>
-        The current <span className="font-semibold text-slate-200">Sell Planner is locked</span> as a prior version
-        (it remains available and does not change).
-      </li>
-      <li>
-        A new <span className="font-semibold text-slate-200"> Sell Planner is created</span> for the current cycle using the same inputed settings from previous planner. You may adjust inputs and click{' '}
-        <span className="font-semibold text-slate-200">Generate Ladder</span> to update the new version.
-      </li>
+   <li>
+  If you already have an active <span className="font-semibold text-slate-200">Sell Planner</span>, it now gets <span className="font-semibold text-slate-200">locked</span> as a prior version
+  (it remains available and does not change).
+</li>
+<li>
+  A new <span className="font-semibold text-slate-200">Sell Planner</span> becomes active for the current cycle using the same <span className="font-semibold text-slate-200">inputted</span> settings as your
+  previous planner. You can adjust inputs and click{' '}
+  <span className="font-semibold text-slate-200">Generate Ladder</span> to update the new version.
+</li>
+
     </ul>
   </div>
 
@@ -348,26 +363,29 @@ export default function HowToPage() {
 </GuideDetail>
 
 
-           <GuideDetail id="New Cycle" title="New Coin Cycle">
+<GuideDetail id="New Cycle" title="New Coin Cycle">
   <TwoCol>
     <VideoSlot label="1–2 min: New Cycle alert workflow" />
     <ShotSlot label="Create New Cycle alert + refreshed planner (annotated)" />
   </TwoCol>
 
   <p className="mt-3 text-sm text-slate-300 leading-6">
-LedgerOne’s cycle detection system identifies when an asset has moved into a new market phase and issues a Create New Cycle alert. This prompts a planner refresh so your active plan reflects the current phase and your execution, alerts, and tracking remain clean and aligned.
+    LedgerOne identifies when an asset enters a new major price cycle and surfaces a{' '}
+    <span className="font-semibold text-slate-200">Create New Cycle</span> alert. A cycle refresh is a governance step:
+    it resets your accumulation plan for the current phase while preserving prior-cycle sell planning history for clean,
+    auditable tracking.
   </p>
 
   <div className="mt-3 text-sm text-slate-300 leading-6 space-y-3">
     <div className="space-y-1">
       <div className="font-semibold text-slate-200">What you do</div>
       <ul className="list-disc list-inside space-y-1">
+        <li>Open the alert to navigate directly to the coin’s Buy/Sell Planner.</li>
         <li>
-          Open the alert to navigate directly to the coin’s Buy/Sell Planner.
-        </li>
-        <li>
-          Update the Buy Planner inputs for the new cycle, then click{' '}
-          <span className="font-semibold text-slate-200">Generate New</span>.
+          Review and update your Buy Planner inputs for the new cycle (especially{' '}
+          <span className="font-semibold text-slate-200">Total Budget</span> and{' '}
+          <span className="font-semibold text-slate-200">Risk Profile</span>), then click{' '}
+          <span className="font-semibold text-slate-200">Save New</span>.
         </li>
       </ul>
     </div>
@@ -378,14 +396,15 @@ LedgerOne’s cycle detection system identifies when an asset has moved into a n
         <li className="flex gap-2">
           <span className="text-slate-400">→</span>
           <span>
-            Creates a <span className="font-semibold text-slate-200">new Buy Planner</span> for the updated cycle so future
-            tracking reflects the refreshed plan.
+            Creates a <span className="font-semibold text-slate-200">new Buy Planner</span> ladder for the updated cycle so
+            future tracking reflects the refreshed plan.
           </span>
         </li>
         <li className="flex gap-2">
           <span className="text-slate-400">→</span>
           <span>
-            Preserves prior <span className="font-semibold text-slate-200"> Sell Planner</span> history so previous versions remain available for reference, review and execution.
+            Locks the prior <span className="font-semibold text-slate-200">Sell Planner</span> as history (frozen), and a
+            new Sell Planner version becomes active for the new cycle.
           </span>
         </li>
         <li className="flex gap-2">
@@ -411,19 +430,20 @@ LedgerOne’s cycle detection system identifies when an asset has moved into a n
     <ShotSlot label="Combined Risk card screenshot" />
   </TwoCol>
 
-  <p className="mt-3 text-sm text-slate-300 leading-6">
-    The Risk Score is a standardized, portfolio-grade metric that summarizes an asset’s risk conditions into a single,
-    comparable score. It is designed to help you evaluate risk consistently across holdings and maintain disciplined
-    allocation decisions over time.
-  </p>
+<p className="mt-3 text-sm text-slate-300 leading-6">
+  The Risk Score is a standardized, portfolio-grade metric that summarizes your portfolio’s risk conditions into a single,
+  comparable score. It decomposes risk into five components (Structural, Volatility, Tail Risk, Correlation, Liquidity)
+  and rolls them up into a <span className="font-semibold text-slate-200">Total Combined Risk</span> number plus a level
+  badge (Low / Moderate / High / Very High).
+</p>
 
-  <Bullets
-    items={[
-      'Interpretation: a higher score indicates a higher-risk environment; a lower score indicates more stable conditions.',
-      'Purpose: governance and allocation consistency—used to compare, size, and review exposure (not an execution signal).',
-      'Consistency: applies the same risk lens across assets so decisions are not driven by emotion or headlines.',
-    ]}
-  />
+<Bullets
+  items={[
+    'Interpretation: higher score = higher-risk regime; lower score = more stable conditions.',
+    'Purpose: governance and allocation consistency—used to compare, size, and review exposure (not an execution signal).',
+    'How to use it: treat “Very High” as a caution regime (sizing discipline, concentration review), not a buy/sell trigger.',
+  ]}
+/>
 
   <div className="mt-4">
     <RiskScoreInstitutionalGuide />
@@ -436,19 +456,22 @@ LedgerOne’s cycle detection system identifies when an asset has moved into a n
 
 
 
-                <GuideDetail id="guide-shortcuts" title="Shortcuts & Tips">
-                  <TwoCol>
-                    <VideoSlot label="1–2 min: Tips montage" />
-                    <ShotSlot label="Holdings search & sort callouts" />
-                  </TwoCol>
-                  <Bullets items={[
-                    'Use Holdings search to filter by name or symbol.',
-                    'Sort by QTY/value to surface concentration quickly.',
-                    'Switch timeframe tabs to analyze performance windows.',
-                  ]}/>
-                </GuideDetail>
-              </div>
-            </Card>
+             <GuideDetail id="guide-shortcuts" title="Shortcuts & Tips">
+  <TwoCol>
+    <VideoSlot label="1–2 min: Tips montage" />
+    <ShotSlot label="Holdings search & sort callouts" />
+  </TwoCol>
+
+  <Bullets items={[
+    'Header Calculator: use the calculator in the top header to add up totals across planner rows (toggle Tokens / $). Use Copy to paste the total where needed.',
+    'Quick portfolio import: if you already hold a position and you do not have every individual fill, add a single Buy trade using the total Tokens you hold and your average entry price. This initializes holdings and cost basis immediately.',
+    'Best practice: if you later import full history (CSV) or add individual trades, auditability and metrics become more precise. Use the “average entry” method when you do not have the full fill-by-fill record.',
+    'Use Holdings search to filter by name or symbol.',
+    'Sort by QTY/value to surface concentration quickly.',
+    'Switch timeframe tabs to analyze performance windows.',
+  ]}/>
+</GuideDetail>
+
           </section>
 
           {/* Tutorial Videos gallery */}
@@ -606,7 +629,7 @@ function GuideTile({ href, title, blurb }: { href: string; title: string; blurb:
   return (
     <a
       href={href}
-      className="block rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] p-3 hover:bg-[rgba(255,255,255,0.06)] transition"
+className="block rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] p-3 hover:bg-[rgb(54,55,56)] transition"
     >
       <div className="font-medium">{title}</div>
       <div className="text-sm text-slate-400 mt-1">{blurb}</div>
@@ -617,10 +640,10 @@ function GuideTile({ href, title, blurb }: { href: string; title: string; blurb:
 function GuideDetail({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-24">
-      <div className="text-sm font-semibold text-slate-200 mb-2">{title}</div>
-      <div className="rounded-lg border border-[rgba(255,255,255,0.06)] p-3 bg-[rgb(34,35,39)]">
-        {children}
-      </div>
+      <Card>
+        <div className="text-sm font-semibold text-slate-200">{title}</div>
+        <div className="mt-3 space-y-4">{children}</div>
+      </Card>
     </section>
   )
 }
@@ -808,17 +831,20 @@ function BuyPlannerInstitutionalGuide() {
   definition: (
     <div className="space-y-2">
 
-      <ul className="list-disc list-inside space-y-1">
-        <li>
-          <span className="font-semibold text-slate-200">Conservative:</span>{' '}
-    Safest, most patient approach—best suited to smaller assets.      </li>
-        <li>
-          <span className="font-semibold text-slate-200">Moderate:</span>{' '}
- Safe, balanced approach—best suited to larger assets.       </li>
-        <li>
-          <span className="font-semibold text-slate-200">Aggressive:</span>{' '}
-Optimized for accumulation rather than maximum safety. Prioritizes building exposure efficiently and quickly.       </li>
-      </ul>
+<ul className="list-disc list-inside space-y-1">
+  <li>
+    <span className="font-semibold text-slate-200">Conservative:</span>{' '}
+    Highest caution and most patient pacing. Designed to reduce drawdown risk and avoid over-deployment during volatility.
+  </li>
+  <li>
+    <span className="font-semibold text-slate-200">Moderate:</span>{' '}
+    Balanced pacing for disciplined accumulation—typically appropriate for larger, more liquid assets and core positions.
+  </li>
+  <li>
+    <span className="font-semibold text-slate-200">Aggressive:</span>{' '}
+    Faster accumulation and higher exposure velocity. Optimized for building position size efficiently when conviction is high.
+  </li>
+</ul>
 
     </div>
   ),
@@ -830,32 +856,32 @@ Optimized for accumulation rather than maximum safety. Prioritizes building expo
           ]}
         />
 
-        <MiniHeading>Execution and tracking</MiniHeading>
-        <DefGrid
-          items={[
-        {
-  term: <span className="font-bold text-slate-100">Planner row state: “time to buy” (yellow)</span>,
-  definition:
-                'An execution signal: when a ladder row turns yellow, market price has reached that level’s targeted buy. Execute the buy; the level status updates automatically as fills occur.',
-            },
-          {
-  term: <span className="font-bold text-slate-100">Planner row state: “level filled” (green)</span>,
-  definition:
+     <MiniHeading>Execution and tracking</MiniHeading>
+<DefGrid
+  items={[
+    {
+      term: <span className="font-bold text-slate-100">Planner row state: “time to buy” (yellow)</span>,
+      definition:
+        'An execution signal: when a ladder row turns yellow, market price has reached that level’s targeted buy. Execute the buy externally, then record the fill under Coin → Add Trade so the row can update.',
+    },
+    {
+      term: <span className="font-bold text-slate-100">Planner row state: “level filled” (green)</span>,
+      definition:
+        'A completion state: buys you record while this Buy Planner is active count toward the level’s fill percentage. When fill reaches 100%, the ladder row turns green, confirming the level is complete.',
+    },
+    {
+      term: <span className="font-bold text-slate-100">Off-Plan</span>,
+      definition:
+        'Buys recorded away from this planner’s designated levels are tagged Off-Plan and do not contribute to level completion. This keeps plan attribution clean and highlights discretionary deviations.',
+    },
+    {
+      term: <span className="font-bold text-slate-100">Alerts: Buy / Create New Cycle</span>,
+      definition:
+        'Buy alerts surface on the Dashboard when one or more levels become actionable. Create New Cycle alerts indicate it’s time to refresh your Buy Planner so it stays aligned with the current market phase.',
+    },
+  ]}
+/>
 
-                'A confirmation state: only buys recorded and attributed to this planner contribute to the fill percentage. When fill reaches 100%, the ladder row turns green, confirming the level is complete.',
-            },
-         {
-  term: <span className="font-bold text-slate-100">Off-Plan</span>,
-  definition:
-                ' Buys recorded outside this planner’s designated levels are tracked separately and do not contribute to level completion. This maintains clean plan attribution and prevents non-plan activity from inflating the fill percentage.',
-            },
-      {
-  term: <span className="font-bold text-slate-100">Alerts: Buy / Create New Cycle</span>,
-  definition:
-                'Buy alerts appear when one or more levels become actionable. Create New Cycle alerts indicate it’s time to refresh your plan for the new cycle so your Buy Planner stays aligned with the current market context.',
-            },
-          ]}
-        />
 
         <div className="text-xs text-slate-400 leading-5">
           Practical rule: execute buys externally, then log the exact fill price/quantity under{' '}
@@ -929,48 +955,61 @@ function AddTradeInstitutionalGuide() {
         />
 
         <MiniHeading>Planner attribution</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Attached to a planner</span>,
-definition: (
-  <div className="space-y-2">
-    <p>
-      Only trades attributed to the appropriate planner are recognized for that planner’s fill percentage and completion
-      states.
-    </p>
+<DefGrid
+  items={[
+    {
+      term: <span className="font-semibold text-slate-100">Buy attribution (automatic)</span>,
+      definition: (
+        <div className="space-y-2">
+          <p>
+            Buy entries are automatically tagged to the active planner context for that coin, so you do not need to select a Buy Planner manually.
+            This keeps accumulation tracking simple and consistent.
+          </p>
+        </div>
+      ),
+    },
+    {
+      term: <span className="font-semibold text-slate-100">Sell attribution (select planner version)</span>,
+      definition: (
+        <div className="space-y-2">
+          <p>
+            Sell entries default to the <span className="font-semibold text-slate-200">Active</span> Sell Planner, but you can override to any{' '}
+            <span className="font-semibold text-slate-200">Frozen</span> planner version so the correct ladder’s fills and progress update.
+          </p>
 
-    <ul className="list-disc list-inside space-y-1">
-      <li>
-        <span className="font-semibold text-slate-200">Sell entries:</span>{' '}
-        when recording a sell, select the corresponding planner (e.g., if Planner [2] is highlighted in yellow, enter the
-        sell details and attach it to Planner 2 → Add Trade).
-      </li>
-    </ul>
-  </div>
-),
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Off-Plan</span>,
-definition: (
-  <div className="space-y-2">
-    <p>
-      Trades not attributed to this planner’s levels are tracked separately and do not contribute to planner completion.
-      This preserves clean attribution and prevents non-plan activity from overstating progress.
-    </p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              If a specific Sell Planner version is signaling (e.g., Planner [2] is yellow), record the sell and assign it to that planner version.
+            </li>
+            <li>
+              This prevents sells from being mixed across versions and keeps reporting auditable.
+            </li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      term: <span className="font-semibold text-slate-100">Off-Plan</span>,
+      definition: (
+        <div className="space-y-2">
+          <p>
+            Trades that do not align with the planner’s intended levels are tracked separately and do not contribute to ladder completion.
+            This preserves clean attribution and prevents discretionary activity from overstating plan progress.
+          </p>
 
-    <ul className="list-disc list-inside">
-      <li>
-        <span className="font-semibold text-slate-200">
-          It is strongly recommended to adhere to the plan and avoid discretionary deviations.
-        </span>
-      </li>
-    </ul>
-  </div>
-),
-            },
-          ]}
-        />
+          <ul className="list-disc list-inside">
+            <li>
+              <span className="font-semibold text-slate-200">
+                It is strongly recommended to adhere to the plan and avoid discretionary deviations.
+              </span>
+            </li>
+          </ul>
+        </div>
+      ),
+    },
+  ]}
+/>
+
       </div>
     </div>
   )
@@ -1084,40 +1123,53 @@ function RiskScoreInstitutionalGuide() {
       <div className="space-y-4">
         <MiniHeading>Risk components (what each metric means)</MiniHeading>
 
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Structure</span>,
-              definition:
-                'A baseline view of asset quality and resilience. Higher-quality, established assets tend to behave more predictably; smaller, thinner assets can be more sensitive to capital flows.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Volatility</span>,
-              definition:
-                'The degree of price variability. Higher volatility implies larger swings and a wider range of outcomes, which increases position risk if sizing is not controlled.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Tail</span>,
-              definition:
-                'Downside stress sensitivity—how the asset tends to behave during sharp risk-off periods. Higher tail risk reflects greater vulnerability to sudden downside moves.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Correlation</span>,
-              definition:
-                'Diversification behavior relative to the rest of your portfolio. Higher correlation can increase concentration risk; lower correlation can improve diversification.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Liquidity</span>,
-              definition:
-                'Execution quality and exit flexibility. Lower liquidity can increase slippage and make exposure harder to adjust quickly under pressure.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Combined Risk Score</span>,
-              definition:
-                'A single, comparable metric that consolidates the above risk dimensions. Use it to standardize how you assess risk across assets and maintain consistent allocation discipline.',
-            },
-          ]}
-        />
+<DefGrid
+  items={[
+    {
+      term: <span className="font-semibold text-slate-100">Structural</span>,
+      definition:
+        'Baseline composition risk derived from the quality/tier mix of what you hold. More established assets tend to be more resilient; thinner assets can be more sensitive to capital flows.',
+    },
+    {
+      term: <span className="font-semibold text-slate-100">Volatility</span>,
+      definition:
+        'Realized volatility regime (annualized). Higher volatility implies larger swings and a wider range of outcomes, which increases position risk if sizing is not controlled.',
+    },
+    {
+      term: <span className="font-semibold text-slate-100">Tail Risk</span>,
+      definition:
+        'Downside stress sensitivity—how the portfolio tends to behave during sharp risk-off periods. When stress conditions are active, tail risk increases.',
+    },
+    {
+      term: <span className="font-semibold text-slate-100">Correlation</span>,
+      definition:
+        'Diversification behavior relative to BTC (portfolio-weighted). Higher correlation increases concentration risk; lower correlation improves diversification.',
+    },
+{
+  term: <span className="font-semibold text-slate-100">Liquidity</span>,
+definition: (
+  <div className="space-y-2">
+    <p>Market depth (rank/liquidity).</p>
+
+    <ul className="list-disc list-inside space-y-1">
+
+    
+      <li>
+        <span className="font-semibold text-slate-200">Implication:</span>{' '}
+        informs sizing discipline and concentration governance for long-term accumulation.
+      </li>
+    </ul>
+  </div>
+),
+},
+
+    {
+      term: <span className="font-semibold text-slate-100">Total Combined Risk</span>,
+      definition:
+        'A single comparable metric that consolidates the above dimensions. Formula (as shown in the Portfolio card): Σ(weight × structural) × vol × tail × corr × liq. Use it for sizing and governance, not trade timing.',
+    },
+  ]}
+/>
       </div>
     </div>
   )
@@ -1160,10 +1212,12 @@ function Bullets({ items }: { items: string[] }) {
     <ul className="mt-3 space-y-2 text-sm text-slate-300">
       {items.map((t, i) => (
         <li key={i} className="flex items-start gap-2">
-          <Check className="mt-0.5" />
-          <span>{t}</span>
+          {/* Prevent the icon from shrinking when text wraps */}
+          <Check className="mt-0.5 shrink-0" />
+          <span className="flex-1">{t}</span>
         </li>
       ))}
     </ul>
   )
 }
+

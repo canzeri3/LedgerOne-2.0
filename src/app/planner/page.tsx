@@ -479,19 +479,29 @@ export default function PlannerPage() {
                       i
                     </button>
                     <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
-                      <p className="mb-1 font-semibold text-slate-100">
-                        How this planner works
-                      </p>
-                      <p className="text-slate-300">
-                        LedgerOne builds a personalized, structured scale-in plan for each
-                        major price cycle in this asset, based on the risk profile you
-                        choose. When a new price cycle is detected, we suggest that you
-                        refresh your plan by adjusting your total budget if needed and
-                        clicking{' '}
-                        <span className="font-medium">Save New</span>. This creates a new
-                        buy ladder for the current market environment while keeping a
-                        separate, preserved sell planner for the previous cycle.
-                      </p>
+                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+
+<p className="text-slate-300">
+  The Buy Planner is a structured accumulation plan. Choose your{' '}
+  <span className="font-medium">Risk Profile</span> (Conservative / Moderate / Aggressive),
+  then click <span className="font-medium">Generate Ladder</span> to create a repeatable set
+  of buy levels with defined allocations.
+</p>
+
+<p className="mt-2 text-slate-300">
+  As price reaches a level, that row turns <span className="font-medium">yellow</span> to
+  signal action. Execute the buy at your exchange/broker, then record it under{' '}
+  <span className="font-medium">Add Trade</span> so the ladder updates; rows turn green once
+  filled.
+</p>
+
+
+<p className="mt-2 text-slate-300">
+  When a new price cycle begins, generate a new Buy Planner to reset the ladder around the
+  updated market regime. Your previous sell planner remains saved as history so you can audit
+  decisions across cycles.
+</p>
+
                     </div>
                   </div>
                 </div>
@@ -621,7 +631,49 @@ export default function PlannerPage() {
 
           {/* ───────── SELL: inputs + active/history ───────── */}
           <Card
-            title="Sell Planner"
+title={
+  (
+    <div className="flex items-center gap-2">
+      <span>Sell Planner</span>
+
+      {/* Info tooltip – same UI as Buy Planner */}
+      <div className="relative inline-flex items-center group">
+        <button
+          type="button"
+          aria-label="How the Sell Planner works"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
+        >
+          i
+        </button>
+
+        <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
+          <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+
+          <p className="text-slate-300">
+            The Sell Planner is a structured distribution plan. Choose{' '}
+            <span className="font-medium">Coin Volatility</span> and{' '}
+            <span className="font-medium">Sell Intensity</span>, then click{' '}
+            <span className="font-medium">Generate Ladder</span> to create a
+            repeatable scale-out ladder.
+          </p>
+
+          <p className="mt-2 text-slate-300">
+            When a row turns <span className="font-medium">yellow</span>, it’s time to sell.
+            Execute at your exchange/broker, then record the sell under{' '}
+            <span className="font-medium">Add Trade</span> (attach it to the correct Sell
+            Planner) so progress updates; rows turn green once filled.
+          </p>
+
+          <p className="mt-2 text-slate-300">
+            When you generate a new Buy Planner for a new price cycle, the current Sell
+            Planner is preserved as history and a new Sell Planner version is created for
+            the new cycle.
+          </p>
+        </div>
+      </div>
+    </div>
+  ) as any
+}
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
             headerRight={
