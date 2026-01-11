@@ -804,9 +804,9 @@ function DefGrid({ items }: { items: DefItem[] }) {
       {items.map((it, idx) => (
         <div
           key={idx}
-          className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(28,29,31)] p-3"
+          className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] p-3 shadow-[0_10px_25px_rgba(0,0,0,0.25)]"
         >
-<div className="text-sm font-medium text-slate-200">{it.term}</div>
+          <div className="text-sm font-medium text-slate-200">{it.term}</div>
           <div className="mt-1 text-sm text-slate-300 leading-6">{it.definition}</div>
         </div>
       ))}
@@ -814,10 +814,10 @@ function DefGrid({ items }: { items: DefItem[] }) {
   )
 }
 
+
 function BuyPlannerInstitutionalGuide() {
   return (
-    <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-slate-900/20 p-4">
-      <div className="space-y-4">
+<div className="space-y-4">
         <MiniHeading>Key inputs</MiniHeading>
         <DefGrid
           items={[
@@ -889,13 +889,12 @@ function BuyPlannerInstitutionalGuide() {
           the accounting, and the governance layer.
         </div>
       </div>
-    </div>
+  
   )
 }
 function AddTradeInstitutionalGuide() {
   return (
-    <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-slate-900/20 p-4">
-      <div className="space-y-4">
+<div className="space-y-4">
         <MiniHeading>What this is</MiniHeading>
         <DefGrid
           items={[
@@ -1011,13 +1010,11 @@ function AddTradeInstitutionalGuide() {
 />
 
       </div>
-    </div>
   )
 }
 
 function SellPlannerInstitutionalGuide() {
   return (
-    <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-slate-900/20 p-4">
       <div className="space-y-4">
         <MiniHeading>What it does</MiniHeading>
         <DefGrid
@@ -1114,12 +1111,10 @@ function SellPlannerInstitutionalGuide() {
           ]}
         />
       </div>
-    </div>
   )
 }
 function RiskScoreInstitutionalGuide() {
   return (
-    <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-slate-900/20 p-4">
       <div className="space-y-4">
         <MiniHeading>Risk components (what each metric means)</MiniHeading>
 
@@ -1171,7 +1166,6 @@ definition: (
   ]}
 />
       </div>
-    </div>
   )
 }
 
