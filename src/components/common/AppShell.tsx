@@ -44,7 +44,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
   const [showPageLoader, setShowPageLoader] = useState(false)
   const pathname = usePathname()
-  const isLanding = pathname === '/'
+const isLanding = pathname === '/' || pathname === '/pricing'
 
   // Existing scroll shadow effect
   useEffect(() => {
@@ -248,10 +248,11 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
                     label="Price"
                     items={[
                       {
-                        label: 'Plans & access',
-                        href: '/#pricing',
-                        description: 'How access and quota are structured.',
-                      },
+  label: 'Plans & access',
+  href: '/pricing',
+  description: 'How access and quota are structured.',
+},
+
                       {
                         label: 'Desks & teams',
                         href: '/#teams',

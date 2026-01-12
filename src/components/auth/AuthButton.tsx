@@ -1,143 +1,204 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 
-export default function AuthButton() {
+type Props = {
+  className?: string
+}
+
+type MenuItem = {
+  label: string
+  href?: string // Placeholder routes can be added later
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  { label: 'Login and Security', href: '#' },
+  { label: 'Upgrade Plan', href: '#' },
+  { label: 'Manage Communications', href: '#' },
+  { label: 'Settings', href: '/settings' },
+]
+
+function getInitials(input?: string | null) {
+  const raw = (input ?? '').trim()
+  if (!raw) return 'LO'
+
+  // If it's an email, use the part before @
+  const base = raw.includes('@') ? raw.split('@')[0] : raw
+
+  // Split on spaces, dots, underscores, hyphens
+  const parts = base
+    .replace(/[._-]+/g, ' ')
+    .split(' ')
+    .map((p) => p.trim())
+    .filter(Boolean)
+
+  if (parts.length === 0) return 'LO'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+
+  const first = parts[0][0] ?? ''
+  const last = parts[parts.length - 1][0] ?? ''
+  return (first + last).toUpperCase()
+}
+
+export default function AuthButton({ className }: Props) {
   const router = useRouter()
   const { user, loading } = useUser()
+  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
-  if (loading) {
-    // keep minimal; floating look for email preserved elsewhere
-    return <div className="text-xs text-slate-400 px-3 py-2 rounded-lg">loading…</div>
-  }
+  const initials = useMemo(() => {
+    const name =
+      (user?.user_metadata as any)?.full_name ||
+      (user?.user_metadata as any)?.name ||
+      user?.email ||
+      null
+    return getInitials(name)
+  }, [user])
 
-  // Unified click handler so the button element and styles never change
-  async function handleClick() {
+  // Close on outside click / Escape
+  useEffect(() => {
+    if (!open) return
+
+    const onDocClick = (e: MouseEvent) => {
+      const el = rootRef.current
+      if (!el) return
+      if (e.target instanceof Node && !el.contains(e.target)) setOpen(false)
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  async function handleLogout() {
     if (busy) return
-    if (user) {
-      try {
-        setBusy(true)
-        await supabaseBrowser.auth.signOut()
-        router.refresh()
-      } finally {
-        setBusy(false)
-      }
-    } else {
-      router.push('/login')
+    try {
+      setBusy(true)
+      setOpen(false)
+      await supabaseBrowser.auth.signOut()
+      router.refresh()
+    } finally {
+      setBusy(false)
     }
   }
 
-  const short = user?.email ?? 'signed in'
-  const isLoggedIn = !!user
+  function handleItemClick(item: MenuItem) {
+    setOpen(false)
+    const href = item.href
+    if (!href || href === '#') return // hyperlinks assigned later
+    router.push(href)
+  }
+
+  // Loading state: keep header stable with a skeleton circle
+  if (loading) {
+    return (
+      <div className={['relative', className ?? ''].join(' ').trim()}>
+        <div className="h-9 w-9 rounded-full bg-[rgb(31,32,33)] border border-[rgb(43,44,45)] animate-pulse" />
+      </div>
+    )
+  }
+
+// Logged out: show a clear "person" icon button that routes to /login
+if (!user) {
+  return (
+    <div className={['relative', className ?? ''].join(' ').trim()}>
+      <button
+        type="button"
+        aria-label="Log in"
+        title="Log in"
+        onClick={() => router.push('/login')}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(43,44,45)] bg-[rgb(31,32,33)] text-slate-200 hover:bg-[rgb(54,55,56)] transition-colors"
+      >
+        {/* Minimal grey user icon (no green, no external deps) */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+          className="h-4 w-4"
+        >
+          <path
+            d="M12 12a4.25 4.25 0 1 0-4.25-4.25A4.25 4.25 0 0 0 12 12Z"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M4.5 20.25c1.65-3.5 5-5.25 7.5-5.25s5.85 1.75 7.5 5.25"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 
   return (
-    <div className="flex items-center gap-2">
-      {/* EMAIL DISPLAY — floating (no bg/border) */}
-      {isLoggedIn && (
-        <div className="hidden md:block text-xs text-slate-400 px-3 py-1 rounded">
-          {short}
-        </div>
-      )}
-
-      {/* ALWAYS the same element with the same className to keep UI identical */}
+    <div ref={rootRef} className={['relative', className ?? ''].join(' ').trim()}>
       <button
-        aria-label={isLoggedIn ? 'Logout' : 'Login'}
-        onClick={handleClick}
-        disabled={busy}
-        className="Btn disabled:opacity-60"
+        type="button"
+        aria-label="Account menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(43,44,45)] bg-[rgb(31,32,33)] text-slate-200 text-xs font-semibold hover:bg-[rgb(54,55,56)] transition-colors"
       >
-        <span className="sign" aria-hidden="true">
-          {/* Icons flipped per your last request; kept identical style */}
-          {isLoggedIn ? (
-            // Logout icon — points RIGHT
-            <svg viewBox="0 0 24 24">
-              <path d="M9.5 6.5a1 1 0 0 0 0 1.4L12.6 11H3a1 1 0 1 0 0 2h9.6l-3.1 3.1a1 1 0 1 0 1.4 1.4l4.8-4.8a1 1 0 0 0 0-1.4L10.9 6.5a1 1 0 0 0-1.4 0zM19 4a1 1 0 0 0-1 1v14a1 1 0 1 0 2 0V5a1 1 0 0 0-1-1z" />
-            </svg>
-          ) : (
-            // Login icon — points LEFT
-            <svg viewBox="0 0 24 24">
-              <path d="M14.5 6.5a1 1 0 0 1 0 1.4L11.4 11H21a1 1 0 1 1 0 2h-9.6l3.1 3.1a1 1 0 1 1-1.4 1.4L8.3 12.7a1 1 0 0 1 0-1.4l4.8-4.8a1 1 0 0 1 1.4 0zM5 4a1 1 0 0 1 1 1v14a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1z" />
-            </svg>
-          )}
-        </span>
-        <span className="text">
-          {isLoggedIn ? (busy ? 'Logging out…' : 'Logout') : 'Login'}
-        </span>
+        {initials}
       </button>
 
-      {/* Component-scoped styles — EXACT same style block you’re using now */}
-      <style jsx>{`
-        /* From Uiverse.io by vinodjangid07 — size was reduced earlier per your request */
-        .Btn {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          width: 36px;           /* keep your smaller size */
-          height: 36px;
-          border: none;
-          border-radius: 50%;
-          cursor: pointer;
-          position: relative;
-          overflow: hidden;
-          transition-duration: 0.3s;
-          box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.199);
-          background-color: rgb(75, 73, 108);
-        }
+      {open && (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl border border-[rgb(43,44,45)] bg-[rgb(19,20,21)] shadow-lg"
+        >
+          <div className="px-3 py-2 border-b border-[rgb(43,44,45)]">
+            <div className="text-xs text-slate-200 font-medium">Account</div>
+            <div className="mt-0.5 text-[11px] text-slate-400 truncate">{user.email}</div>
+          </div>
 
-        .sign {
-          width: 100%;
-          transition-duration: 0.3s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
+          <div className="py-1">
+            {MENU_ITEMS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => handleItemClick(item)}
+                className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-[rgb(31,32,33)] transition-colors"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
-        .sign svg {
-          width: 15px;           /* keep icon scaled with button */
-        }
-
-        .sign svg path {
-          fill: white;
-        }
-
-        .text {
-          position: absolute;
-          right: 0%;
-          width: 0%;
-          opacity: 0;
-          color: white;
-          font-size: 0.85em;     /* if you changed this, keep your value */
-          font-weight: 600;
-          transition-duration: 0.3s;
-        }
-
-        .Btn:hover {
-          width: 105px;          /* keep your smaller hover width */
-          border-radius: 40px;
-          transition-duration: 0.3s;
-        }
-
-        .Btn:hover .sign {
-          width: 30%;
-          transition-duration: 0.3s;
-          padding-left: 20px;
-        }
-
-        .Btn:hover .text {
-          opacity: 1;
-          width: 70%;
-          transition-duration: 0.3s;
-          padding-right: 10px;
-        }
-
-        .Btn:active {
-          transform: translate(2px, 2px);
-        }
-      `}</style>
+          <div className="border-t border-[rgb(43,44,45)]">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleLogout}
+              disabled={busy}
+              className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-[rgb(31,32,33)] transition-colors disabled:opacity-60"
+            >
+              {busy ? 'Logging out…' : 'Logout'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
