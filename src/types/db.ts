@@ -11,6 +11,7 @@ export type BuyPlannerRow = {
   ladder_depth: number | '70' | '75' | '90'
   growth_per_level: number | null
   started_at: string
+    is_active: boolean | null
 }
 
 

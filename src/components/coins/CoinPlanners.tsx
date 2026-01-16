@@ -35,7 +35,6 @@ export default function CoinPlanners({ id }: Props) {
   const { user } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
-const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 const canUsePlanners = !!user && !!entitlements?.canUsePlanners
 
   // Active Buy?
