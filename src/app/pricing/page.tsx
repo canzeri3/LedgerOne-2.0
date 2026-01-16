@@ -23,8 +23,9 @@ type TierCard = {
   ctaHref: string
   secondaryCtaLabel?: string
   secondaryCtaHref?: string
-
+  highlight?: 'none' | 'recommended'
 }
+
 
 const TIERS: TierCard[] = [
   {
