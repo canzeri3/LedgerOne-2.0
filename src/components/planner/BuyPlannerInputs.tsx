@@ -6,6 +6,9 @@ import useSWR, { useSWRConfig } from 'swr'
 
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
+import PlanLimitModal from '@/components/billing/PlanLimitModal'
+
 import type { BuyPlannerRow } from '@/types/db'
 
 /* ── numeric helpers ───────────────────────────────────────── */
@@ -255,6 +258,41 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     },
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
+  // Active sell planner (if present) — used to determine whether this coin is already a "planned asset"
+  const { data: sellActive } = useSWR<{ id: string } | null>(
+    user && coingeckoId ? ['/sell-planner/active', user.id, coingeckoId] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('sell_planners')
+        .select('id')
+        .eq('user_id', user!.id)
+        .eq('coingecko_id', coingeckoId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error && (error as any).code !== 'PGRST116') throw error
+      return (data as any) ?? null
+    },
+    { refreshInterval: 60_000 }
+  )
+
+  // Entitlements (planned asset limits)
+  const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+
+  const plannedLimit = entitlements?.plannedAssetsLimit ?? 0
+  const plannedUsed = entitlements?.plannedAssetsUsed ?? 0
+
+  const limitApplies = user && !entLoading && plannedLimit !== null && plannedLimit > 0
+  const limitReached = Boolean(limitApplies && plannedUsed >= (plannedLimit as number))
+
+  const hasActiveBuy = Boolean(planner?.is_active)
+  const hasActiveSell = Boolean(sellActive)
+  const coinAlreadyPlanned = hasActiveBuy || hasActiveSell
+
+  // New planned coin = this coin currently has no active buy/sell planner
+  const addingNewPlannedCoin = user && !coinAlreadyPlanned
+  const blockNewPlannedCoin = Boolean(limitReached && addingNewPlannedCoin)
 
   // Admin anchor for this coin (used only for display / admin override, resolved server-side)
   const { data: anchor } = useSWR<CoinAnchor | null>(
@@ -280,6 +318,8 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [limitModalOpen, setLimitModalOpen] = useState(false)
+  const [limitModalMsg, setLimitModalMsg] = useState<string>('')
 
   // Bridge: listen for global actions from the Card footer buttons
   useEffect(() => {
@@ -431,6 +471,17 @@ useEffect(() => {
       setErr('Not signed in.')
       return
     }
+    // Tier limit enforcement (basic): unlimited planners per coin, but cap distinct planned coins.
+    // If this save would introduce a NEW planned coin while at cap, block with a clear message.
+    if (blockNewPlannedCoin) {
+      setLimitModalMsg(
+        `Your current plan supports up to ${plannedLimit} planned assets. You are currently at ${plannedUsed}/${plannedLimit}. ` +
+          `To plan additional assets, upgrade your plan.`
+      )
+      setLimitModalOpen(true)
+      return
+    }
+
 
     const growthNum = getGrowthOrDefault()
     const budgetNum = toNum(budget)
@@ -499,7 +550,15 @@ useEffect(() => {
   }
 
   return (
-    <div className="p-2">
+  <div className="p-2">
+    <PlanLimitModal
+      open={limitModalOpen}
+      message={limitModalMsg}
+      onClose={() => setLimitModalOpen(false)}
+      upgradeHref="/pricing"
+    />
+
+
       {/* Inputs only — no action buttons here */}
       <div className="space-y-4">
         {/* Total budget */}

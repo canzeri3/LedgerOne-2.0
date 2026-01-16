@@ -1,7 +1,14 @@
+'use client'
+
 import Link from 'next/link'
 
+import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
+
+type TierKey = 'T0' | 'T1' | 'T2' | 'T3' | 'T4'
+
 type TierCard = {
-  key: 'T0' | 'T1' | 'T2' | 'T3' | 'T4'
+  key: TierKey
   badge: string
   title: string
   priceLabel: string
@@ -16,7 +23,7 @@ type TierCard = {
   ctaHref: string
   secondaryCtaLabel?: string
   secondaryCtaHref?: string
-  highlight?: 'recommended' | 'none'
+
 }
 
 const TIERS: TierCard[] = [
@@ -96,8 +103,7 @@ const TIERS: TierCard[] = [
       'Historical plan comparisons',
       'Accountability views',
     ],
-    note:
-      'This tier introduces behavior measurement — not just more capacity. That’s why it costs more.',
+    note: 'This tier introduces behavior measurement — not just more capacity. That’s why it costs more.',
     ctaLabel: 'Upgrade to Disciplined',
     ctaHref: '#',
     secondaryCtaLabel: 'Compare tiers',
@@ -111,7 +117,12 @@ const TIERS: TierCard[] = [
     priceLabel: 'Pricing not shown',
     designedFor: 'Future (do not ship yet)',
     tagline: 'Read-only access and audit-grade reporting.',
-    unlocks: ['Advisor / accountant read-only access', 'Exportable reports', 'Audit trails', 'Multi-user visibility'],
+    unlocks: [
+      'Advisor / accountant read-only access',
+      'Exportable reports',
+      'Audit trails',
+      'Multi-user visibility',
+    ],
     limits: ['Only ship when: users ask, institutions approach you, and compliance is clear.'],
     ctaLabel: 'Learn more',
     ctaHref: '#',
@@ -133,7 +144,6 @@ function BulletList({ items }: { items?: string[] }) {
   )
 }
 
-
 function SectionLabel({ children }: { children: string }) {
   return (
     <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -142,16 +152,22 @@ function SectionLabel({ children }: { children: string }) {
   )
 }
 
+function tierKeyFromEntitlementsTier(tier?: string): TierKey | null {
+  if (!tier) return null
+  if (tier === 'PLANNER') return 'T1'
+  if (tier === 'PORTFOLIO') return 'T2'
+  if (tier === 'DISCIPLINED') return 'T3'
+  // FREE (and all non-paid states) map to Tier 0
+  return 'T0'
+}
 
-function TierCardView({ tier }: { tier: TierCard }) {
-  const isRecommended = tier.highlight === 'recommended'
+function TierCardView({ tier, isCurrent }: { tier: TierCard; isCurrent: boolean }) {
+  const outer = 'relative rounded-3xl border bg-[#1f2021] p-4 sm:p-5 shadow-2xl shadow-black/40'
 
-  const outer =
-    'relative rounded-3xl border bg-[#1f2021] p-4 sm:p-5 shadow-2xl shadow-black/40'
-  const border = isRecommended
-    ? 'border-indigo-500/50'
-    : 'border-slate-800/80'
-  const glow = isRecommended
+  // Use the old "recommended" styling as the CURRENT plan styling
+  const border = isCurrent ? 'border-indigo-500/50' : 'border-slate-800/80'
+
+  const glow = isCurrent
     ? 'before:absolute before:inset-0 before:rounded-3xl before:bg-indigo-500/10 before:blur-2xl before:content-[""]'
     : ''
 
@@ -160,33 +176,23 @@ function TierCardView({ tier }: { tier: TierCard }) {
       <div className="relative">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center rounded-full border border-slate-700/70 bg-[#151618] px-3 py-1 text-[11px] font-medium text-slate-300">
                 {tier.badge}
               </div>
 
-              {isRecommended && (
+              {isCurrent && (
                 <div className="inline-flex items-center rounded-full border border-indigo-500/40 bg-indigo-500/10 px-3 py-1 text-[11px] font-medium text-indigo-200">
-                  Recommended
+                  Current plan
                 </div>
               )}
             </div>
 
-            <h2 className="mt-3 text-lg font-semibold text-slate-50">
-              {tier.title}
-            </h2>
+            <h2 className="mt-3 text-lg font-semibold text-slate-50">{tier.title}</h2>
 
-            {tier.designedFor && (
-              <p className="mt-1 text-sm text-slate-400">
-                Designed for: {tier.designedFor}
-              </p>
-            )}
+            {tier.designedFor && <p className="mt-1 text-sm text-slate-400">Designed for: {tier.designedFor}</p>}
 
-            {tier.tagline && (
-              <p className="mt-2 text-[13px] text-slate-300 leading-5">
-                {tier.tagline}
-              </p>
-            )}
+            {tier.tagline && <p className="mt-2 text-[13px] text-slate-300 leading-5">{tier.tagline}</p>}
           </div>
 
           <div className="shrink-0 text-right">
@@ -222,21 +228,21 @@ function TierCardView({ tier }: { tier: TierCard }) {
           </div>
         ) : null}
 
-        {tier.note ? (
-          <p className="mt-4 text-sm text-slate-400 leading-6">{tier.note}</p>
-        ) : null}
+        {tier.note ? <p className="mt-4 text-sm text-slate-400 leading-6">{tier.note}</p> : null}
 
         <div className="mt-5 flex flex-col gap-2">
-          <Link
-            href={tier.ctaHref}
-            className={
-              isRecommended
-                ? 'inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-4 py-2 text-xs font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400'
-                : 'inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#151618] px-4 py-2 text-xs font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]'
-            }
-          >
-            {tier.ctaLabel}
-          </Link>
+          {isCurrent ? (
+            <div className="inline-flex items-center justify-center rounded-full bg-indigo-500/10 px-4 py-2 text-xs font-medium text-indigo-200 ring-1 ring-inset ring-indigo-500/30">
+              Current plan
+            </div>
+          ) : (
+            <Link
+              href={tier.ctaHref}
+              className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#151618] px-4 py-2 text-xs font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]"
+            >
+              {tier.ctaLabel}
+            </Link>
+          )}
 
           {tier.secondaryCtaLabel && tier.secondaryCtaHref ? (
             <Link
@@ -253,6 +259,11 @@ function TierCardView({ tier }: { tier: TierCard }) {
 }
 
 export default function PricingPage() {
+  const { user } = useUser()
+  const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+
+  const currentKey = user && !entLoading ? tierKeyFromEntitlementsTier(entitlements?.tier) : null
+
   return (
     <div className="mx-auto w-full max-w-6xl px-2 sm:px-4 py-6">
       {/* Top header */}
@@ -268,43 +279,58 @@ export default function PricingPage() {
             <p className="mt-2 max-w-2xl text-sm text-slate-400 leading-6">
               Choose your tier based on how many assets you want to actively plan. Tracking remains available for free.
             </p>
+
+            {user && currentKey ? (
+              <p className="mt-3 text-[12px] text-slate-400">
+                Current plan is highlighted below.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/login"
+              href="/dashboard"
               className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-2 text-xs font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]"
             >
-              Sign in
+              Go to dashboard
             </Link>
-            <Link
-              href="/signup"
-              className="inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-4 py-2 text-xs font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400"
-            >
-              Start free
-            </Link>
+
+            {!user ? (
+              <>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-2 text-xs font-medium text-slate-200 hover:border-slate-500/80 hover:bg-[#252628]"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-4 py-2 text-xs font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400"
+                >
+                  Start free
+                </Link>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
 
-        {/* Tier cards */}
+      {/* Tier cards */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {TIERS.filter((t) => t.key === 'T0' || t.key === 'T1' || t.key === 'T2').map((tier) => (
-          <TierCardView key={tier.key} tier={tier} />
+          <TierCardView key={tier.key} tier={tier} isCurrent={Boolean(currentKey && tier.key === currentKey)} />
         ))}
       </div>
 
-      {/* Bottom two tiers centered as a pair (gap centered on page) */}
+      {/* Bottom two tiers centered as a pair */}
       <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:justify-center">
         {TIERS.filter((t) => t.key === 'T3' || t.key === 'T4').map((tier) => (
           <div key={tier.key} className="w-full lg:w-[380px]">
-            <TierCardView tier={tier} />
+            <TierCardView tier={tier} isCurrent={Boolean(currentKey && tier.key === currentKey)} />
           </div>
         ))}
       </div>
 
-
-      {/* Comparison anchor (for future expansion) */}
       <div id="compare" className="mt-8 rounded-2xl border border-slate-800/80 bg-[#151618] p-4">
         <p className="text-xs text-slate-400 leading-6">
           Note: This page describes plan scope and access. Billing, upgrades, and paywall enforcement will be wired in next.

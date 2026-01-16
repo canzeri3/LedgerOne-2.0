@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
+import PlannerPaywallCard from '@/components/billing/PlannerPaywallCard'
 
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
 import SellPlannerCombinedCard from '@/components/planner/SellPlannerCombinedCard'
@@ -31,10 +33,14 @@ type SellPlanner = {
 
 export default function CoinPlanners({ id }: Props) {
   const { user } = useUser()
+  const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+
+const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+const canUsePlanners = !!user && !!entitlements?.canUsePlanners
 
   // Active Buy?
   const { data: buyActive } = useSWR<BuyPlanner | null>(
-    user ? ['buy-planner-active', user.id, id] : null,
+user && canUsePlanners ? ['buy-planner-active', user.id, id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('buy_planners')
@@ -51,7 +57,7 @@ export default function CoinPlanners({ id }: Props) {
 
   // Active + frozen Sell?
   const { data: sellAll } = useSWR<SellPlanner[]>(
-    user ? ['sell-planners', user.id, id] : null,
+user && canUsePlanners ? ['sell-planners', user.id, id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('sell_planners')
@@ -171,8 +177,28 @@ export default function CoinPlanners({ id }: Props) {
     return () => observer.disconnect()
   }, [])
 
+  if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
   return (
     <div className="space-y-4">
+      <PlannerPaywallCard compact />
+    </div>
+  )
+}
+
+  return (
+    <div className="space-y-4">
+      {user && !entLoading && entitlements?.plannedAssetsLimit != null && entitlements.plannedAssetsLimit > 0 ? (
+  <div className="mb-3 rounded-2xl border border-slate-800/80 bg-[#151618] px-3 py-2">
+    <div className="text-[12px] text-slate-300">
+      Planned assets: <span className="text-slate-50 font-medium">{entitlements.plannedAssetsUsed}</span>
+      /{entitlements.plannedAssetsLimit}
+      {entitlements.plannedAssetsUsed >= entitlements.plannedAssetsLimit ? (
+        <span className="text-indigo-200"> — limit reached</span>
+      ) : null}
+    </div>
+  </div>
+) : null}
+
       {hasActiveBuy && (
         <div ref={buyRootRef} className={shell}>
           <div className="px-5 pt-5 pb-3 border-b border-slate-700/50">

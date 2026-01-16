@@ -7,6 +7,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { usePrice } from '@/lib/dataCore'
+import { useEntitlements } from '@/lib/useEntitlements'
+import PlannerPaywallCard from '@/components/billing/PlannerPaywallCard'
+import PlannerLimitBanner from '@/components/billing/PlannerLimitBanner'
 
 import BuyPlannerInputs from '@/components/planner/BuyPlannerInputs'
 import SellPlannerInputs from '@/components/planner/SellPlannerInputs'
@@ -121,6 +124,8 @@ function CoinDropdown({
     return () => document.removeEventListener('keydown', onKey)
   }, [open, items, highlight, onChange])
 
+
+  
   return (
     <div className="relative">
       <button
@@ -309,11 +314,14 @@ export default function PlannerPage() {
 
   // ── New price cycle detection (banner only; no logic changes) ─────────────
   const { user } = useUser()
+const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+const canUsePlanners = !!user && !!entitlements?.canUsePlanners
 
   const { data: activeBuyPlanner } = useSWR<BuyPlannerRow | null>(
-    user && coingeckoId
-      ? ['/buy-planner/latest-banner', user.id, coingeckoId]
-      : null,
+   canUsePlanners && coingeckoId
+  ? ['/buy-planner/latest-banner', user!.id, coingeckoId]
+  : null,
+
     async () => {
       const { data, error } = await supabaseBrowser
         .from('buy_planners')
@@ -343,11 +351,12 @@ export default function PlannerPage() {
   })
 
   const { data: topPriceMeta } = useSWR<TopPriceMeta | null>(
-    coingeckoId
-      ? `/api/planner/user-top-price?id=${encodeURIComponent(
-          coingeckoId
-        )}&currency=USD`
-      : null,
+  canUsePlanners && coingeckoId
+  ? `/api/planner/user-top-price?id=${encodeURIComponent(
+      coingeckoId
+    )}&currency=USD`
+  : null,
+
     fetcher,
     {
       revalidateOnFocus: false,
@@ -368,12 +377,25 @@ export default function PlannerPage() {
     return priceRow.price > activeBuyPlanner.top_price
   }, [activeBuyPlanner?.top_price, priceRow?.price, topPriceMeta?.source])
 
+if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
+  return (
+    <div className="px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-screen-2xl mx-auto">
+      <PlannerPaywallCard />
+    </div>
+  )
+}
 
   return (
     <div
       className="px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-screen-2xl mx-auto space-y-10"
       data-coingecko-id={coingeckoId || undefined}
     >
+      {entitlements && entitlements.plannedAssetsLimit !== null && entitlements.plannedAssetsLimit > 0 ? (
+  <div className="mb-4">
+    <PlannerLimitBanner entitlements={entitlements} />
+  </div>
+) : null}
+
       {/* ───────── Integrated header / coin selector (no Card wrapper) ───────── */}
       <div className="space-y-2">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-[rgb(41,42,45)]/80 pb-3">

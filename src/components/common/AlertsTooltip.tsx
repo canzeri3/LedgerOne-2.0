@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
+
 import {
   buildBuyLevels,
   computeBuyFills,
@@ -74,6 +76,13 @@ export function AlertsTooltip({
   const { user } = useUser()
   const router = useRouter()
 
+  // Planner-driven alerts should not be "blocked"; they should be gated cleanly by entitlements.
+  // Tier 0: show upgrade message (no execution cues). Tier 1+: fetch and compute planner alerts.
+  const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+  const canUsePlannerAlerts = Boolean(user && !entLoading && entitlements?.canUsePlanners)
+  const plannerAlertsLocked = Boolean(user && !entLoading && entitlements && !entitlements.canUsePlanners)
+
+
     // coins meta for ticker symbols (used for display only)
   // Prefer the `coins` prop (dashboard), but fall back to /api/coins so the header tooltip also shows tickers.
   const { data: coinsFallback } = useSWR<CoinMeta[]>(
@@ -133,7 +142,7 @@ export function AlertsTooltip({
 
   // --- DATA FETCHES (same sources already used on this page) ---
   const { data: activeBuyPlanners } = useSWR<BuyPlannerRow[]>(
-    user ? ['/alerts/buy-planners', user.id] : null,
+    canUsePlannerAlerts ? ['/alerts/buy-planners', user!.id] : null,
     async () => {
       try {
         const { data, error } = await supabaseBrowser
@@ -157,7 +166,7 @@ export function AlertsTooltip({
   )
 
   const { data: activeSellPlanners } = useSWR<{ id: string; coingecko_id: string; is_active: boolean | null }[]>(
-  user ? ['/alerts/sell-planners', user.id] : null,
+  canUsePlannerAlerts ? ['/alerts/sell-planners', user!.id] : null,
   async () => {
     try {
       const { data, error } = await supabaseBrowser
@@ -186,7 +195,7 @@ export function AlertsTooltip({
 
 // NEW: include frozen (history) sell planners as well for alerts
 const { data: historySellPlanners } = useSWR<{ id: string; coingecko_id: string; is_active: boolean | null }[]>(
-  user ? ['/alerts/sell-planners-history', user.id] : null,
+  canUsePlannerAlerts ? ['/alerts/sell-planners-history', user!.id] : null,
   async () => {
     try {
       const { data, error } = await supabaseBrowser
@@ -228,7 +237,7 @@ const sellPlannerIds = useMemo(
 
 
   const { data: sellLevels } = useSWR<{ sell_planner_id: string; level: number; price: number; sell_tokens: number | null }[]>(
-    user && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
+    canUsePlannerAlerts && sellPlannerIds.length ? ['/alerts/sell-levels', sellPlannerIds.join(',')] : null,
     async () => {
       try {
         const { data, error } = await supabaseBrowser
@@ -333,7 +342,7 @@ type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
   }
 
   const { data: richTrades } = useSWR<TradeRow[]>(
-    user && (alertCoinIds?.length ?? 0) ? ['/alerts/trades-rich', user.id] : null,
+    canUsePlannerAlerts && (alertCoinIds?.length ?? 0) ? ['/alerts/trades-rich', user!.id] : null,
     async () => {
       try {
         const { data, error } = await supabaseBrowser
@@ -672,7 +681,22 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
           onPointerLeave={(e) => scheduleClose(e)}
         >
           <div className="grid gap-1">
-            {alertItems.length === 0 ? (
+            {user && entLoading ? (
+              <div className="px-2 py-3 text-xs text-slate-300/70">Checking your plan…</div>
+            ) : plannerAlertsLocked ? (
+              <div className="px-2 py-3 text-xs text-slate-300/80 space-y-2">
+                <div className="font-medium text-slate-200">Planner alerts are available on Tier 1+</div>
+                <div className="text-slate-400">
+                  Upgrade to unlock execution cues, plan-vs-actual tracking, and planner-driven alerts.
+                </div>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-3 py-1.5 text-[11px] font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400"
+                >
+                  View plans
+                </Link>
+              </div>
+            ) : alertItems.length === 0 ? (
               <div className="px-2 py-3 text-xs text-slate-300/70">No active alerts</div>
             ) : (
               alertItems.map((it, idx) => (
