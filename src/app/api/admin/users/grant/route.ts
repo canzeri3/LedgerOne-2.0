@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { isPaidStatus, normalizeTier, type Tier } from '@/lib/entitlements'
+import { normalizeTier, type Tier } from '@/lib/entitlements'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +31,6 @@ function getAdminEmailAllowlist(): Set<string> {
 
 async function assertRequestIsAdmin(): Promise<{ userId: string; email: string }> {
   const cookieStore = await cookies()
-
   const supabase = createServerClient(
     envOrThrow('NEXT_PUBLIC_SUPABASE_URL'),
     envOrThrow('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
@@ -77,60 +76,77 @@ function getSupabaseAdminClient() {
   }
 
   return createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   })
 }
 
-const GRANTABLE_TIERS: Tier[] = ['PLANNER', 'PORTFOLIO', 'DISCIPLINED', 'ADVISORY']
+const OVERRIDE_TIERS: Tier[] = ['FREE', 'PLANNER', 'PORTFOLIO', 'DISCIPLINED', 'ADVISORY']
 
 export async function POST(req: NextRequest) {
   try {
-    await assertRequestIsAdmin()
-
+    const admin = await assertRequestIsAdmin()
     const body = (await req.json().catch(() => null)) as
-      | { userId?: string; tier?: string }
+      | { userId?: string; tier?: string; clear?: boolean; note?: string }
       | null
 
     const userId = String(body?.userId ?? '').trim()
-    const tier = normalizeTier(body?.tier)
+    if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
+    const supabaseAdmin = getSupabaseAdminClient()
+
+    // Clear override
+    if (body?.clear === true) {
+      const { error } = await supabaseAdmin
+        .from('admin_tier_overrides')
+        .delete()
+        .eq('user_id', userId)
+
+      if (error) throw error
+      return NextResponse.json({ ok: true, userId, cleared: true }, { status: 200 })
     }
 
-    if (!GRANTABLE_TIERS.includes(tier)) {
+    // Set override
+    const tier = normalizeTier(body?.tier)
+    if (!OVERRIDE_TIERS.includes(tier)) {
       return NextResponse.json(
-        { error: `Invalid tier. Allowed: ${GRANTABLE_TIERS.join(', ')}` },
+        { error: `Invalid tier. Allowed: ${OVERRIDE_TIERS.join(', ')}` },
         { status: 400 }
       )
     }
 
-    const supabaseAdmin = getSupabaseAdminClient()
+    // Snapshot billed tier/status at time override is set
+    let billedTierAtSet: Tier = 'FREE'
+    let billedStatusAtSet = 'none'
+    try {
+      const { data: sub } = await supabaseAdmin
+        .from('user_subscriptions')
+        .select('tier,status')
+        .eq('user_id', userId)
+        .maybeSingle()
 
-    // Safety: do not override paid users.
-    const { data: existing } = await supabaseAdmin
-      .from('user_subscriptions')
-      .select('tier,status')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    const existingStatus = String((existing as any)?.status ?? 'none')
-    if (isPaidStatus(existingStatus)) {
-      return NextResponse.json(
-        { error: 'Cannot override a paid/trialing user.' },
-        { status: 409 }
-      )
+      billedTierAtSet = normalizeTier(sub?.tier)
+      billedStatusAtSet = String(sub?.status ?? 'none')
+    } catch {
+      billedTierAtSet = 'FREE'
+      billedStatusAtSet = 'none'
     }
 
-    // Upsert the subscription row to grant access without payment.
+    const note = String(body?.note ?? 'Admin override').slice(0, 500)
+    const now = new Date().toISOString()
+
     const { error: upErr } = await supabaseAdmin
-      .from('user_subscriptions')
+      .from('admin_tier_overrides')
       .upsert(
-        { user_id: userId, tier, status: 'active' } as any,
+        {
+          user_id: userId,
+          tier,
+          note,
+          updated_by: admin.userId,
+          updated_at: now,
+          billed_tier_at_set: billedTierAtSet,
+          billed_status_at_set: billedStatusAtSet,
+          billed_snapshot_at_set: now,
+        } as any,
         { onConflict: 'user_id' } as any
       )
 

@@ -31,7 +31,6 @@ function getAdminEmailAllowlist(): Set<string> {
 
 async function assertRequestIsAdmin(): Promise<{ userId: string; email: string }> {
   const cookieStore = await cookies()
-
   const supabase = createServerClient(
     envOrThrow('NEXT_PUBLIC_SUPABASE_URL'),
     envOrThrow('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
@@ -90,8 +89,13 @@ type AdminUserRow = {
   email: string | null
   created_at: string | null
   last_sign_in_at: string | null
-  tier: Tier
-  status: string
+
+  billedTier: Tier
+  billedStatus: string
+
+  overrideTier: Tier | null
+  overrideUpdatedAt: string | null
+
   effectiveTier: Tier
 }
 
@@ -114,10 +118,10 @@ export async function GET(req: NextRequest) {
 
     const users = ((data as any)?.users ?? []) as any[]
     const total = Number((data as any)?.total ?? users.length)
-
     const ids = users.map((u) => String(u.id)).filter(Boolean)
 
-    const subsByUserId = new Map<string, { tier: Tier; status: string }>()
+    // Billed subscription info (from user_subscriptions)
+    const billedByUserId = new Map<string, { tier: Tier; status: string }>()
     if (ids.length) {
       const { data: subs, error: subErr } = await supabaseAdmin
         .from('user_subscriptions')
@@ -127,10 +131,27 @@ export async function GET(req: NextRequest) {
       if (subErr) throw subErr
 
       for (const row of (subs ?? []) as any[]) {
-        const uid = String(row.user_id)
-        subsByUserId.set(uid, {
+        billedByUserId.set(String(row.user_id), {
           tier: normalizeTier(row.tier),
           status: String(row.status ?? 'none'),
+        })
+      }
+    }
+
+    // Admin overrides (from admin_tier_overrides)
+    const overrideByUserId = new Map<string, { tier: Tier; updated_at: string | null }>()
+    if (ids.length) {
+      const { data: ovr, error: ovrErr } = await supabaseAdmin
+        .from('admin_tier_overrides')
+        .select('user_id,tier,updated_at')
+        .in('user_id', ids)
+
+      if (ovrErr) throw ovrErr
+
+      for (const row of (ovr ?? []) as any[]) {
+        overrideByUserId.set(String(row.user_id), {
+          tier: normalizeTier(row.tier),
+          updated_at: (row.updated_at ?? null) as string | null,
         })
       }
     }
@@ -141,14 +162,28 @@ export async function GET(req: NextRequest) {
       const created_at = (u.created_at ?? null) as string | null
       const last_sign_in_at = (u.last_sign_in_at ?? null) as string | null
 
-      const sub = subsByUserId.get(id)
-      const tier = sub?.tier ?? 'FREE'
-      const status = sub?.status ?? 'none'
+      const billed = billedByUserId.get(id)
+      const billedTier = billed?.tier ?? 'FREE'
+      const billedStatus = billed?.status ?? 'none'
 
-      // Mirror entitlements behavior: non-paid statuses collapse to FREE.
-      const effectiveTier: Tier = isPaidStatus(status) ? tier : 'FREE'
+      const ovr = overrideByUserId.get(id)
+      const overrideTier = ovr?.tier ?? null
+      const overrideUpdatedAt = ovr?.updated_at ?? null
 
-      return { id, email, created_at, last_sign_in_at, tier, status, effectiveTier }
+      const effectiveTier: Tier =
+        overrideTier != null ? overrideTier : isPaidStatus(billedStatus) ? billedTier : 'FREE'
+
+      return {
+        id,
+        email,
+        created_at,
+        last_sign_in_at,
+        billedTier,
+        billedStatus,
+        overrideTier,
+        overrideUpdatedAt,
+        effectiveTier,
+      }
     })
 
     return NextResponse.json({ page, perPage, total, users: rows }, { status: 200 })
