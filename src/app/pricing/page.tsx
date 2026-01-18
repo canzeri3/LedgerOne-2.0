@@ -162,13 +162,21 @@ function tierKeyFromEntitlementsTier(tier?: string): TierKey | null {
   return 'T0'
 }
 
-function TierCardView({ tier, isCurrent }: { tier: TierCard; isCurrent: boolean }) {
+function TierCardView({
+  tier,
+  isCurrent,
+  isRecommended,
+}: {
+  tier: TierCard
+  isCurrent: boolean
+  isRecommended: boolean
+}) {
+  const isHighlighted = isCurrent || isRecommended
+
   const outer = 'relative rounded-3xl border bg-[#1f2021] p-4 sm:p-5 shadow-2xl shadow-black/40'
+  const border = isHighlighted ? 'border-indigo-500/50' : 'border-slate-800/80'
 
-  // Use the old "recommended" styling as the CURRENT plan styling
-  const border = isCurrent ? 'border-indigo-500/50' : 'border-slate-800/80'
-
-  const glow = isCurrent
+  const glow = isHighlighted
     ? 'before:absolute before:inset-0 before:rounded-3xl before:bg-indigo-500/10 before:blur-2xl before:content-[""]'
     : ''
 
@@ -187,6 +195,12 @@ function TierCardView({ tier, isCurrent }: { tier: TierCard; isCurrent: boolean 
                   Current plan
                 </div>
               )}
+              {isRecommended && !isCurrent && (
+  <div className="inline-flex items-center rounded-full border border-indigo-500/40 bg-indigo-500/10 px-3 py-1 text-[11px] font-medium text-indigo-200">
+    Recommended
+  </div>
+)}
+
             </div>
 
             <h2 className="mt-3 text-lg font-semibold text-slate-50">{tier.title}</h2>
@@ -263,7 +277,18 @@ export default function PricingPage() {
   const { user } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
-  const currentKey = user && !entLoading ? tierKeyFromEntitlementsTier(entitlements?.tier) : null
+const hasPaidPlan =
+  !!user && !entLoading && !!entitlements?.canUsePlanners && entitlements?.status === 'active'
+
+// Only highlight "Current plan" once the user actually has a plan.
+// For FREE / no-plan users, we highlight only the recommended tier.
+const currentKey = hasPaidPlan ? tierKeyFromEntitlementsTier(entitlements?.tier) : null
+
+// Use the tier in TIERS marked as recommended (fallback to Tier 1 if none is marked)
+const recommendedKey = TIERS.find((t) => t.highlight === 'recommended')?.key ?? 'T1'
+
+// Recommended is shown only when the user has no active plan
+const showRecommended = !hasPaidPlan
 
   return (
     <div className="mx-auto w-full max-w-6xl px-2 sm:px-4 py-6">
@@ -281,11 +306,16 @@ export default function PricingPage() {
               Choose your tier based on how many assets you want to actively plan. Tracking remains available for free.
             </p>
 
-            {user && currentKey ? (
-              <p className="mt-3 text-[12px] text-slate-400">
-                Current plan is highlighted below.
-              </p>
-            ) : null}
+      {user && currentKey ? (
+  <p className="mt-3 text-[12px] text-slate-400">
+    Current plan is highlighted below.
+  </p>
+) : user && showRecommended ? (
+  <p className="mt-3 text-[12px] text-slate-400">
+    Recommended plan is highlighted below.
+  </p>
+) : null}
+
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -319,7 +349,12 @@ export default function PricingPage() {
       {/* Tier cards */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {TIERS.filter((t) => t.key === 'T0' || t.key === 'T1' || t.key === 'T2').map((tier) => (
-          <TierCardView key={tier.key} tier={tier} isCurrent={Boolean(currentKey && tier.key === currentKey)} />
+<TierCardView
+  key={tier.key}
+  tier={tier}
+  isCurrent={Boolean(currentKey && tier.key === currentKey)}
+  isRecommended={Boolean(showRecommended && tier.key === recommendedKey)}
+/>
         ))}
       </div>
 
@@ -327,7 +362,11 @@ export default function PricingPage() {
       <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:justify-center">
         {TIERS.filter((t) => t.key === 'T3' || t.key === 'T4').map((tier) => (
           <div key={tier.key} className="w-full lg:w-[380px]">
-            <TierCardView tier={tier} isCurrent={Boolean(currentKey && tier.key === currentKey)} />
+<TierCardView
+  tier={tier}
+  isCurrent={Boolean(currentKey && tier.key === currentKey)}
+  isRecommended={Boolean(showRecommended && tier.key === recommendedKey)}
+/>
           </div>
         ))}
       </div>

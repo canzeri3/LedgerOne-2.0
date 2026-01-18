@@ -14,6 +14,7 @@ function envOrThrow(name: string) {
 }
 
 function getAdminEmailAllowlist(): Set<string> {
+  // Use one of these env vars; prefer LEDGERONE_ADMIN_EMAILS in prod.
   const raw =
     process.env.LEDGERONE_ADMIN_EMAILS ??
     process.env.ADMIN_EMAILS ??
@@ -30,6 +31,7 @@ function getAdminEmailAllowlist(): Set<string> {
 
 export default async function AdminAnchorsPage() {
   const cookieStore = await cookies()
+
   const supabase = createServerClient(
     envOrThrow('NEXT_PUBLIC_SUPABASE_URL'),
     envOrThrow('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
@@ -48,15 +50,17 @@ export default async function AdminAnchorsPage() {
     }
   )
 
-  const { data: userRes } = await supabase.auth.getUser()
-  const user = userRes?.user
+  const { data } = await supabase.auth.getUser()
+  const user = data?.user
 
+  // Not logged in -> send to login
   if (!user) redirect('/login')
 
+  // Logged in but not admin -> show NOTHING (404)
   const email = (user.email ?? '').toLowerCase()
   const allow = getAdminEmailAllowlist()
-
   if (!email || !allow.has(email)) notFound()
 
+  // Admin -> render your existing UI component unchanged
   return <AdminAnchorsClient />
 }

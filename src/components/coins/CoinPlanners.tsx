@@ -35,11 +35,11 @@ export default function CoinPlanners({ id }: Props) {
   const { user } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
-const canUsePlanners = !!user && !!entitlements?.canUsePlanners
+  const canUsePlanners = !!user && !!entitlements?.canUsePlanners
 
   // Active Buy?
   const { data: buyActive } = useSWR<BuyPlanner | null>(
-user && canUsePlanners ? ['buy-planner-active', user.id, id] : null,
+    user && canUsePlanners ? ['buy-planner-active', user.id, id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('buy_planners')
@@ -53,6 +53,7 @@ user && canUsePlanners ? ['buy-planner-active', user.id, id] : null,
     },
     { refreshInterval: 60_000 }
   )
+
 
   // Active + frozen Sell?
   const { data: sellAll } = useSWR<SellPlanner[]>(
