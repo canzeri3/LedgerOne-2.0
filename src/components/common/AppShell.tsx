@@ -267,14 +267,10 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
                   />
                 </nav>
 
-                {/* Right: Login (pinned to far right) */}
+                {/* Right: Auth (pinned to far right) */}
                 <div className="flex flex-1 items-center justify-end">
-                  <Link
-                    href="/login"
-                    className="rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-1.5 text-xs md:text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900"
-                  >
-                    Log in
-                  </Link>
+                  {/* @ts-ignore */}
+                  <AuthButton loggedOutVariant="pill" />
                 </div>
               </div>
             ) : (

@@ -5,8 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 
+type LoggedOutVariant = 'icon' | 'pill'
+
 type Props = {
   className?: string
+  loggedOutVariant?: LoggedOutVariant
 }
 
 type MenuItem = {
@@ -16,7 +19,7 @@ type MenuItem = {
 
 const MENU_ITEMS: MenuItem[] = [
   { label: 'Login and Security', href: '#' },
-{ label: 'Upgrade Plan', href: '/pricing' },
+  { label: 'Upgrade Plan', href: '/pricing' },
   { label: 'Manage Communications', href: '#' },
   { label: 'Settings', href: '/settings' },
 ]
@@ -43,7 +46,7 @@ function getInitials(input?: string | null) {
   return (first + last).toUpperCase()
 }
 
-export default function AuthButton({ className }: Props) {
+export default function AuthButton({ className, loggedOutVariant = 'icon' }: Props) {
   const router = useRouter()
   const { user, loading } = useUser()
   const [open, setOpen] = useState(false)
@@ -100,53 +103,69 @@ export default function AuthButton({ className }: Props) {
     router.push(href)
   }
 
-  // Loading state: keep header stable with a skeleton circle
+  // Loading state: keep header stable with a skeleton matching the variant
   if (loading) {
     return (
       <div className={['relative', className ?? ''].join(' ').trim()}>
-        <div className="h-9 w-9 rounded-full bg-[rgb(31,32,33)] border border-[rgb(43,44,45)] animate-pulse" />
+        {loggedOutVariant === 'pill' ? (
+          <div className="h-8 w-20 rounded-full bg-[rgb(31,32,33)] border border-[rgb(43,44,45)] animate-pulse" />
+        ) : (
+          <div className="h-9 w-9 rounded-full bg-[rgb(31,32,33)] border border-[rgb(43,44,45)] animate-pulse" />
+        )}
       </div>
     )
   }
 
-// Logged out: show a clear "person" icon button that routes to /login
-if (!user) {
-  return (
-    <div className={['relative', className ?? ''].join(' ').trim()}>
-      <button
-        type="button"
-        aria-label="Log in"
-        title="Log in"
-        onClick={() => router.push('/login')}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(43,44,45)] bg-[rgb(31,32,33)] text-slate-200 hover:bg-[rgb(54,55,56)] transition-colors"
-      >
-        {/* Minimal grey user icon (no green, no external deps) */}
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-          className="h-4 w-4"
-        >
-          <path
-            d="M12 12a4.25 4.25 0 1 0-4.25-4.25A4.25 4.25 0 0 0 12 12Z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M4.5 20.25c1.65-3.5 5-5.25 7.5-5.25s5.85 1.75 7.5 5.25"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-    </div>
-  )
-}
+  // Logged out
+  if (!user) {
+    // Landing/header variant: preserve the existing pill-style "Log in" button
+    if (loggedOutVariant === 'pill') {
+      return (
+        <div className={['relative', className ?? ''].join(' ').trim()}>
+          <button
+            type="button"
+            aria-label="Log in"
+            title="Log in"
+            onClick={() => router.push('/login')}
+            className="rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-1.5 text-xs md:text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900"
+          >
+            Log in
+          </button>
+        </div>
+      )
+    }
 
+    // Default: show a clear "person" icon button that routes to /login
+    return (
+      <div className={['relative', className ?? ''].join(' ').trim()}>
+        <button
+          type="button"
+          aria-label="Log in"
+          title="Log in"
+          onClick={() => router.push('/login')}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(43,44,45)] bg-[rgb(31,32,33)] text-slate-200 hover:bg-[rgb(54,55,56)] transition-colors"
+        >
+          {/* Minimal grey user icon (no green, no external deps) */}
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
+            <path
+              d="M12 12a4.25 4.25 0 1 0-4.25-4.25A4.25 4.25 0 0 0 12 12Z"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M4.5 20.25c1.65-3.5 5-5.25 7.5-5.25s5.85 1.75 7.5 5.25"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div ref={rootRef} className={['relative', className ?? ''].join(' ').trim()}>
