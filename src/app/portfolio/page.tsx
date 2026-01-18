@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
 import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
-import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info } from 'lucide-react'
+import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info, Lock } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
@@ -152,6 +154,11 @@ type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number 
 
 export default function PortfolioPage() {
   const { user } = useUser()
+  const { entitlements, loading: entLoading } = useEntitlements(user?.id)
+
+  // Default-locked until entitlements load (prevents any Tier 0 “flash”)
+  const canViewPortfolioRisk = !entLoading && (entitlements?.tier ?? 'FREE') !== 'FREE'
+
   const router = useRouter()
 
   const { data: trades } = useSWR<TradeRow[]>(
@@ -377,12 +384,14 @@ export default function PortfolioPage() {
   }, [rows])
 
   // ---- Portfolio-aware L2/L3 from server (/api/portfolio-risk), with safe fallback ----
-  const riskKey = useMemo(() => {
-    if (!rows.length) return null
-    const ids = rows.map(r => r.cid).join(',')
-    const vals = rows.map(r => Math.max(0, r.value)).join(',')
-    return [`/api/portfolio-risk`, coinKey, vals] as const
-  }, [rows, coinKey])
+ const riskKey = useMemo(() => {
+  if (!canViewPortfolioRisk) return null
+  if (!rows.length) return null
+  const ids = rows.map(r => r.cid).join(',')
+  const vals = rows.map(r => Math.max(0, r.value)).join(',')
+  return [`/api/portfolio-risk`, coinKey, vals] as const
+}, [rows, coinKey, canViewPortfolioRisk])
+
 
   const { data: prisk, error: priskErr } = useSWR(
     riskKey,
@@ -682,7 +691,7 @@ export default function PortfolioPage() {
   }
 
   // --------- LAYER 2 & 3 helpers (BTC proxy fallback) ----------
-  const { points: btcDailyPts } = useHistory('bitcoin', 45, 'daily', 'USD')
+const { points: btcDailyPts } = useHistory(canViewPortfolioRisk ? 'bitcoin' : null, 45, 'daily', 'USD')
 
   function annVol30dFromDaily(points: {t:number; p:number}[]): number | null {
     if (!points || points.length < 31) return null
@@ -749,15 +758,16 @@ export default function PortfolioPage() {
   }, [JSON.stringify(allocAll.data)])
 
   // CONSTANT number of hooks (9): one for BTC anchor + 8 slots
-  const hBTC = useHistory('bitcoin', 95, 'daily', 'USD')
-  const hC0  = useHistory(corrIds[0], 95, 'daily', 'USD')
-  const hC1  = useHistory(corrIds[1], 95, 'daily', 'USD')
-  const hC2  = useHistory(corrIds[2], 95, 'daily', 'USD')
-  const hC3  = useHistory(corrIds[3], 95, 'daily', 'USD')
-  const hC4  = useHistory(corrIds[4], 95, 'daily', 'USD')
-  const hC5  = useHistory(corrIds[5], 95, 'daily', 'USD')
-  const hC6  = useHistory(corrIds[6], 95, 'daily', 'USD')
-  const hC7  = useHistory(corrIds[7], 95, 'daily', 'USD')
+const hBTC = useHistory(canViewPortfolioRisk ? 'bitcoin' : null, 95, 'daily', 'USD')
+const hC0  = useHistory(canViewPortfolioRisk ? corrIds[0] : null, 95, 'daily', 'USD')
+const hC1  = useHistory(canViewPortfolioRisk ? corrIds[1] : null, 95, 'daily', 'USD')
+const hC2  = useHistory(canViewPortfolioRisk ? corrIds[2] : null, 95, 'daily', 'USD')
+const hC3  = useHistory(canViewPortfolioRisk ? corrIds[3] : null, 95, 'daily', 'USD')
+const hC4  = useHistory(canViewPortfolioRisk ? corrIds[4] : null, 95, 'daily', 'USD')
+const hC5  = useHistory(canViewPortfolioRisk ? corrIds[5] : null, 95, 'daily', 'USD')
+const hC6  = useHistory(canViewPortfolioRisk ? corrIds[6] : null, 95, 'daily', 'USD')
+const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', 'USD')
+
 
   type Pts = { t:number; p:number }[] | undefined
   const corrMap = useMemo(() => {
@@ -1080,7 +1090,34 @@ export default function PortfolioPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* LEFT: Exposure & Risk card */}
         <div className="lg:col-span-2">
-          <div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+<div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+  {!canViewPortfolioRisk && (
+<div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(15,16,18,0.82)] backdrop-blur-md rounded-md ring-1 ring-inset ring-[rgba(114,108,172,0.40)]">
+      <div className="mx-6 max-w-[520px] text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-[rgb(24,25,27)] px-3 py-1 text-[11px] font-medium text-slate-200">
+          <Lock className="h-4 w-4 text-slate-300" />
+          <span>Tier 1+ required</span>
+        </div>
+
+        <div className="mt-3 text-base font-semibold text-slate-50">Portfolio Risk Metrics are Locked</div>
+        <div className="mt-2 text-sm leading-6 text-slate-300">
+          Upgrade your plan to unlock Complete Exposure &amp; Risk Metrics (structural, volatility, tail risk, correlation, liquidity).
+        </div>
+
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <Link
+            href="/pricing"
+            className="inline-flex items-center justify-center rounded-full bg-indigo-500/90 px-4 py-2 text-xs font-medium text-slate-50 shadow shadow-indigo-500/30 transition hover:bg-indigo-400"
+          >
+            Upgrade plan
+          </Link>
+          <div className="text-[11px] text-slate-400">
+            {entLoading && user ? 'Checking plan…' : `Current: ${(entitlements?.tier ?? 'FREE')}`}
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="text-sm font-medium">Exposure & Risk Metric</div>
               <div className="flex items-center gap-2">
