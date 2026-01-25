@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -45,7 +45,9 @@ function startOfYTD(): number {
   const d = new Date()
   return new Date(d.getFullYear(), 0, 1).getTime()
 }
-function rangeStartFor(tf: Timeframe): number | null {
+
+// NOTE: for Max, we anchor to the user's first trade timestamp (not a hardcoded 10y window)
+function rangeStartFor(tf: Timeframe, firstTradeMs?: number | null): number | null {
   const now = Date.now(), day = 24 * 60 * 60 * 1000
   switch (tf) {
     case '24h': return now - day
@@ -54,9 +56,10 @@ function rangeStartFor(tf: Timeframe): number | null {
     case '90d': return now - 90 * day
     case '1y': return now - 365 * day
     case 'YTD': return startOfYTD()
-    case 'Max': return null
+    case 'Max': return (firstTradeMs != null && Number.isFinite(firstTradeMs)) ? firstTradeMs : null
   }
 }
+
 function stepMsFor(tf: Timeframe): number {
   const m = 60_000, h = 60 * m
   switch (tf) {
@@ -69,7 +72,9 @@ function stepMsFor(tf: Timeframe): number {
     case 'Max': return 24 * h
   }
 }
-function daysParamFor(tf: Timeframe): string {
+
+// NOTE: for Max, request days from first trade -> now (prevents oversized calls + avoids 2-point synth histories)
+function daysParamFor(tf: Timeframe, firstTradeMs?: number | null): string {
   const now = Date.now()
   const day = 24 * 60 * 60 * 1000
 
@@ -88,14 +93,17 @@ function daysParamFor(tf: Timeframe): string {
       return String(days)
     }
 
-    // IMPORTANT: Avoid days="max" for Max — it can be extremely heavy.
-    // Use a large-but-bounded window (10 years) which is effectively "max" for almost all users.
+    // IMPORTANT: Max should start at the first transaction, not an arbitrary 10-year window.
     case 'Max': {
-      return '3650'
+      if (firstTradeMs != null && Number.isFinite(firstTradeMs)) {
+        const days = Math.max(1, Math.ceil((now - firstTradeMs) / day) + 1)
+        return String(days)
+      }
+      // no trades yet → keep it reasonable
+      return '365'
     }
   }
 }
-
 /* ── fetch helpers ─────────────────────────────────────────── */
 // Choose a sensible interval for /api/price-history based on days
 function intervalForDays(days: string): 'minute' | 'hourly' | 'daily' {
@@ -117,11 +125,20 @@ async function fetchHistories(ids: string[], days: string): Promise<Record<strin
       // NEW CORE SHAPE: { id, currency, points:[{t,p}], updatedAt }
       const j = await r.json()
       const pts = Array.isArray(j?.points) ? j.points : []
-      const series: Point[] = pts
+          const series: Point[] = pts
         .map((row: any) => ({ t: Number(row.t), v: Number(row.p) })) // map p -> v for chart
         .filter((p: any) => Number.isFinite(p.t) && Number.isFinite(p.v))
-        .sort((a: Point, b: Point) => a.t - b.t)
-      return series
+       .sort((a: Point, b: Point) => a.t - b.t)
+
+// When CoinGecko fails (401), /api/price-history falls back to consensus.synth,
+// which is typically a 2-point series (now and ~24h ago). Rendering that produces
+// the diagonal "top-left to bottom-right" artifact on MAX.
+// Treat it as unusable so MAX doesn't render misleading garbage.
+if (series.length <= 2) return []
+
+return series
+
+
     })
   )
   const byId: Record<string, Point[]> = {}
@@ -144,13 +161,17 @@ function buildAlignedPortfolioSeries(
 
   // Choose the start of the window
   let start = windowStart ?? Number.POSITIVE_INFINITY
-  if (windowStart == null) {
+   if (windowStart == null) {
     for (const id of coinIds) {
       const s = historiesMap[id]
       if (s && s.length) start = Math.min(start, s[0].t)
     }
-    if (!Number.isFinite(start)) start = now - 24 * 60 * 60 * 1000
+
+    // If we have no real history for any coin (or provider fell back to synth),
+    // do NOT generate a tiny 2-point series (that becomes the diagonal line after live override).
+    if (!Number.isFinite(start)) return []
   }
+
   const end = now
 
   type Cursor = { priceIdx: number; tradeIdx: number; qty: number }
@@ -209,6 +230,157 @@ function buildAlignedPortfolioSeries(
       if (price != null && Number.isFinite(cur.qty)) total += cur.qty * price
     }
     out.push({ t, v: Math.max(0, total) })
+  }
+
+  if (out.length === 1) {
+    const only = out[0]
+    out.unshift({ t: only.t - stepMs, v: only.v })
+  }
+  return out
+}
+/* ── Total P/L (WAC) series: realized + unrealized over time ───────────── */
+type WacCursor = {
+  priceIdx: number
+  tradeIdx: number
+  qtyHeld: number
+  basis: number
+  realized: number
+}
+
+function applyWacTrade(cur: WacCursor, tr: TradeLite) {
+  const qty = Number(tr.quantity ?? 0)
+  const price = Number(tr.price ?? 0)
+  const fee = Number(tr.fee ?? 0)
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price)) return
+
+  if (tr.side === 'buy') {
+    cur.basis += qty * price + (Number.isFinite(fee) ? fee : 0)
+    cur.qtyHeld += qty
+    return
+  }
+
+  // sell
+  const sellQty = Math.min(qty, Math.max(0, cur.qtyHeld))
+  if (sellQty <= 0) return
+
+  const avgCost = cur.qtyHeld > 0 ? cur.basis / cur.qtyHeld : 0
+  cur.realized += sellQty * (price - avgCost) - (Number.isFinite(fee) ? fee : 0)
+  cur.basis -= sellQty * avgCost
+  cur.qtyHeld -= sellQty
+
+  if (cur.qtyHeld <= 1e-12) {
+    cur.qtyHeld = 0
+    cur.basis = 0
+  }
+}
+
+function computePortfolioCostBasisAt(
+  coinIds: string[],
+  tradesByCoin: Map<string, TradeLite[]>,
+  atMs: number
+): number {
+  let total = 0
+  for (const id of coinIds) {
+    const trades = tradesByCoin.get(id) ?? []
+    const cur: WacCursor = { priceIdx: 0, tradeIdx: 0, qtyHeld: 0, basis: 0, realized: 0 }
+    while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= atMs) {
+      applyWacTrade(cur, trades[cur.tradeIdx++])
+    }
+    total += cur.basis
+  }
+  return total
+}
+
+function buildAlignedPortfolioPLSeries(
+  coinIds: string[],
+  historiesMap: Record<string, Point[]>,
+  tradesByCoin: Map<string, TradeLite[]>,
+  windowStart: number | null,
+  stepMs: number,
+  livePricesById?: Record<string, number>
+): Point[] {
+  const now = Date.now()
+
+  // Choose the start of the window
+  let start = windowStart ?? Number.POSITIVE_INFINITY
+  if (windowStart == null) {
+    for (const id of coinIds) {
+      const s = historiesMap[id]
+      if (s && s.length) start = Math.min(start, s[0].t)
+    }
+
+    // Same guard as value mode: don't render a fake/degenerate Max series.
+    if (!Number.isFinite(start)) return []
+  }
+
+  const end = now
+
+  const cursors = new Map<string, WacCursor>()
+  const seriesById = new Map<string, Point[]>()
+
+  for (const id of coinIds) {
+    const series = (historiesMap[id] ?? []).slice().sort((a, b) => a.t - b.t)
+    seriesById.set(id, series)
+
+    const trades = tradesByCoin.get(id) ?? []
+    const cur: WacCursor = { priceIdx: 0, tradeIdx: 0, qtyHeld: 0, basis: 0, realized: 0 }
+
+    // WAC state at window start
+    while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= start) {
+      applyWacTrade(cur, trades[cur.tradeIdx++])
+    }
+
+    // price cursor at/just before start
+    if (series.length) {
+      while (cur.priceIdx + 1 < series.length && series[cur.priceIdx + 1].t <= start) cur.priceIdx++
+    }
+    cursors.set(id, cur)
+  }
+
+  function priceAt(series: Point[], idx: number, t: number): { price: number | null; idx: number } {
+    const n = series.length
+    if (!n) return { price: null, idx }
+    while (idx + 1 < n && series[idx + 1].t <= t) idx++
+    if (t <= series[0].t) return { price: series[0].v, idx: 0 }
+    if (t >= series[n - 1].t) return { price: series[n - 1].v, idx: n - 1 }
+    const a = series[idx], b = series[idx + 1]
+    if (!a || !b) return { price: a?.v ?? null, idx }
+    const span = b.t - a.t
+    if (span <= 0) return { price: a.v, idx }
+    const ratio = (t - a.t) / span
+    return { price: a.v + (b.v - a.v) * ratio, idx }
+  }
+
+  const out: Point[] = []
+  for (let t = start; t <= end; t += stepMs) {
+    let totalPL = 0
+
+    for (const id of coinIds) {
+      const trades = tradesByCoin.get(id) ?? []
+      const cur = cursors.get(id)
+      const series = seriesById.get(id) ?? []
+      if (!cur) continue
+
+      while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= t) {
+        applyWacTrade(cur, trades[cur.tradeIdx++])
+      }
+
+      let price: number | null = null
+      if (t === end && livePricesById && Number.isFinite(livePricesById[id])) {
+        price = Number(livePricesById[id])
+      } else {
+        const r = priceAt(series, cur.priceIdx, t)
+        price = r.price
+        cur.priceIdx = r.idx
+      }
+      if (price == null) continue
+
+      const avgCost = cur.qtyHeld > 0 ? cur.basis / cur.qtyHeld : 0
+      const unrealized = cur.qtyHeld * (price - avgCost)
+      totalPL += cur.realized + unrealized
+    }
+
+    out.push({ t, v: totalPL })
   }
 
   if (out.length === 1) {
@@ -287,7 +459,31 @@ function ScrollingNumericText({ text }: { text: string }) {
 export default function Page() {
   const { user } = useUser()
   const [tf, setTf] = useState<Timeframe>('30d')
+  const STORAGE_KEY_TOTAL_PL = 'lg1.dashboard.showTotalPL'
+  const [showTotalPL, setShowTotalPL] = useState(false)
 
+
+  // On mount: load saved preference
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_TOTAL_PL)
+      if (raw === '1') setShowTotalPL(true)
+      if (raw === '0') setShowTotalPL(false)
+    } catch {
+      // fail-soft (private mode / blocked storage)
+    }
+  }, [])
+
+  // Whenever it changes: persist preference
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_TOTAL_PL, showTotalPL ? '1' : '0')
+    } catch {
+      // fail-soft
+    }
+  }, [showTotalPL])
+
+  
   // Trades (all-time) — fail-soft + consistent options
   const { data: trades } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
@@ -357,6 +553,28 @@ export default function Page() {
     }
     return m
   }, [trades])
+const tradesByCoin = useMemo(() => {
+  const m = new Map<string, TradeLite[]>()
+  for (const tr of (trades ?? [])) {
+    if (!m.has(tr.coingecko_id)) m.set(tr.coingecko_id, [])
+    m.get(tr.coingecko_id)!.push(tr)
+  }
+  for (const [id, arr] of m.entries()) {
+    arr.sort((a, b) => new Date(a.trade_time).getTime() - new Date(b.trade_time).getTime())
+    m.set(id, arr)
+  }
+  return m
+}, [trades])
+  // First transaction timestamp (used to anchor MAX)
+  const firstTradeMs = useMemo<number | null>(() => {
+    if (!trades || trades.length === 0) return null
+    let min = Number.POSITIVE_INFINITY
+    for (const tr of trades) {
+      const t = new Date(tr.trade_time).getTime()
+      if (Number.isFinite(t)) min = Math.min(min, t)
+    }
+    return Number.isFinite(min) ? min : null
+  }, [trades])
 
   // TF-dependent histories for the chart series — robust key + keepPreviousData
    // Make history polling environment-aware to avoid hammering CoinGecko in dev.
@@ -373,7 +591,7 @@ export default function Page() {
 
   const historyRevalidateOnFocus = isDev ? false : tf === '24h'
 
-   const daysParam = useMemo(() => daysParamFor(tf), [tf])
+const daysParam = useMemo(() => daysParamFor(tf, firstTradeMs), [tf, firstTradeMs])
 
   const { data: historiesMap } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParam] : null,
@@ -400,25 +618,42 @@ export default function Page() {
       dedupingInterval: 10_000,
     }
   )
+const livePricesById = useMemo<Record<string, number>>(() => {
+  if (!historiesMapLive || coinIds.length === 0) return {}
+  const out: Record<string, number> = {}
+  for (const id of coinIds) {
+    const series = historiesMapLive[id] ?? []
+    const last = series.length ? series[series.length - 1].v : null
+    if (last != null && Number.isFinite(last)) out[id] = last
+  }
+  return out
+}, [historiesMapLive, coinIds.join(',')])
 
-  const aggregated: Point[] = useMemo(() => {
-    if (!historiesMap || !trades || coinIds.length === 0) return []
-    const windowStart = rangeStartFor(tf)
-    const step = stepMsFor(tf)
+const aggregated: Point[] = useMemo(() => {
+  if (!historiesMap || !trades || coinIds.length === 0) return []
+const windowStart = rangeStartFor(tf, firstTradeMs)
+  const step = stepMsFor(tf)
 
-    const tradesByCoin = new Map<string, TradeLite[]>()
-    for (const t of (trades ?? [])) {
-      if (!tradesByCoin.has(t.coingecko_id)) tradesByCoin.set(t.coingecko_id, [])
-      tradesByCoin.get(t.coingecko_id)!.push(t)
-    }
+  let series = buildAlignedPortfolioSeries(coinIds, historiesMap, tradesByCoin, windowStart, step)
+  if (tf === 'YTD') {
+    const ytd = startOfYTD()
+    series = series.filter(p => p.t >= ytd)
+  }
+  return series
+}, [historiesMap, trades, coinIds.join(','), tf, tradesByCoin, firstTradeMs])
+const totalPLSeries: Point[] = useMemo(() => {
+  if (!historiesMap || !trades || coinIds.length === 0) return []
+const windowStart = rangeStartFor(tf, firstTradeMs)
 
-    let series = buildAlignedPortfolioSeries(coinIds, historiesMap, tradesByCoin, windowStart, step)
-    if (tf === 'YTD') {
-      const ytd = startOfYTD()
-      series = series.filter(p => p.t >= ytd)
-    }
-    return series
-  }, [historiesMap, trades, coinIds.join(','), tf])
+  const step = stepMsFor(tf)
+
+  let series = buildAlignedPortfolioPLSeries(coinIds, historiesMap, tradesByCoin, windowStart, step, livePricesById)
+  if (tf === 'YTD') {
+    const ytd = startOfYTD()
+    series = series.filter(p => p.t >= ytd)
+  }
+  return series
+}, [historiesMap, trades, coinIds.join(','), tf, tradesByCoin, livePricesById, firstTradeMs])
 
   // Live, timeframe-invariant total portfolio value
   const liveValue = useMemo(() => {
@@ -477,16 +712,51 @@ export default function Page() {
 
     return { totalProfit: realized + unrealized, realizedProfit: realized, unrealizedProfit: unrealized }
   }, [trades, historiesMapLive])
+const chartSeries: Point[] = useMemo(() => {
+  const base = showTotalPL ? totalPLSeries : aggregated
+  if (!base || base.length === 0) return []
+  const out = base.slice()
+  const lastIdx = out.length - 1
 
-  // Timeframe performance (from current aggregated series)
-  const { delta, pct } = useMemo(() => {
-    if (!aggregated || aggregated.length < 2) return { delta: 0, pct: 0 }
-    const first = aggregated[0].v
-    const last = aggregated[aggregated.length - 1].v
-    const d = last - first
+  // Keep terminal point “current” for both modes:
+  // - Value mode: force last point to liveValue
+  // - P/L mode: force last point to totalProfit (same as KPI)
+  out[lastIdx] = {
+    ...out[lastIdx],
+    v: showTotalPL ? totalProfit : liveValue,
+  }
+
+  return out
+}, [showTotalPL, totalPLSeries, aggregated, totalProfit, liveValue])
+
+  // Timeframe performance for the currently selected chart series
+const { delta, pct } = useMemo(() => {
+  if (!chartSeries || chartSeries.length < 2) return { delta: 0, pct: 0 }
+
+  const firstPoint = chartSeries[0]
+  const lastPoint = chartSeries[chartSeries.length - 1]
+
+  const first = firstPoint.v
+  const last = lastPoint.v
+  const d = last - first
+
+  // VALUE mode (toggle OFF): percent change in portfolio VALUE over the window.
+  // This is intentionally "value change" (can include buy jumps) because the chart is Value.
+  if (!showTotalPL) {
     const p = first > 0 ? (d / first) * 100 : 0
     return { delta: d, pct: p }
-  }, [aggregated])
+  }
+
+  // TOTAL P/L mode (toggle ON): percent change in total P/L over the window,
+  // scaled by capital deployed over that window (avoid distortions when you add/remove capital).
+  const basisStart = computePortfolioCostBasisAt(coinIds, tradesByCoin, firstPoint.t)
+  const basisEnd = computePortfolioCostBasisAt(coinIds, tradesByCoin, lastPoint.t)
+  const denom = Math.max(basisStart, basisEnd)
+
+  const p = denom > 0 ? (d / denom) * 100 : 0
+  return { delta: d, pct: p }
+}, [chartSeries, showTotalPL, coinIds.join(','), tradesByCoin])
+
 
   const pctAbsText = Math.abs(pct).toFixed(2)
   const deltaDigitsOnly = Math.abs(delta).toFixed(2)
@@ -565,13 +835,31 @@ return (
                 <span>)</span>
               </div>
 
-              {/* Timeframe selector: leave a small gap from the right edge */}
-              <div className="ml-auto -mr-0.5">
-                <WindowTabs
-                  value={TF_TO_WINDOW[tf]}
-                  onChange={(win) => setTf(WINDOW_TO_TF[win])}
-                />
-              </div>
+{/* Chart mode + timeframe selector */}
+<div className="ml-auto -mr-0.5 flex items-center gap-2">
+  <button
+    type="button"
+    aria-pressed={showTotalPL}
+    onClick={() => setShowTotalPL(v => !v)}
+    className={[
+      'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
+      'bg-[rgb(28,29,31)] border',
+      showTotalPL
+        ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
+        : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
+      'focus:ring-0 focus:outline-none'
+    ].join(' ')}
+title="Toggle Total P&L (realized + unrealized vs your cost basis)"
+  >
+    Total P&amp;L
+  </button>
+
+  <WindowTabs
+    value={TF_TO_WINDOW[tf]}
+    onChange={(win) => setTf(WINDOW_TO_TF[win])}
+  />
+</div>
+
 
             </div>
           </div>
@@ -585,7 +873,15 @@ return (
                 Loading portfolio history…
               </div>
             )}
-            <PortfolioGrowthChart data={aggregated} />
+{tf === 'Max' && chartSeries.length === 0 ? (
+  <div className="h-[260px] w-full rounded-xl border border-slate-700/40 bg-[rgb(18,19,21)] flex items-center justify-center">
+    <div className="text-sm text-slate-400">
+      Max history is currently unavailable (price history provider returned limited data).
+    </div>
+  </div>
+) : (
+  <PortfolioGrowthChart data={chartSeries} />
+)}
           </div>
 
         </div>

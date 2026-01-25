@@ -6,7 +6,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianG
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
-import { useHistory } from '@/lib/dataCore'
+import { useHistory, usePrice } from '@/lib/dataCore'
 
 type Props = {
   coingeckoId?: string
@@ -26,8 +26,7 @@ function startOfYTD(): number {
 
 /**
  * Map UI window → NEW data core args (days + interval).
- * - Avoids legacy /api/coin-history entirely.
- * - Uses smaller intervals for short ranges to keep the line smooth.
+ * NOTE: MAX days is overridden in-component to start at the first trade.
  */
 function historySpec(win: WindowKey): { days: number; interval?: Interval; ytdStart?: number } {
   const DAY = 24 * 60 * 60 * 1000
@@ -50,7 +49,7 @@ function historySpec(win: WindowKey): { days: number; interval?: Interval; ytdSt
     case '1y':
       return { days: 365, interval: 'daily' }
     case 'max':
-      // Cap at ~10y to keep payloads stable; adjust if you truly need more.
+      // Placeholder; real MAX starts at first trade (computed in component).
       return { days: 3650, interval: 'daily' }
     default:
       return { days: 30, interval: 'daily' }
@@ -74,20 +73,77 @@ function n(v: any): number {
   return Number.isFinite(x) ? x : 0
 }
 
+/* ------------------------- WAC P/L helpers (coin) -------------------------- */
 
-/* ---------------------------- data fetch routines ------------------------- */
-// (intentionally empty) Price history comes from useHistory() below.
+type TradeRow = {
+  side: string
+  quantity: number
+  price: number
+  fee: number
+  trade_time: string
+}
 
+type WacState = {
+  qtyHeld: number
+  basis: number
+  realized: number
+}
 
+function applyWacTrade(cur: WacState, tr: TradeRow) {
+  const qty = n(tr.quantity)
+  const price = n(tr.price)
+  const fee = n(tr.fee)
+
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price)) return
+
+  const side = String(tr.side ?? '').toLowerCase()
+  const isBuy = side.startsWith('b')
+
+  if (isBuy) {
+    cur.basis += qty * price + (Number.isFinite(fee) ? fee : 0)
+    cur.qtyHeld += qty
+    return
+  }
+
+  // sell
+  const sellQty = Math.min(qty, Math.max(0, cur.qtyHeld))
+  if (sellQty <= 0) return
+
+  const avgCost = cur.qtyHeld > 0 ? cur.basis / cur.qtyHeld : 0
+  cur.realized += sellQty * (price - avgCost) - (Number.isFinite(fee) ? fee : 0)
+  cur.basis -= sellQty * avgCost
+  cur.qtyHeld -= sellQty
+
+  if (cur.qtyHeld <= 1e-12) {
+    cur.qtyHeld = 0
+    cur.basis = 0
+  }
+}
+
+function wacStateAt(trades: TradeRow[], atMs: number): WacState {
+  const cur: WacState = { qtyHeld: 0, basis: 0, realized: 0 }
+  for (const tr of trades) {
+    const t = new Date(tr.trade_time).getTime()
+    if (t <= atMs) applyWacTrade(cur, tr)
+    else break
+  }
+  return cur
+}
+
+function totalPlAtPrice(cur: WacState, price: number): number {
+  if (!Number.isFinite(price)) return cur.realized
+  const avgCost = cur.qtyHeld > 0 ? cur.basis / cur.qtyHeld : 0
+  const unrealized = cur.qtyHeld * (price - avgCost)
+  return cur.realized + unrealized
+}
 
 /* ---------------------------------- UI ------------------------------------ */
 
-// Individually floating timeframe buttons (like the screenshot)
 function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: WindowKey) => void }) {
   const opts: WindowKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
   return (
     <div className="inline-flex flex-wrap items-center gap-2">
-      {opts.map(opt => {
+      {opts.map((opt) => {
         const active = value === opt
         return (
           <button
@@ -98,8 +154,8 @@ function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: Windo
               'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
               'bg-[rgb(28,29,31)] border',
               active
-              ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-              : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
+                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
             ].join(' ')}
           >
             {opt.toUpperCase()}
@@ -110,7 +166,6 @@ function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: Windo
   )
 }
 
-
 function dateFormatter(ts: number, win: WindowKey) {
   const d = new Date(ts)
   if (win === '24h' || win === '7d') {
@@ -120,49 +175,38 @@ function dateFormatter(ts: number, win: WindowKey) {
 }
 
 /* -------------------- Odometer-style percent ticker ---------------------- */
-/**
- * Per-digit scroll-wheel animation for a fixed "##.##%" format.
- * - No external libs or CSS files.
- * - All digits use tabular figures to prevent layout shift.
- * - Only the ticker’s rendering is changed; all surrounding UI/logic untouched.
- */
+
 function PercentTicker({ value }: { value: number }) {
   if (!Number.isFinite(value)) {
     return <span className="tabular-nums">--.--%</span>
   }
 
-  // We render a fixed 2-decimal string without sign (color outside indicates +/-)
   const target = useMemo(() => {
-    // Clamp to a reasonable range to avoid absurd strings
     const v = Math.max(-9999.99, Math.min(9999.99, value))
     const abs = Math.abs(v)
-    // Always at least one leading digit before decimal
     const s = abs.toFixed(2) + '%'
     return s
   }, [value])
 
-  // split into chars; digits become wheels, others are static chars
   const chars = target.split('')
 
   return (
-      <span className="inline-flex items-center gap-0.5 align-middle tabular-nums">    
+    <span className="inline-flex items-center gap-0.5 align-middle tabular-nums">
       {chars.map((ch, i) =>
         /\d/.test(ch) ? (
           <DigitWheel key={i} digit={Number(ch)} direction={value >= 0 ? 'up' : 'down'} />
         ) : (
-          <span key={i} className="tabular-nums leading-none">{ch}</span>
+          <span key={i} className="tabular-nums leading-none">
+            {ch}
+          </span>
         )
       )}
     </span>
   )
 }
 
-/* -------------------- NEW: Odometer-style amount ticker ------------------ */
-/**
- * AmountTicker animates the digits of a currency string, mirroring PercentTicker.
- * - Uses fmtCurrency for locale/currency symbol, then strips the sign (color indicates +/-).
- * - Animates only digits; currency symbol, separators, and decimals remain static.
- */
+/* -------------------- Odometer-style amount ticker ----------------------- */
+
 function AmountTicker({ value }: { value: number }) {
   if (!Number.isFinite(value)) {
     return <span className="tabular-nums">{fmtCurrency(0)}</span>
@@ -181,7 +225,9 @@ function AmountTicker({ value }: { value: number }) {
         /\d/.test(ch) ? (
           <DigitWheel key={i} digit={Number(ch)} direction={value >= 0 ? 'up' : 'down'} />
         ) : (
-          <span key={i} className="leading-none">{ch}</span>
+          <span key={i} className="leading-none">
+            {ch}
+          </span>
         )
       )}
     </span>
@@ -191,25 +237,23 @@ function AmountTicker({ value }: { value: number }) {
 function DigitWheel({
   digit,
   direction,
-  duration = 420, // ms
+  duration = 420,
 }: {
   digit: number
   direction: 'up' | 'down'
   duration?: number
 }) {
   const [curr, setCurr] = useState<number>(digit)
-  const [pos, setPos] = useState<number>(0) // translateY in em units per row
+  const [pos, setPos] = useState<number>(0)
   const prevRef = useRef<number>(digit)
 
-  // Prepare a double sequence to allow smooth wrap (… 0-9 0-9 …)
   const sequence = useMemo(() => {
     const base = Array.from({ length: 10 }, (_, d) => d)
-    return base.concat(base) // length 20
+    return base.concat(base)
   }, [])
 
-  // Find an index window that lets us scroll minimal steps in chosen direction
   const computeIndices = (from: number, to: number) => {
-    const baseIndex = from // treat 0..9 as their indices
+    const baseIndex = from
     const forwardTarget = to >= from ? to : to + 10
     const backwardTarget = to <= from ? to : to - 10
     const deltaUp = Math.abs(forwardTarget - baseIndex)
@@ -222,20 +266,14 @@ function DigitWheel({
     const prev = prevRef.current
     if (prev === digit) return
 
-    // compute minimal scroll in requested direction
     const { start, end } = computeIndices(prev, digit)
-
-    // Set starting position (translateY in em; each row = 1em height)
-    // Our visible window shows index range [start, start+…], so top is -start
     setPos(-start)
 
-    // next paint -> animate to end
     const raf = requestAnimationFrame(() => {
       setPos(-end)
     })
 
     const t = setTimeout(() => {
-      // after animation, normalize back into 0..9 space
       prevRef.current = digit
       setCurr(digit)
       setPos(-digit)
@@ -248,7 +286,6 @@ function DigitWheel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [digit, direction, duration])
 
-  // Initial mount align
   useEffect(() => {
     setCurr(digit)
     prevRef.current = digit
@@ -256,12 +293,8 @@ function DigitWheel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Build rows like 0..9 0..9 to allow wrapping transitions
   return (
-    <span
-      className="relative inline-block h-[1em] overflow-hidden align-middle"
-      style={{ lineHeight: '1em', width: '0.62em' }} // narrow width for monospace-like feel
-    >
+    <span className="relative inline-block h-[1em] overflow-hidden align-middle" style={{ lineHeight: '1em', width: '0.62em' }}>
       <span
         className="flex flex-col tabular-nums leading-none"
         style={{
@@ -271,7 +304,9 @@ function DigitWheel({
         }}
       >
         {sequence.map((d, idx) => (
-          <span key={idx} className="leading-none">{d}</span>
+          <span key={idx} className="leading-none">
+            {d}
+          </span>
         ))}
       </span>
     </span>
@@ -280,7 +315,6 @@ function DigitWheel({
 
 /* ------------------------------ main component --------------------------- */
 
-// --- Custom grey tooltip (sharp corners, price top, date bottom) ---
 function CustomTooltip({
   active,
   label,
@@ -294,48 +328,65 @@ function CustomTooltip({
 }) {
   if (!active || !payload || !payload.length) return null
 
-  // Prefer explicit 'price' from payload; otherwise fallback to the first entry
-  const priceEntry = payload.find(p => p && p.name === 'price') || payload[0]
-  const priceNum = Number(priceEntry?.value)
-  const priceText = Number.isFinite(priceNum) ? fmtCurrency(priceNum) : '--'
+  // We plot "value" (either coin value OR total P/L depending on toggle).
+  const entry = payload[0]
+  const vNum = Number(entry?.value)
+  const vText = Number.isFinite(vNum) ? fmtCurrency(vNum) : '--'
 
   const dateText = dateFormatter(Number(label), win)
 
   return (
     <div
       style={{
-        background: 'rgb(28,29,31)',           // grey background
-        border: '1px solid rgb(55,56,57)',     // subtle grey border
-        borderRadius: 6,                       // sharper corners
+        background: 'rgb(28,29,31)',
+        border: '1px solid rgb(55,56,57)',
+        borderRadius: 6,
         padding: '12px 16px',
         minWidth: '180px',
-        textAlign: 'center',        
+        textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'rgb(225,225,225)' }}>
-        {priceText}
-      </div>
-      <div style={{ marginTop: 6, fontSize: 13, color: 'rgb(160,161,162)' }}>
-        {dateText}
-      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: 'rgb(225,225,225)' }}>{vText}</div>
+      <div style={{ marginTop: 6, fontSize: 13, color: 'rgb(160,161,162)' }}>{dateText}</div>
     </div>
   )
 }
 
-
 export default function CoinValueChart({ coingeckoId, id }: Props) {
   const coinId = coingeckoId ?? id!
   const { user, loading } = useUser()
+
   const [win, setWin] = useState<WindowKey>('30d')
 
-  // ---- Fetch trades (for qty over time)
-  type TradeRow = { side: string; quantity: number; trade_time: string }
+  // Persisted toggle (same behavior as dashboard)
+  const STORAGE_KEY_TOTAL_PL = 'lg1.coinChart.showTotalPL'
+  const [showTotalPL, setShowTotalPL] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_TOTAL_PL)
+      if (raw === '1') setShowTotalPL(true)
+      if (raw === '0') setShowTotalPL(false)
+    } catch {
+      // fail-soft
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_TOTAL_PL, showTotalPL ? '1' : '0')
+    } catch {
+      // fail-soft
+    }
+  }, [showTotalPL])
+
+  // ---- Fetch trades (needed for qty + WAC P/L)
   const { data: trades } = useSWR<TradeRow[]>(
-    !loading && user ? ['value-chart/trades', user.id, coinId] : null,
+    !loading && user ? ['coin-chart/trades', user.id, coinId] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('trades')
-        .select('side,quantity,trade_time')
+        .select('side,quantity,price,fee,trade_time')
         .eq('user_id', user!.id)
         .eq('coingecko_id', coinId)
         .order('trade_time', { ascending: true })
@@ -345,16 +396,21 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     { refreshInterval: 60_000 }
   )
 
-  // Precompute qty steps over time (step function)
+  const firstTradeMs = useMemo(() => {
+    if (!trades || trades.length === 0) return null
+    const t0 = new Date(trades[0].trade_time).getTime()
+    return Number.isFinite(t0) ? t0 : null
+  }, [trades])
+
+  // Precompute qty steps over time (step function) for VALUE mode
   const qtySteps = useMemo(() => {
     const steps: { t: number; qty: number }[] = []
     let running = 0
-    for (const tr of (trades ?? [])) {
+    for (const tr of trades ?? []) {
       const t = new Date(tr.trade_time).getTime()
       const q = n(tr.quantity)
       const isBuy = String(tr.side ?? '').toLowerCase().startsWith('b')
       running += isBuy ? q : -q
-      // collapse multiple trades at the same timestamp
       if (steps.length && steps[steps.length - 1].t === t) {
         steps[steps.length - 1].qty = running
       } else {
@@ -364,18 +420,41 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     return steps
   }, [trades])
 
+  const currentQty = useMemo(() => {
+    if (!qtySteps.length) return 0
+    return qtySteps[qtySteps.length - 1].qty
+  }, [qtySteps])
+
   // Price history for the selected window (NEW data core: /api/price-history)
   const spec = useMemo(() => historySpec(win), [win])
 
+  // MAX: start at first transaction (no 10y lookback)
+  const daysArg = useMemo(() => {
+    const DAY = 24 * 60 * 60 * 1000
+    if (win !== 'max') return spec.days
+    if (firstTradeMs == null) return 365 // safe fallback when no trades
+    const days = Math.max(1, Math.ceil((Date.now() - firstTradeMs) / DAY) + 1)
+    return Math.min(3650, days)
+  }, [win, spec.days, firstTradeMs])
+
+  const intervalArg = useMemo<Interval | undefined>(() => {
+    if (win === 'max') return 'daily'
+    return spec.interval
+  }, [win, spec.interval])
+
   const { points: histRaw, isLoading: historyLoading } = useHistory(
     coinId ? coinId : null,
-    spec.days,
-    spec.interval,
+    daysArg,
+    intervalArg,
     'USD',
     { refreshInterval: 60_000 }
   )
 
-  // Filter YTD on client if needed (defensive) + normalize ordering/dupes
+  // Live price (NEW data core)
+  const { row: liveRow } = usePrice(coinId ? coinId : null, 'USD', { refreshInterval: 60_000 })
+  const livePrice = Number(liveRow?.price)
+
+  // Normalize history: order/dupes + YTD filter; guard degenerate 2-pt synth series
   const history = useMemo(() => {
     const arr = Array.isArray(histRaw) ? histRaw : []
     const norm = arr
@@ -384,62 +463,138 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
       .sort((a: any, b: any) => a.t - b.t)
 
     const deduped = dedupByTime(norm)
-    if (spec.ytdStart != null) return deduped.filter(pt => pt.t >= spec.ytdStart!)
+
+    // If provider fell back to a synthetic 2-point series, treat as unusable (prevents MAX artifacts).
+    if (win === 'max' && deduped.length <= 2) return []
+
+    if (spec.ytdStart != null) return deduped.filter((pt) => pt.t >= spec.ytdStart!)
     return deduped
-  }, [histRaw, spec.ytdStart])
+  }, [histRaw, spec.ytdStart, win])
 
+  // VALUE series: qty_at_t * price_t
+  type SeriesPoint = { t: number; value: number }
 
-  // Compose the value series: at each price timestamp, multiply by qty at that time
-  type SeriesPoint = { t: number; price: number; value: number }
-  const series = useMemo<SeriesPoint[]>(() => {
+  const valueSeries = useMemo<SeriesPoint[]>(() => {
     const hist = history ?? []
     if (!hist.length) return []
-    if (!qtySteps.length) {
-      // No trades yet -> value is always 0
-      return hist.map(h => ({ t: h.t, price: h.p, value: 0 }))
-    }
-    // helper: find qty at time t (last step <= t)
-    const times = qtySteps.map(s => s.t)
+    if (!qtySteps.length) return hist.map((h) => ({ t: h.t, value: 0 }))
+
+    const times = qtySteps.map((s) => s.t)
+
     function qtyAt(t: number) {
-      // binary search
-      let lo = 0, hi = times.length - 1, ansIdx = -1
+      let lo = 0,
+        hi = times.length - 1,
+        ansIdx = -1
       while (lo <= hi) {
         const mid = (lo + hi) >> 1
-        if (times[mid] <= t) { ansIdx = mid; lo = mid + 1 } else { hi = mid - 1 }
+        if (times[mid] <= t) {
+          ansIdx = mid
+          lo = mid + 1
+        } else {
+          hi = mid - 1
+        }
       }
       return ansIdx >= 0 ? qtySteps[ansIdx].qty : 0
     }
+
     const out: SeriesPoint[] = []
     for (const h of hist) {
       const qty = qtyAt(h.t)
-      out.push({ t: h.t, price: h.p, value: qty * h.p })
+      out.push({ t: h.t, value: qty * h.p })
     }
     return out
   }, [history, qtySteps])
 
-  // Compute performance vs first non-zero value in-window
-  const perf = useMemo(() => {
-    const first = series.find(d => d.value !== 0)?.value
-    const last = series.length ? series[series.length - 1].value : undefined
-    if (!Number.isFinite(first) || !Number.isFinite(last)) return undefined
-    if (first === 0) return undefined
-    return (last! - first!) / Math.abs(first!)
-  }, [series])
+  // TOTAL P/L series (WAC): realized + unrealized at each price timestamp
+  const plSeries = useMemo<SeriesPoint[]>(() => {
+    const hist = history ?? []
+    if (!hist.length) return []
+    const tds = trades ?? []
+    if (!tds.length) return hist.map((h) => ({ t: h.t, value: 0 }))
 
-  // absolute $ change for the same window
-  const perfDelta = useMemo(() => {
-    const first = series.find(d => d.value !== 0)?.value
-    const last = series.length ? series[series.length - 1].value : undefined
-    if (!Number.isFinite(first) || !Number.isFinite(last)) return undefined
-    return (last as number) - (first as number)
-  }, [series])
+    const cur: WacState = { qtyHeld: 0, basis: 0, realized: 0 }
+    let tradeIdx = 0
 
-// isShortWin removed (unused)
+    const out: SeriesPoint[] = []
+    for (const h of hist) {
+      const t = h.t
+      while (tradeIdx < tds.length && new Date(tds[tradeIdx].trade_time).getTime() <= t) {
+        applyWacTrade(cur, tds[tradeIdx])
+        tradeIdx++
+      }
+      out.push({ t, value: totalPlAtPrice(cur, h.p) })
+    }
+    return out
+  }, [history, trades])
+
+  // Live overrides for terminal point
+  const liveValue = useMemo(() => {
+    if (!Number.isFinite(livePrice)) return null
+    return currentQty * livePrice
+  }, [currentQty, livePrice])
+
+  const liveTotalPL = useMemo(() => {
+    if (!Number.isFinite(livePrice)) return null
+    const tds = trades ?? []
+    if (!tds.length) return 0
+    const cur = wacStateAt(tds, Date.now())
+    return totalPlAtPrice(cur, livePrice)
+  }, [trades, livePrice])
+
+  const chartSeries = useMemo<SeriesPoint[]>(() => {
+    const base = showTotalPL ? plSeries : valueSeries
+    if (!base || base.length === 0) return []
+
+    const out = base.slice()
+    const lastIdx = out.length - 1
+
+    if (!showTotalPL && liveValue != null && Number.isFinite(liveValue)) {
+      out[lastIdx] = { ...out[lastIdx], value: liveValue }
+    }
+
+    if (showTotalPL && liveTotalPL != null && Number.isFinite(liveTotalPL)) {
+      out[lastIdx] = { ...out[lastIdx], value: liveTotalPL }
+    }
+
+    return out
+  }, [showTotalPL, plSeries, valueSeries, liveValue, liveTotalPL])
+
+  // % and $ deltas:
+  // - Value mode: percent change in VALUE over the window (can include buy jumps; that's expected in Value mode).
+  // - P/L mode: percent change vs cost basis at window start (capital at risk), not vs P/L baseline.
+  const { perfPct, perfDelta } = useMemo(() => {
+    if (!chartSeries || chartSeries.length < 2) return { perfPct: undefined as number | undefined, perfDelta: undefined as number | undefined }
+
+    if (!showTotalPL) {
+      // anchor at first non-zero value in-window to avoid divide-by-zero before first buy
+      const firstIdx = chartSeries.findIndex((d) => Number.isFinite(d.value) && d.value !== 0)
+      if (firstIdx < 0) return { perfPct: undefined, perfDelta: undefined }
+      const first = chartSeries[firstIdx].value
+      const last = chartSeries[chartSeries.length - 1].value
+      const d = last - first
+      const p = first !== 0 ? (d / Math.abs(first)) * 100 : undefined
+      return { perfPct: Number.isFinite(p as any) ? (p as number) : undefined, perfDelta: d }
+    }
+
+    // P/L mode: use basis at window start as denominator
+    const startT = chartSeries[0].t
+    const endT = chartSeries[chartSeries.length - 1].t
+    const tds = trades ?? []
+    const basisStart = wacStateAt(tds, startT).basis
+    const denom = basisStart > 0 ? basisStart : wacStateAt(tds, endT).basis
+
+    const first = chartSeries[0].value
+    const last = chartSeries[chartSeries.length - 1].value
+    const d = last - first
+    const p = denom > 0 ? (d / denom) * 100 : undefined
+
+    return { perfPct: Number.isFinite(p as any) ? (p as number) : undefined, perfDelta: d }
+  }, [chartSeries, showTotalPL, trades])
 
   // Y-axis domain padding (avoid flat line)
   const yDomain = useMemo<(number | 'auto')[]>(() => {
-    if (series.length === 0) return ['auto', 'auto']
-    const values = series.map(d => Number(d.value)).filter(Number.isFinite)
+    if (chartSeries.length === 0) return ['auto', 'auto']
+    const values = chartSeries.map((d) => Number(d.value)).filter(Number.isFinite)
     if (!values.length) return ['auto', 'auto']
     let min = Math.min(...values)
     let max = Math.max(...values)
@@ -450,43 +605,67 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
     const pad = 0.08
     const range = max - min
     return [min - range * pad, max + range * pad]
-  }, [series])
+  }, [chartSeries])
 
-   // Unique gradient id so other charts can't override our fill on client navigations
   const gradientId = useMemo(() => 'cvfill-' + Math.random().toString(36).slice(2), [])
 
+  const titleText = showTotalPL ? 'Total P&L' : 'Value'
 
   return (
-<div className="rounded-2xl border border-[rgb(28,29,31)] bg-[rgb(28,29,31)] px-3 py-4 md:px-4 md:py-5">
-
+    <div className="rounded-2xl border border-[rgb(28,29,31)] bg-[rgb(28,29,31)] px-3 py-4 md:px-4 md:py-5">
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-      <div className="flex flex-col items-start gap-0.5">
-<div className="text-xl md:text-2xl font-semibold leading-tight text-slate-200">P&L</div>
-        {typeof perf === 'number' && (
-  <span className="text-s md:text-sm font-medium text-[rgb(87,181,66)] flex items-baseline gap-2 tabular-nums">
-    <span className="tabular-nums">
-      <PercentTicker value={perf * 100} />
-    </span>
-    {typeof perfDelta === 'number' && (
-      <span className="tabular-nums">
-        (<AmountTicker value={perfDelta} />)
-      </span>
-    )}
-  </span>
-)}
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="text-xl md:text-2xl font-semibold leading-tight text-slate-200">{titleText}</div>
+
+          {typeof perfPct === 'number' && typeof perfDelta === 'number' && (
+            <span
+              className={[
+                'text-s md:text-sm font-medium flex items-baseline gap-2 tabular-nums',
+                perfPct >= 0 ? 'text-[rgb(87,181,66)]' : 'text-[rgb(214,66,78)]',
+              ].join(' ')}
+            >
+              <span className="tabular-nums">
+                <PercentTicker value={perfPct} />
+              </span>
+              <span className="tabular-nums">
+                (<AmountTicker value={perfDelta} />)
+              </span>
+            </span>
+          )}
         </div>
-        <WindowTabs value={win} onChange={setWin} />
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={showTotalPL}
+            onClick={() => setShowTotalPL((v) => !v)}
+            className={[
+              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
+              'bg-[rgb(28,29,31)] border',
+              showTotalPL
+                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
+                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
+              'focus:ring-0 focus:outline-none',
+            ].join(' ')}
+            title="Toggle Total P&L (realized + unrealized vs your cost basis)"
+          >
+            Total P&amp;L
+          </button>
+
+          <WindowTabs value={win} onChange={setWin} />
+        </div>
       </div>
 
       <div className="h-[300px] w-full md:h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={series}>
+          <AreaChart data={chartSeries}>
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="rgb(168 157 250)" stopOpacity={0.35} />
                 <stop offset="100%" stopColor="rgb(168 157 250)" stopOpacity={0.02} />
               </linearGradient>
             </defs>
+
             <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.15} />
             <XAxis
               dataKey="t"
@@ -505,14 +684,14 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
               width={64}
               domain={yDomain as any}
             />
-  <Tooltip
-  cursor={false}
-  wrapperStyle={{ outline: 'none' }}
-  content={(tpProps) => <CustomTooltip {...tpProps} win={win} />}
-/>
 
+            <Tooltip
+              cursor={false}
+              wrapperStyle={{ outline: 'none' }}
+              content={(tpProps) => <CustomTooltip {...tpProps} win={win} />}
+            />
 
-                    <Area
+            <Area
               type="monotone"
               dataKey="value"
               stroke="rgb(139 128 219)"
@@ -524,25 +703,21 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
               animationBegin={0}
               animationEasing="ease-in-out"
             />
-
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
-        {/* Empty/zero states */}
-      {!historyLoading && !history?.length && (
+      {!historyLoading && (!history || history.length === 0) && (
         <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
           No price history available for this window.
         </div>
       )}
-
 
       {history?.length > 0 && (!trades || trades.length === 0) && (
         <div className="mt-2 text-[11px] text-slate-400">
           No trades yet for this coin. The balance line will appear after your first buy.
         </div>
       )}
-
     </div>
   )
 }
