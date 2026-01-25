@@ -528,7 +528,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
     }
 
     if (side === 'buy') {
-      if (!activeBuy) { setErr('No active Buy Planner for this coin. Create one with Save New.'); setSaving(false); return }
+if (!activeBuy) { setErr('Cannot save trade: no active plan available for this coin.'); setSaving(false); return }
       const payload = {
         user_id: user.id, coingecko_id: id, side: 'buy',
         price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
@@ -630,16 +630,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
       {err && <div className="text-[12px] text-rose-400">{err}</div>}
       {ok && <div className="text-[12px] text-emerald-400">{ok}</div>}
 
-      {noActiveBuy && (
-        <div className="text-[11px] rounded-md border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-2 py-1.5">
-          No active Buy Planner for this coin. Go to <a className="underline" href="/planner">Planner</a> and click <span className="font-medium">Save New</span>.
-        </div>
-      )}
-      {noActiveSell && (
-        <div className="text-[11px] rounded-md border border-slate-700/40 bg-slate-800/40 backdrop-blur-[2px] ring-1 ring-slate-600/30 px-2 py-1.5">
-          No active Sell Planner for this coin. Click <span className="font-medium">Save New</span> on the Buy Planner to create a new Sell epoch.
-        </div>
-      )}
+   
 
       {/* Layout row */}
       <div className="grid gap-2 grid-cols-1 md:grid-cols-[10rem_1fr_1fr_10rem_1fr] min-w-0">
@@ -789,7 +780,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
         <div className="grid gap-2 md:grid-cols-8">
                  <div className="md:col-span-5 text-[11px] text-slate-400 leading-snug">
             <div>
-              Sells default to the <span className="font-medium">Active</span> Sell Planner. You can override below.
+              Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
             </div>
 
             {user && (
@@ -855,10 +846,7 @@ const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
         </button>
       </div>
 
-      <p className="text-[11px] text-[rgb(158,159,159)]">
-        BUYs are tagged to the active Buy & Sell planners; SELLs default to the active Sell planner, but you can assign
-        them to any Frozen planner for accurate ladder fills and realized P&L.
-      </p>
+  
     </div>
   )
 }
