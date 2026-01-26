@@ -19,7 +19,7 @@ type ParsedRow = {
 const REQUIRED = ['coingecko_id', 'side', 'price', 'quantity', 'trade_time'] as const
 
 function isRequiredMissing(headers: string[]) {
-  return REQUIRED.filter(h => !headers.includes(h))
+  return REQUIRED.filter((h) => !headers.includes(h))
 }
 
 function parseNumber(v: any): number {
@@ -34,11 +34,11 @@ export default function ImportTrades() {
   const [busy, setBusy] = useState(false)
   const [log, setLog] = useState<string>('')
 
-  const append = (s: string) => setLog(prev => (prev ? prev + '\n' : '') + s)
+  const append = (s: string) => setLog((prev) => (prev ? prev + '\n' : '') + s)
 
   const handleFile = async (file: File) => {
     if (!user) {
-      append('❌ You must be logged in to import trades.')
+      append('Sign in to import trades.')
       return
     }
 
@@ -57,7 +57,7 @@ export default function ImportTrades() {
       const headers = (parsed.meta?.fields ?? []) as string[]
       const missing = isRequiredMissing(headers)
       if (missing.length) {
-        append(`❌ Missing columns: ${missing.join(', ')}`)
+        append(`Missing columns: ${missing.join(', ')}`)
         return
       }
 
@@ -68,7 +68,6 @@ export default function ImportTrades() {
         const side = String(r.side || '').toLowerCase()
         const price = parseNumber(r.price)
         const qty = parseNumber(r.quantity)
-        const fee = r.fee === '' || r.fee == null ? '' : parseNumber(r.fee)
         const t = String(r.trade_time || '').trim()
 
         if (!cid || (side !== 'buy' && side !== 'sell') || !Number.isFinite(price) || !Number.isFinite(qty) || !t) {
@@ -76,11 +75,19 @@ export default function ImportTrades() {
           continue
         }
 
-        // Basic time normalization: allow ISO or "YYYY-MM-DD HH:mm:ss"
+        // Time normalization: allow ISO or anything Date() can parse reasonably
         const dt = new Date(t)
         if (isNaN(dt.getTime())) {
           append(`Skipping row with bad trade_time: ${t}`)
           continue
+        }
+
+        // Fee: optional; if present but not numeric, treat as blank (do not insert NaN)
+        let feeVal: number | '' = ''
+        if (!(r.fee === '' || r.fee == null)) {
+          const nf = parseNumber(r.fee)
+          if (Number.isFinite(nf)) feeVal = nf
+          else append(`Warning: invalid fee "${r.fee}" — treating as blank`)
         }
 
         rows.push({
@@ -88,7 +95,7 @@ export default function ImportTrades() {
           side: side as 'buy' | 'sell',
           price: Number(price),
           quantity: Number(qty),
-          fee: fee === '' ? '' : Number(fee),
+          fee: feeVal,
           trade_time: dt.toISOString(),
           buy_planner_id: String(r.buy_planner_id ?? '').trim(),
           sell_planner_id: String(r.sell_planner_id ?? '').trim(),
@@ -100,10 +107,10 @@ export default function ImportTrades() {
         return
       }
 
-      // NEW: deterministic ordering for ledger safety (time ascending, coin, buys before sells when timestamps tie)
+      // Deterministic ordering for ledger safety (time asc, coin, buys before sells when timestamps tie)
       rows.sort((a, b) => {
-        const t = a.trade_time.localeCompare(b.trade_time)
-        if (t) return t
+        const t1 = a.trade_time.localeCompare(b.trade_time)
+        if (t1) return t1
         const c = a.coingecko_id.localeCompare(b.coingecko_id)
         if (c) return c
         if (a.side === b.side) return 0
@@ -112,13 +119,13 @@ export default function ImportTrades() {
 
       append(`Validated ${rows.length} rows. Inserting…`)
 
-      // Batch inserts (e.g., chunks of 200)
+      // Batch inserts (chunks of 200)
       const BATCH = 200
       let inserted = 0
 
       for (let i = 0; i < rows.length; i += BATCH) {
         const slice = rows.slice(i, i + BATCH)
-        const payload = slice.map(r => ({
+        const payload = slice.map((r) => ({
           user_id: user.id,
           coingecko_id: r.coingecko_id,
           side: r.side,
@@ -132,82 +139,82 @@ export default function ImportTrades() {
 
         const { error } = await supabaseBrowser.from('trades').insert(payload)
         if (error) {
-          append(`❌ Batch insert error (rows ${i + 1}–${i + slice.length}): ${error.message}`)
-          append('Trying row-by-row to identify the first failing record…')
+          append(`Batch insert error (rows ${i + 1}–${i + slice.length}): ${error.message}`)
+          append('Trying row-by-row to find the failing row…')
 
           for (let j = 0; j < payload.length; j++) {
             const rowNum = i + j + 1
             const one = payload[j]
             const { error: eOne } = await supabaseBrowser.from('trades').insert(one)
             if (eOne) {
-              append(`❌ Failed row ${rowNum}: ${eOne.message}`)
+              append(`Failed row ${rowNum}: ${eOne.message}`)
               append(`Row data: ${JSON.stringify(slice[j])}`)
               return
             }
             inserted += 1
-            append(`✅ Inserted ${inserted}/${rows.length}`)
+            append(`Inserted ${inserted}/${rows.length}`)
           }
 
-          // This batch completed row-by-row; continue to next batch.
           continue
         }
 
-        // Batch succeeded
         inserted += payload.length
-        append(`✅ Inserted ${inserted}/${rows.length}`)
+        append(`Inserted ${inserted}/${rows.length}`)
       }
 
-      append('✅ Import complete.')
+      append('Import complete.')
     } catch (e: any) {
-      append(`❌ Import failed: ${e?.message || String(e)}`)
+      append(`Import failed: ${e?.message || String(e)}`)
     } finally {
       setBusy(false)
-      // Reset file input so you can re-import the same file without manual clearing
       if (fileRef.current) fileRef.current.value = ''
     }
   }
 
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
-    if (f) handleFile(f)
+    if (f) void handleFile(f)
   }
 
-    return (
-    <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 p-4 space-y-3 shadow-[inset_0_0_0_1px_rgba(51,65,85,0.35)]">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-base font-medium">Import Trades (CSV)</div>
-          <div className="text-xs text-slate-400">
-            Required columns: <code>coingecko_id, side, price, quantity, trade_time</code>. Optional:{' '}
-            <code>fee, buy_planner_id, sell_planner_id</code>.
+  return (
+    <section className="rounded-2xl bg-[rgb(28,29,31)] ring-1 ring-inset ring-[rgb(41,42,45)]/70 shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
+      <div className="p-4 md:p-5 border-b border-[rgb(41,42,45)]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.00))]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[14px] text-slate-100 font-medium">Import trades (CSV)</div>
+            <div className="mt-1 text-[12px] text-[rgb(163,163,164)]">
+              Required: <code className="text-slate-200/80">coingecko_id, side, price, quantity, trade_time</code>. Optional:{' '}
+              <code className="text-slate-200/80">fee, buy_planner_id, sell_planner_id</code>.
+            </div>
+          </div>
+
+          <div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={onPick}
+              disabled={!user || busy}
+              className="text-[13px] text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-[rgb(18,19,21)]/70 file:px-3 file:py-2.5 file:text-[13px] file:text-slate-100 file:ring-1 file:ring-inset file:ring-[rgb(58,60,66)]/70 hover:file:bg-[rgb(18,19,21)]/90 focus:outline-none"
+            />
           </div>
         </div>
-        <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,text/csv"
-            onChange={onPick}
-            disabled={!user || busy}
-            className="text-sm text-slate-200"
-          />
+      </div>
+
+      <div className="p-4 md:p-5 space-y-4">
+        <div className="rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-[rgb(176,176,178)] mb-2">Console</div>
+          <pre className="text-[12px] text-slate-100/90 whitespace-pre-wrap break-words max-h-56 overflow-auto">{log || '—'}</pre>
         </div>
-      </div>
 
-      <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] p-3">
-        <div className="text-xs text-slate-300 mb-1">Console</div>
-        <pre className="text-xs text-slate-400 whitespace-pre-wrap break-words max-h-56 overflow-auto">
-          {log || '—'}
-        </pre>
-      </div>
-
-      <div className="text-xs text-slate-500">
-        <div className="mb-1">Example header:</div>
-        <pre className="bg-[rgb(42,43,44)] border border-[rgba(255,255,255,0.06)] p-2 rounded">
+        <div className="text-[12px] text-[rgb(140,140,142)]">
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-[rgb(176,176,178)]">Example</div>
+          <pre className="rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-3 text-[12px] text-slate-100/90 overflow-auto">
 coingecko_id,side,price,quantity,fee,trade_time,buy_planner_id,sell_planner_id
 bitcoin,buy,45000,0.01,0.5,2025-09-10T14:23:00Z,,
-        </pre>
+          </pre>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }

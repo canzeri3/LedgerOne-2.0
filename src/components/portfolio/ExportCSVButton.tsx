@@ -16,7 +16,7 @@ function toCsv(rows: any[]): string {
     return s
   }
   const headerLine = headers.map(esc).join(',')
-  const lines = rows.map(r => headers.map(h => esc((r as any)[h])).join(','))
+  const lines = rows.map((r) => headers.map((h) => esc((r as any)[h])).join(','))
   return [headerLine, ...lines].join('\n')
 }
 
@@ -38,8 +38,14 @@ export default function ExportCSVButton() {
   const [err, setErr] = useState<string | null>(null)
 
   const run = async () => {
-    if (!user) return
-    setLoading(true); setErr(null)
+    if (!user) {
+      setErr('Sign in to export CSV files')
+      return
+    }
+
+    setLoading(true)
+    setErr(null)
+
     try {
       // ---- Fetch SELL LEVELS first so we can compute counts per planner
       const { data: levels, error: eLevels } = await supabaseBrowser
@@ -51,41 +57,38 @@ export default function ExportCSVButton() {
         .order('level', { ascending: true })
       if (eLevels) throw eLevels
 
-      const levelRows = (levels ?? []).map(l => ({
+      const levelRows = (levels ?? []).map((l: any) => ({
         sell_planner_id: l.sell_planner_id,
         coingecko_id: l.coingecko_id,
         level: l.level,
-        price: Number((l as any).price),
-        rise_pct: (l as any).rise_pct ?? '',
-        sell_pct_of_remaining: (l as any).sell_pct_of_remaining,
+        price: Number(l.price),
+        rise_pct: l.rise_pct ?? '',
+        sell_pct_of_remaining: l.sell_pct_of_remaining,
       }))
 
-      // Build a count map: planner_id -> number of levels
       const countByPlanner = new Map<string, number>()
       for (const lv of levelRows) {
         const k = String(lv.sell_planner_id)
         countByPlanner.set(k, (countByPlanner.get(k) ?? 0) + 1)
       }
 
-      // ---- Fetch SELL PLANNERS (no "levels" column here)
+      // ---- Fetch SELL PLANNERS (keep columns aligned with ExportCSVButtons)
       const { data: planners, error: ePlanners } = await supabaseBrowser
         .from('sell_planners')
-        .select('id,coingecko_id,is_active,avg_lock_price,sell_pct_of_remaining,created_at,frozen_at')
+        .select('id,coingecko_id,is_active,avg_lock_price,created_at,frozen_at')
         .eq('user_id', user.id)
         .order('coingecko_id', { ascending: true })
         .order('created_at', { ascending: true })
       if (ePlanners) throw ePlanners
 
-      const plannerRows = (planners ?? []).map(p => ({
-        id: (p as any).id,
-        coingecko_id: (p as any).coingecko_id,
-        is_active: (p as any).is_active,
-        avg_lock_price: (p as any).avg_lock_price ?? '',
-        sell_pct_of_remaining: (p as any).sell_pct_of_remaining,
-        created_at: (p as any).created_at,
-        frozen_at: (p as any).frozen_at ?? '',
-        // computed from levels table:
-        levels_planned: countByPlanner.get(String((p as any).id)) ?? 0,
+      const plannerRows = (planners ?? []).map((p: any) => ({
+        id: p.id,
+        coingecko_id: p.coingecko_id,
+        is_active: p.is_active,
+        avg_lock_price: p.avg_lock_price ?? '',
+        created_at: p.created_at,
+        frozen_at: p.frozen_at ?? '',
+        levels_planned: countByPlanner.get(String(p.id)) ?? 0,
       }))
 
       // ---- Fetch TRADES
@@ -96,22 +99,26 @@ export default function ExportCSVButton() {
         .order('trade_time', { ascending: true })
       if (eTrades) throw eTrades
 
-      const tradesRows = (trades ?? []).map(t => ({
-        id: (t as any).id,
-        coingecko_id: (t as any).coingecko_id,
-        side: (t as any).side,
-        price: Number((t as any).price),
-        quantity: Number((t as any).quantity),
-        fee: (t as any).fee ?? 0,
-        trade_time: (t as any).trade_time,
-        buy_planner_id: (t as any).buy_planner_id ?? '',
-        sell_planner_id: (t as any).sell_planner_id ?? '',
+      const tradesRows = (trades ?? []).map((t: any) => ({
+        id: t.id,
+        coingecko_id: t.coingecko_id,
+        side: t.side,
+        price: Number(t.price),
+        quantity: Number(t.quantity),
+        fee: t.fee ?? 0,
+        trade_time: t.trade_time,
+        buy_planner_id: t.buy_planner_id ?? '',
+        sell_planner_id: t.sell_planner_id ?? '',
       }))
 
-      // ---- Download CSVs
-      download('trades.csv', toCsv(tradesRows))
-      download('sell_planners.csv', toCsv(plannerRows))
-      download('sell_levels.csv', toCsv(levelRows))
+      if (!tradesRows.length && !plannerRows.length && !levelRows.length) {
+        setErr('Nothing to export yet')
+        return
+      }
+
+      if (tradesRows.length) download('trades.csv', toCsv(tradesRows))
+      if (plannerRows.length) download('sell_planners.csv', toCsv(plannerRows))
+      if (levelRows.length) download('sell_levels.csv', toCsv(levelRows))
     } catch (e: any) {
       setErr(e?.message || 'Export failed')
     } finally {
@@ -124,12 +131,12 @@ export default function ExportCSVButton() {
       <button
         onClick={run}
         disabled={!user || loading}
-        className="rounded-lg border border-[#081427] bg-[#0a162c] px-3 py-2 text-sm hover:bg-[#102448] disabled:opacity-50"
+        className="rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-[13px] text-slate-100 hover:bg-[rgb(18,19,21)]/90 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 disabled:opacity-50 disabled:hover:bg-[rgb(18,19,21)]/70"
       >
-        {loading ? 'Exporting…' : 'Export CSV'}
+        {loading ? 'Preparing…' : 'Download CSV files'}
       </button>
-      {err && <span className="text-xs text-rose-400">{err}</span>}
+
+      {err && <span className="text-[12px] text-rose-300">{err}</span>}
     </div>
   )
 }
-

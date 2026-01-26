@@ -7,7 +7,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 
 type Coin = { coingecko_id: string; symbol: string; name: string }
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function toCsv(rows: any[]): string {
   if (!rows || rows.length === 0) return ''
@@ -21,7 +21,7 @@ function toCsv(rows: any[]): string {
     return s
   }
   const headerLine = headers.map(esc).join(',')
-  const lines = rows.map(r => headers.map(h => esc((r as any)[h])).join(','))
+  const lines = rows.map((r) => headers.map((h) => esc((r as any)[h])).join(','))
   return [headerLine, ...lines].join('\n')
 }
 
@@ -39,7 +39,7 @@ function download(filename: string, text: string) {
 
 export default function ExportCSVButtons() {
   const { user } = useUser()
-  const [loading, setLoading] = useState<'all'|'trades'|'planners'|'levels'|null>(null)
+  const [loading, setLoading] = useState<'all' | 'trades' | 'planners' | 'levels' | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [selectedCid, setSelectedCid] = useState<'ALL' | string>('ALL')
 
@@ -47,17 +47,17 @@ export default function ExportCSVButtons() {
   const { data: coins } = useSWR<Coin[]>('/api/coins', fetcher)
   const coinOptions = useMemo(() => {
     const list = Array.isArray(coins) ? coins.slice() : []
-    // sort by symbol then name for nice UX
     list.sort((a, b) => (a.symbol ?? '').localeCompare(b.symbol ?? '') || (a.name ?? '').localeCompare(b.name ?? ''))
     return list
   }, [coins])
 
-  const scopeLabel = selectedCid === 'ALL'
-    ? 'All coins'
-    : (() => {
-        const c = coinOptions.find(x => x.coingecko_id === selectedCid)
-        return c ? `${(c.symbol || c.coingecko_id).toUpperCase()} — ${c.name}` : selectedCid
-      })()
+  const scopeLabel =
+    selectedCid === 'ALL'
+      ? 'All coins'
+      : (() => {
+          const c = coinOptions.find((x) => x.coingecko_id === selectedCid)
+          return c ? `${(c.symbol || c.coingecko_id).toUpperCase()} — ${c.name}` : selectedCid
+        })()
 
   // ---- Fetch helpers (apply coin filter when selected) ---------------------
   const fetchLevels = async () => {
@@ -102,7 +102,7 @@ export default function ExportCSVButtons() {
       avg_lock_price: p.avg_lock_price ?? '',
       created_at: p.created_at,
       frozen_at: p.frozen_at ?? '',
-      levels_planned: countByPlanner.get(String(p.id)) ?? 0, // computed
+      levels_planned: countByPlanner.get(String(p.id)) ?? 0,
     }))
   }
 
@@ -130,73 +130,32 @@ export default function ExportCSVButtons() {
     }))
   }
 
-  // ---- Single-file handlers -----------------------------------------------
+  const ensureSignedIn = () => {
+    if (!user) {
+      setErr('Sign in to export CSV files')
+      return false
+    }
+    return true
+  }
+
+  const ensureNotEmpty = (rows: any[]) => {
+    if (!rows.length) {
+      setErr('Nothing to export yet')
+      return false
+    }
+    return true
+  }
+
+  // ---- Single-file handlers -------------------------------------------------
   const doLevels = async () => {
-    if (!user) return
-    setErr(null); setLoading('levels')
+    if (!ensureSignedIn()) return
+    setErr(null)
+    setLoading('levels')
     try {
       const levels = await fetchLevels()
+      if (!ensureNotEmpty(levels)) return
       const name = selectedCid === 'ALL' ? 'sell_levels.csv' : `sell_levels_${selectedCid}.csv`
       download(name, toCsv(levels))
-    } catch (e: any) {
-      setErr(e?.message || 'Export sell_levels failed')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  const doPlanners = async () => {
-    if (!user) return
-    setErr(null); setLoading('planners')
-    try {
-      const levels = await fetchLevels()
-      const countByPlanner = new Map<string, number>()
-      for (const lv of levels) {
-        const key = String((lv as any).sell_planner_id)
-        countByPlanner.set(key, (countByPlanner.get(key) ?? 0) + 1)
-      }
-      const planners = await fetchPlanners(countByPlanner)
-      const name = selectedCid === 'ALL' ? 'sell_planners.csv' : `sell_planners_${selectedCid}.csv`
-      download(name, toCsv(planners))
-    } catch (e: any) {
-      setErr(e?.message || 'Export sell_planners failed')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  const doTrades = async () => {
-    if (!user) return
-    setErr(null); setLoading('trades')
-    try {
-      const trades = await fetchTrades()
-      const name = selectedCid === 'ALL' ? 'trades.csv' : `trades_${selectedCid}.csv`
-      download(name, toCsv(trades))
-    } catch (e: any) {
-      setErr(e?.message || 'Export trades failed')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  // ---- All-in-one (may be limited by browser multi-download policy) --------
-  const doAll = async () => {
-    if (!user) return
-    setErr(null); setLoading('all')
-    try {
-      const levels = await fetchLevels()
-      const countByPlanner = new Map<string, number>()
-      for (const lv of levels) {
-        const key = String((lv as any).sell_planner_id)
-        countByPlanner.set(key, (countByPlanner.get(key) ?? 0) + 1)
-      }
-      const planners = await fetchPlanners(countByPlanner)
-      const trades = await fetchTrades()
-
-      const suffix = selectedCid === 'ALL' ? '' : `_${selectedCid}`
-      download(`trades${suffix}.csv`, toCsv(trades))
-      download(`sell_planners${suffix}.csv`, toCsv(planners))
-      download(`sell_levels${suffix}.csv`, toCsv(levels))
     } catch (e: any) {
       setErr(e?.message || 'Export failed')
     } finally {
@@ -204,76 +163,134 @@ export default function ExportCSVButtons() {
     }
   }
 
-  return (
-    <div className="space-y-3">
-      {/* Scope selector */}
-           <div className="rounded-2xl border border-slate-700/40 bg-slate-900/40 p-3 shadow-[inset_0_0_0_1px_rgba(51,65,85,0.35)]">
-        <div className="text-sm text-slate-300 mb-2">Scope</div>
-        <div className="flex gap-3 flex-wrap items-center">
-          <select
-            className="rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-slate-600/40"
-            value={selectedCid}
-            onChange={(e) => setSelectedCid(e.target.value as any)}
-          >
+  const doPlanners = async () => {
+    if (!ensureSignedIn()) return
+    setErr(null)
+    setLoading('planners')
+    try {
+      const levels = await fetchLevels()
+      const countByPlanner = new Map<string, number>()
+      for (const lv of levels) {
+        const key = String((lv as any).sell_planner_id)
+        countByPlanner.set(key, (countByPlanner.get(key) ?? 0) + 1)
+      }
 
-            <option value="ALL">All coins</option>
-            {coinOptions.map(c => (
-              <option key={c.coingecko_id} value={c.coingecko_id}>
-                {(c.symbol || c.coingecko_id).toUpperCase()} — {c.name}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-slate-400">Currently exporting: {scopeLabel}</span>
+      const planners = await fetchPlanners(countByPlanner)
+      if (!ensureNotEmpty(planners)) return
+
+      const name = selectedCid === 'ALL' ? 'sell_planners.csv' : `sell_planners_${selectedCid}.csv`
+      download(name, toCsv(planners))
+    } catch (e: any) {
+      setErr(e?.message || 'Export failed')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  const doTrades = async () => {
+    if (!ensureSignedIn()) return
+    setErr(null)
+    setLoading('trades')
+    try {
+      const trades = await fetchTrades()
+      if (!ensureNotEmpty(trades)) return
+      const name = selectedCid === 'ALL' ? 'trades.csv' : `trades_${selectedCid}.csv`
+      download(name, toCsv(trades))
+    } catch (e: any) {
+      setErr(e?.message || 'Export failed')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  // ---- All-in-one (may be limited by browser multi-download policy) ---------
+  const doAll = async () => {
+    if (!ensureSignedIn()) return
+    setErr(null)
+    setLoading('all')
+    try {
+      const levels = await fetchLevels()
+      const countByPlanner = new Map<string, number>()
+      for (const lv of levels) {
+        const key = String((lv as any).sell_planner_id)
+        countByPlanner.set(key, (countByPlanner.get(key) ?? 0) + 1)
+      }
+
+      const planners = await fetchPlanners(countByPlanner)
+      const trades = await fetchTrades()
+
+      if (!levels.length && !planners.length && !trades.length) {
+        setErr('Nothing to export yet')
+        return
+      }
+
+      const suffix = selectedCid === 'ALL' ? '' : `_${selectedCid}`
+      if (trades.length) download(`trades${suffix}.csv`, toCsv(trades))
+      if (planners.length) download(`sell_planners${suffix}.csv`, toCsv(planners))
+      if (levels.length) download(`sell_levels${suffix}.csv`, toCsv(levels))
+    } catch (e: any) {
+      setErr(e?.message || 'Export failed')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  // UI primitives (match the improved Audit controls look)
+  const inputBase =
+    'rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-[14px] text-slate-100 hover:bg-[rgb(18,19,21)]/85 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+
+  const btnBase =
+    'rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-[13px] text-slate-100 hover:bg-[rgb(18,19,21)]/90 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 disabled:opacity-50 disabled:hover:bg-[rgb(18,19,21)]/70'
+
+  return (
+    <div className="space-y-4">
+      {/* Scope selector */}
+      <div className="rounded-xl bg-[rgba(255,255,255,0.02)] ring-1 ring-inset ring-[rgb(41,42,45)]/70 p-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-[rgb(186,186,188)]">Scope</div>
+            <div className="mt-1 text-[12px] text-[rgb(163,163,164)]">Exporting: {scopeLabel}</div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <select className={inputBase} value={selectedCid} onChange={(e) => setSelectedCid(e.target.value as any)}>
+              <option value="ALL">All coins</option>
+              {coinOptions.map((c) => (
+                <option key={c.coingecko_id} value={c.coingecko_id}>
+                  {(c.symbol || c.coingecko_id).toUpperCase()} — {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Buttons */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={doAll}
-          disabled={!user || loading !== null}
-          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
-          title="Download trades, planners, and levels"
-        >
-          {loading === 'all' ? 'Exporting…' : 'Export All CSVs'}
+        <button onClick={doAll} disabled={!user || loading !== null} className={btnBase} title="Download all available CSV files">
+          {loading === 'all' ? 'Preparing…' : 'Download all CSVs'}
         </button>
 
-        <span className="text-slate-500 text-xs">or</span>
+        <span className="text-[12px] text-[rgb(140,140,142)] mx-1">or</span>
 
-        <button
-          onClick={doTrades}
-          disabled={!user || loading !== null}
-          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
-          title="Download trades.csv"
-        >
-          {loading === 'trades' ? 'Exporting…' : 'Trades CSV'}
+        <button onClick={doTrades} disabled={!user || loading !== null} className={btnBase} title="Download trades CSV">
+          {loading === 'trades' ? 'Preparing…' : 'Trades'}
         </button>
 
-        <button
-          onClick={doPlanners}
-          disabled={!user || loading !== null}
-          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
-          title="Download sell_planners.csv"
-        >
-          {loading === 'planners' ? 'Exporting…' : 'Sell Planners CSV'}
+        <button onClick={doPlanners} disabled={!user || loading !== null} className={btnBase} title="Download sell planners CSV">
+          {loading === 'planners' ? 'Preparing…' : 'Sell planners'}
         </button>
 
-        <button
-          onClick={doLevels}
-          disabled={!user || loading !== null}
-          className="rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] px-3 py-2 text-sm hover:bg-[rgb(42,43,44)]/90 disabled:opacity-50"
-          title="Download sell_levels.csv"
-        >
-          {loading === 'levels' ? 'Exporting…' : 'Sell Levels CSV'}
+        <button onClick={doLevels} disabled={!user || loading !== null} className={btnBase} title="Download sell levels CSV">
+          {loading === 'levels' ? 'Preparing…' : 'Sell levels'}
         </button>
 
-        {err && <span className="text-xs text-rose-400 ml-2">{err}</span>}
+        {err && <span className="text-[12px] text-rose-300 ml-2">{err}</span>}
       </div>
 
-      <p className="text-xs text-slate-500">
-        If your browser blocks multiple downloads, use the individual CSV buttons. Filenames include the coin id when exporting a single coin.
+      <p className="text-[12px] text-[rgb(140,140,142)]">
+        If your browser blocks multiple downloads, use the individual buttons.
       </p>
     </div>
   )
 }
-
