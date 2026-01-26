@@ -5,7 +5,7 @@ import AppShell from '@/components/common/AppShell'
 import { Inter } from 'next/font/google'
 
 export const metadata: Metadata = {
-  title: 'LedgerOne 2.0',
+  title: 'LedgerOne',
   description: 'Crypto planner & tracker',
 }
 

@@ -15,7 +15,7 @@ const TABS: { id: TabId; label: string }[] = [
 ]
 
 const APP_VERSION = '0.1.0'
-const APP_NAME = 'LedgerOne 2.0'
+const APP_NAME = 'LedgerOne'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('general')

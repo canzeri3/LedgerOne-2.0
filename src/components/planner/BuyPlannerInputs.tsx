@@ -44,7 +44,6 @@ function DepthMeta(opt: RiskDepth) {
     return {
       shortLabel: 'Moderate',
       title: 'Moderate profile',
-      desc: '70% depth',
       levels,
       bars,
     }
@@ -56,23 +55,22 @@ function DepthMeta(opt: RiskDepth) {
     return {
       shortLabel: 'Aggressive',
       title: 'Aggressive profile',
-      desc: '75% depth',
       levels,
       bars,
     }
   }
 
-  // 90% depth: conservative
+  // Conservative profile
   const levels = 8
   const bars = Array.from({ length: levels })
   return {
     shortLabel: 'Conservative',
     title: 'Conservative profile',
-    desc: '90% depth',
     levels,
     bars,
   }
 }
+
 
 
 /* ── Risk profile dropdown (your preferred UI) ─────────────── */
@@ -149,9 +147,10 @@ function LadderDepthDropdown({
       >
         <span className="text-sm flex items-center gap-2">
           {currentMeta.shortLabel}
-          <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-            {currentMeta.desc}
-          </span>
+<span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
+  {currentMeta.levels} levels
+</span>
+
         </span>
         <span
           className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgb(54,55,56)]"
@@ -202,7 +201,7 @@ function LadderDepthDropdown({
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
                       <span className="text-sm">{meta.title}</span>
-                      <span className={`text-[12px] ${muted}`}>{meta.desc}</span>
+
                     </div>
                     <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
                       {meta.levels} levels
