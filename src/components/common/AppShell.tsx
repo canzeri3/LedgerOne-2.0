@@ -1,9 +1,9 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Settings as SettingsIcon, ChevronDown } from 'lucide-react'
+import { Settings as SettingsIcon, ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import AuthButton from '@/components/auth/AuthButton'
 // TS NOTE: Sidebar is default-exported at runtime but TS complains about the default export.
@@ -43,8 +43,31 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [scrolled, setScrolled] = useState(false)
   const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
   const [showPageLoader, setShowPageLoader] = useState(false)
+    const [amountsHidden, setAmountsHidden] = useState(false)
+
+  // Init from localStorage AFTER mount (avoids hydration issues)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const v = window.localStorage.getItem('lg1_hide_amounts') === '1'
+      setAmountsHidden(v)
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const pathname = usePathname()
-const isLanding = pathname === '/' || pathname === '/pricing'
+  const isLanding = pathname === '/' || pathname === '/pricing'
+  const toggleAmountsHidden = () => {
+    const next = !amountsHidden
+    setAmountsHidden(next)
+    try {
+      window.localStorage.setItem('lg1_hide_amounts', next ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }
+
 
   // Existing scroll shadow effect
   useEffect(() => {
@@ -102,6 +125,105 @@ const isLanding = pathname === '/' || pathname === '/pricing'
       if (observer) observer.disconnect()
     }
   }, [pathname])
+  // Privacy masking: when amountsHidden is ON, replace any rendered "$..." text with "***"
+  // This is DOM-level on purpose so it also masks server-rendered text and any SWR/live updates.
+  const privacyObserverRef = useRef<MutationObserver | null>(null)
+  const originalTextRef = useRef<Map<Text, string>>(new Map())
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    const root = document.body
+    const originals = originalTextRef.current
+
+    const shouldSkipParent = (el: Element | null) => {
+      if (!el) return true
+      const tag = el.tagName
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return true
+      if ((el as HTMLElement).isContentEditable) return true
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return true
+      return false
+    }
+
+    const maskMoney = (s: string) => {
+      // matches "$1,234.56", "-$185.71", "$0", "$12.3" etc.
+      return s.replace(/-?\$[\d,]+(?:\.\d+)?/g, '***')
+    }
+
+    const maskTextNode = (tn: Text) => {
+      const parent = tn.parentElement
+      if (shouldSkipParent(parent)) return
+
+      const raw = tn.textContent ?? ''
+      if (!raw.includes('$')) return
+
+      // store original once so unhide restores correctly
+      if (!originals.has(tn)) originals.set(tn, raw)
+
+      const masked = maskMoney(raw)
+      if (masked !== raw) tn.textContent = masked
+    }
+
+    const walkTextNodes = (container: Node, fn: (tn: Text) => void) => {
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+      let node = walker.nextNode()
+      while (node) {
+        fn(node as Text)
+        node = walker.nextNode()
+      }
+    }
+
+    const restoreAll = () => {
+      for (const [tn, raw] of originals.entries()) {
+        // only restore if node still exists in DOM
+        if (tn.isConnected) tn.textContent = raw
+      }
+      originals.clear()
+    }
+
+    // Always stop the old observer first
+    if (privacyObserverRef.current) {
+      privacyObserverRef.current.disconnect()
+      privacyObserverRef.current = null
+    }
+
+    if (!amountsHidden) {
+      // turning OFF: restore originals and exit
+      restoreAll()
+      return
+    }
+
+    // turning ON: mask current DOM immediately
+    walkTextNodes(root, maskTextNode)
+
+    // keep masking new/updated nodes (route changes, SWR updates, etc.)
+    const obs = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === 'characterData') {
+          maskTextNode(m.target as Text)
+          continue
+        }
+
+        for (const added of m.addedNodes) {
+          if (added.nodeType === Node.TEXT_NODE) {
+            maskTextNode(added as Text)
+          } else if (added.nodeType === Node.ELEMENT_NODE) {
+            const el = added as Element
+            if (shouldSkipParent(el)) continue
+            walkTextNodes(el, maskTextNode)
+          }
+        }
+      }
+    })
+
+    obs.observe(root, { subtree: true, childList: true, characterData: true })
+    privacyObserverRef.current = obs
+
+    return () => {
+      obs.disconnect()
+      if (privacyObserverRef.current === obs) privacyObserverRef.current = null
+    }
+  }, [amountsHidden, pathname])
 
   return (
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>
@@ -305,6 +427,21 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
 <HeaderCalculator />
 
                   {/* Settings gear – icon only (no circle) */}
+                                    {/* Privacy toggle – mask on-screen currency amounts */}
+                  <button
+                    type="button"
+                    onClick={toggleAmountsHidden}
+                    aria-label={amountsHidden ? 'Show amounts' : 'Hide amounts'}
+                    title={amountsHidden ? 'Show amounts' : 'Hide amounts'}
+                    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
+                  >
+                    {amountsHidden ? (
+                      <EyeOff className="h-4 w-4 text-slate-200" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-slate-200" />
+                    )}
+                  </button>
+
                   <Link
                     href="/settings"
                     aria-label="Settings & preferences"
