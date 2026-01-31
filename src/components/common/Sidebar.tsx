@@ -152,7 +152,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
     <li>
       <NavLink
         href="/planner"
-        label="Buy/Sell Planner"
+        label="Planner"
         icon={<Target className="h-4 w-4 opacity-80" />}
       />
     </li>
@@ -176,7 +176,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
     <li>
       <NavLink
         href="/csv"
-        label="CSV Export / Import"
+        label="CSV"
         icon={<FileSpreadsheet className="h-4 w-4 opacity-80" />}
       />
     </li>

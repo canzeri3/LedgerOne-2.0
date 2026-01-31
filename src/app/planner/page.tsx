@@ -235,6 +235,55 @@ export default function PlannerPage() {
 
   // ── Local state: inline search query for filtering the selector ───────────
   const [coinQuery, setCoinQuery] = useState<string>('')
+  // ── UI state: confirm “Save New” (Buy Planner) ──────────────────────────
+  const [confirmSaveNewOpen, setConfirmSaveNewOpen] = useState<boolean>(false)
+  const confirmSaveCancelRef = useRef<HTMLButtonElement | null>(null)
+  const lastFocusRef = useRef<HTMLElement | null>(null)
+
+  const openConfirmSaveNew = () => {
+    lastFocusRef.current = (document.activeElement as HTMLElement) ?? null
+    setConfirmSaveNewOpen(true)
+  }
+
+  const closeConfirmSaveNew = () => {
+    setConfirmSaveNewOpen(false)
+    // Restore focus after modal unmounts
+    setTimeout(() => {
+      lastFocusRef.current?.focus?.()
+    }, 0)
+  }
+
+  const confirmSaveNew = () => {
+    // Preserve existing behavior: dispatch the exact same event as before
+    window.dispatchEvent(
+      new CustomEvent('buyplanner:action', {
+        detail: { action: 'save' },
+      })
+    )
+    closeConfirmSaveNew()
+  }
+
+  useEffect(() => {
+    if (!confirmSaveNewOpen) return
+
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeConfirmSaveNew()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    setTimeout(() => confirmSaveCancelRef.current?.focus(), 0)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [confirmSaveNewOpen])
 
   // ── URL selection + persistence ───────────────────────────────────────────
   const router = useRouter()
@@ -402,7 +451,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
               <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90 leading-tight">
-                Buy / Sell Planner
+                Planner Page
               </h1>
               {selected ? (
                 <span className="text-[13px] md:text-[14px] text-[rgb(163,163,164)] truncate">
@@ -486,55 +535,49 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
 
           {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
                     {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
-          <Card
-            title={
-              (
-                <div className="flex items-center gap-2">
-                  <span>Buy Planner</span>
-                  {/* Info tooltip – keeps page clean but explanation always available */}
-                  <div className="relative inline-flex items-center group">
-                    <button
-                      type="button"
-                      aria-label="How the Buy Planner & price cycles work"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
-                    >
-                      i
-                    </button>
-                    <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
-                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+<Card
+  title="Buy Planner"
+  headerRight={
+    <div className="relative inline-flex items-center group">
+      <button
+        type="button"
+        aria-label="How the Buy Planner & price cycles work"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
+      >
+        i
+      </button>
 
-<p className="text-slate-300">
-  The Buy Planner is a structured accumulation plan. Choose your{' '}
-  <span className="font-medium">Risk Profile</span> (Conservative / Moderate / Aggressive),
-  then click <span className="font-medium">Generate Ladder</span> to create a repeatable set
-  of buy levels with defined allocations.
-</p>
+      {/* Right-aligned tooltip so it anchors cleanly from the far-right header */}
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
+        <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
 
-<p className="mt-2 text-slate-300">
-  As price reaches a level, that row turns <span className="font-medium">yellow</span> to
-  signal action. Execute the buy at your exchange/broker, then record it under{' '}
-  <span className="font-medium">Add Trade</span> so the ladder updates; rows turn green once
-  filled.
-</p>
+        <p className="text-slate-300">
+          The Buy Planner is a structured accumulation plan. Choose your{' '}
+          <span className="font-medium">Risk Profile</span> (Conservative / Moderate / Aggressive),
+          then click <span className="font-medium">Generate Ladder</span> to create a repeatable set
+          of buy levels with defined allocations.
+        </p>
 
+        <p className="mt-2 text-slate-300">
+          As price reaches a level, that row turns <span className="font-medium">yellow</span> to
+          signal action. Execute the buy at your exchange/broker, then record it under{' '}
+          <span className="font-medium">Add Trade</span> so the ladder updates; rows turn green once
+          filled.
+        </p>
 
-<p className="mt-2 text-slate-300">
-  When a new price cycle begins, generate a new Buy Planner to reset the ladder around the
-  updated market regime. Your previous sell planner remains saved as history so you can audit
-  decisions across cycles.
-</p>
-
-                    </div>
-                  </div>
-                </div>
-              ) as any
-            }
-
-            className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
-            headerBorderClassName="border-[rgb(41,42,45)]"
-            noHoverLift
-            noShadow
-          >
+        <p className="mt-2 text-slate-300">
+          When a new price cycle begins, generate a new Buy Planner to reset the ladder around the
+          updated market regime. Your previous sell planner remains saved as history so you can audit
+          decisions across cycles.
+        </p>
+      </div>
+    </div>
+  }
+  className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
+  headerBorderClassName="border-[rgb(41,42,45)]"
+  noHoverLift
+  noShadow
+>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
               {/* Left: Inputs */}
               <section
@@ -629,20 +672,15 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
                 Edit Planner
               </button>
 
-              {/* Save New — Uiverse.io sphere button */}
+              {/* Save New — confirmation gate (no logic change after confirm) */}
               <button
                 type="button"
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent('buyplanner:action', {
-                      detail: { action: 'save' },
-                    })
-                  )
-                }
+                onClick={openConfirmSaveNew}
                 className="button"
               >
                 <span className="button-content">Save New</span>
               </button>
+
             </div>
           </div>
 
@@ -653,60 +691,59 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
 
           {/* ───────── SELL: inputs + active/history ───────── */}
           <Card
-title={
-  (
-    <div className="flex items-center gap-2">
-      <span>Sell Planner</span>
-
-      {/* Info tooltip – same UI as Buy Planner */}
-      <div className="relative inline-flex items-center group">
-        <button
-          type="button"
-          aria-label="How the Sell Planner works"
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
-        >
-          i
-        </button>
-
-        <div className="pointer-events-none absolute left-6 top-1/2 z-50 w-72 -translate-y-1/2 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity transition-transform duration-150 ease-out group-hover:opacity-100 group-hover:translate-y-0">
-          <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
-
-          <p className="text-slate-300">
-            The Sell Planner is a structured distribution plan. Choose{' '}
-            <span className="font-medium">Coin Volatility</span> and{' '}
-            <span className="font-medium">Sell Intensity</span>, then click{' '}
-            <span className="font-medium">Generate Ladder</span> to create a
-            repeatable scale-out ladder.
-          </p>
-
-          <p className="mt-2 text-slate-300">
-            When a row turns <span className="font-medium">yellow</span>, it’s time to sell.
-            Execute at your exchange/broker, then record the sell under{' '}
-            <span className="font-medium">Add Trade</span> (attach it to the correct Sell
-            Planner) so progress updates; rows turn green once filled.
-          </p>
-
-          <p className="mt-2 text-slate-300">
-            When you generate a new Buy Planner for a new price cycle, the current Sell
-            Planner is preserved as history and a new Sell Planner version is created for
-            the new cycle.
-          </p>
-        </div>
-      </div>
-    </div>
-  ) as any
-}
+            title="Sell Planner"
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
             headerRight={
-              <div
-                id="sell-planner-header-right"
-                className="flex items-center gap-2"
-              />
+              <div className="flex items-center gap-2">
+                {/* KEEP: mount point used elsewhere */}
+                <div
+                  id="sell-planner-header-right"
+                  className="flex items-center gap-2"
+                />
+
+                {/* Info tooltip – far-right inner header */}
+                <div className="relative inline-flex items-center group">
+                  <button
+                    type="button"
+                    aria-label="How the Sell Planner works"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
+                  >
+                    i
+                  </button>
+
+                  {/* Right-anchored tooltip so it behaves correctly from the far-right */}
+                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
+                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+
+                    <p className="text-slate-300">
+                      The Sell Planner is a structured distribution plan. Choose{' '}
+                      <span className="font-medium">Coin Volatility</span> and{' '}
+                      <span className="font-medium">Sell Intensity</span>, then click{' '}
+                      <span className="font-medium">Generate Ladder</span> to create a repeatable
+                      scale-out ladder.
+                    </p>
+
+                    <p className="mt-2 text-slate-300">
+                      When a row turns <span className="font-medium">yellow</span>, it’s time to
+                      sell. Execute at your exchange/broker, then record the sell under{' '}
+                      <span className="font-medium">Add Trade</span> (attach it to the correct Sell
+                      Planner) so progress updates; rows turn green once filled.
+                    </p>
+
+                    <p className="mt-2 text-slate-300">
+                      When you generate a new Buy Planner for a new price cycle, the current Sell
+                      Planner is preserved as history and a new Sell Planner version is created for
+                      the new cycle.
+                    </p>
+                  </div>
+                </div>
+              </div>
             }
             noHoverLift
             noShadow
           >
+       
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
               <section
                 aria-label="Sell Planner Inputs"
@@ -751,6 +788,72 @@ title={
           </Card>
         </>
       )}
+      {/* Confirm “Save New” (Buy Planner) */}
+      {confirmSaveNewOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-save-new-title"
+          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+        >
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Close confirmation"
+            onClick={closeConfirmSaveNew}
+            className="absolute inset-0 bg-black/60"
+          />
+
+          {/* Panel */}
+          <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
+            <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
+              <h2
+                id="confirm-save-new-title"
+                className="text-sm font-semibold text-slate-100"
+              >
+                Save new planner?
+              </h2>
+              <p className="mt-1 text-[12px] text-slate-400">
+                This creates a new version for the current cycle.
+              </p>
+            </div>
+            {/* subtle info (top-right) */}
+            <div className="absolute right-3 top-3 z-20">
+              <div className="relative group">
+                <span
+                  role="img"
+                  aria-label="Info"
+title="Saving a new Buy Planner freezes this cycle’s Sell Planner. It is no longer live and will not update from current Buys."
+className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(58,59,63)] bg-[rgb(33,34,36)] text-[11px] font-semibold text-slate-200 opacity-75 group-hover:opacity-100 cursor-default select-none"
+                >
+                  i
+                </span>
+
+               
+              </div>
+            </div>
+
+           
+
+
+
+            <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+              <button
+                ref={confirmSaveCancelRef}
+                type="button"
+                onClick={closeConfirmSaveNew}
+                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+              >
+                Cancel
+              </button>
+
+              <button type="button" onClick={confirmSaveNew} className="button">
+                <span className="button-content">Save New</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* row highlighter; no layout impact */}
       <PlannerHighlightAgent />

@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
+import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+
 import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -168,13 +170,43 @@ const plan: BuyLevel[] = useMemo(() => {
           <thead className="text-[rgba(237, 237, 237, 1)]">
 
             <tr>
-              <th className="w-1/6 px-3 py-2">Lvl</th>
-              <th className="w-1/6 px-3 py-2">Target Price</th>
-              <th className="w-1/6 px-3 py-2">Planned Tokens</th>
-              <th className="w-1/6 px-3 py-2">Planned USD</th>
-              <th className="w-1/6 px-3 py-2">Missing USD</th>
-              <th className="w-1/6 px-3 py-2 text-right">Progress</th>
-            </tr>
+ <th className="w-1/6 px-3 py-2">
+    <span className="inline-flex items-center gap-1">
+      <span>Lvl</span>
+      <Layers className="h-4 w-4 text-slate-400" aria-hidden="true" />
+    </span>
+  </th>              <th className="w-1/6 px-3 py-2">
+                <span className="inline-flex items-center gap-1">
+                  <span>Target</span>
+                  <Target className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                </span>
+              </th>
+              <th className="w-1/6 px-3 py-2">
+                <span className="inline-flex items-center gap-1">
+                  <span>Planned</span>
+                  <Coins className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                </span>
+              </th>
+
+              <th className="w-1/6 px-3 py-2">
+                <span className="inline-flex items-center gap-1">
+                  <span>Planned</span>
+                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                </span>
+              </th>
+
+              <th className="w-1/6 px-3 py-2">
+                <span className="inline-flex items-center gap-1">
+                  <span>Missing</span>
+                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                </span>
+              </th>
+  <th className="w-1/6 px-3 py-2 text-right">
+    <span className="inline-flex w-full items-center justify-end gap-1">
+      <span>Progress</span>
+      <TrendingUp className="h-4 w-4 text-slate-400" aria-hidden="true" />
+    </span>
+  </th>            </tr>
           </thead>
           <tbody>
             {plan.map((lv, i) => {
