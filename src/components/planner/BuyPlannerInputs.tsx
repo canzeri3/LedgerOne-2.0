@@ -178,7 +178,7 @@ function LadderDepthDropdown({
           id="ladder-depth-listbox"
           role="listbox"
           aria-label="Select risk profile"
-          className={`${baseBg} ${baseText} ${noBorder} mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg`}
+className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50`}
         >
           <div className="py-1">
             {OPTIONS.map(opt => {
@@ -560,20 +560,28 @@ useEffect(() => {
 
       {/* Inputs only — no action buttons here */}
       <div className="space-y-4">
-        {/* Total budget */}
-        <label className="block">
-          <span className="text-xs text-slate-300">Total budget (USD)</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            disabled={busy}
-            value={budget}
-            onChange={onChangeBudget}
-            className={fieldShell}
-            placeholder="e.g. 10,000"
-          />
-        </label>
+{/* Total budget */}
+<label className="block">
+  <span className="text-xs text-slate-300">Total budget ($)</span>
+
+  <div className="mt-1 relative">
+<span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-300 z-10 select-none leading-none">
+  $
+</span>
+
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      disabled={busy}
+      value={budget}
+      onChange={onChangeBudget}
+className={`relative z-0 ${fieldShell} pl-7 text-[15px]`}
+      placeholder="e.g. 10,000"
+    />
+  </div>
+</label>
+
 
         {/* Risk profile — maps to ladder depth & levels under the hood */}
         <label className="block">

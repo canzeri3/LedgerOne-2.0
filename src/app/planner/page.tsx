@@ -694,52 +694,43 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             title="Sell Planner"
             className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
             headerBorderClassName="border-[rgb(41,42,45)]"
-            headerRight={
-              <div className="flex items-center gap-2">
-                {/* KEEP: mount point used elsewhere */}
-                <div
-                  id="sell-planner-header-right"
-                  className="flex items-center gap-2"
-                />
+headerRight={
+  <div className="flex items-center gap-2">
+    {/* Info tooltip – left of Active & History */}
+    <div className="relative inline-flex items-center group">
+      <button
+        type="button"
+        aria-label="How the Sell Planner works"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
+      >
+        i
+      </button>
 
-                {/* Info tooltip – far-right inner header */}
-                <div className="relative inline-flex items-center group">
-                  <button
-                    type="button"
-                    aria-label="How the Sell Planner works"
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
-                  >
-                    i
-                  </button>
+      {/* Right-anchored tooltip so it behaves correctly */}
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
+        <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
 
-                  {/* Right-anchored tooltip so it behaves correctly from the far-right */}
-                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
-                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+        <p className="text-slate-300">
+          The Sell Planner is a structured distribution plan. Choose{' '}
+          <span className="font-medium">Coin Volatility</span> and{' '}
+          <span className="font-medium">Sell Intensity</span>, then click{' '}
+          <span className="font-medium">Generate Ladder</span> to create a repeatable
+          scale-out ladder.
+        </p>
 
-                    <p className="text-slate-300">
-                      The Sell Planner is a structured distribution plan. Choose{' '}
-                      <span className="font-medium">Coin Volatility</span> and{' '}
-                      <span className="font-medium">Sell Intensity</span>, then click{' '}
-                      <span className="font-medium">Generate Ladder</span> to create a repeatable
-                      scale-out ladder.
-                    </p>
+        <p className="mt-2 text-slate-300">
+          When a row turns <span className="font-medium">yellow</span>, it’s time to
+          sell. Execute at your exchange/broker, then record the sell under{' '}
+          <span className="font-medium">Add Trade</span> (attach it to the correct ladder
+          row).
+        </p>
+      </div>
+    </div>
 
-                    <p className="mt-2 text-slate-300">
-                      When a row turns <span className="font-medium">yellow</span>, it’s time to
-                      sell. Execute at your exchange/broker, then record the sell under{' '}
-                      <span className="font-medium">Add Trade</span> (attach it to the correct Sell
-                      Planner) so progress updates; rows turn green once filled.
-                    </p>
-
-                    <p className="mt-2 text-slate-300">
-                      When you generate a new Buy Planner for a new price cycle, the current Sell
-                      Planner is preserved as history and a new Sell Planner version is created for
-                      the new cycle.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            }
+    {/* KEEP: mount point used elsewhere */}
+    <div id="sell-planner-header-right" className="flex items-center gap-2" />
+  </div>
+}
             noHoverLift
             noShadow
           >
@@ -775,7 +766,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
                 <div className="p-0">
                   {/* CHANGED: use the planner-only component here */}
                   <SellPlannerCombinedCardPlanner
-                    title="Active & History"
+                    title=""
                     ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
                     HistoryView={
                       <SellPlannerHistory coingeckoId={coingeckoId} />

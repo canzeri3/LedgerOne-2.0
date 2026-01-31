@@ -106,24 +106,27 @@ function sellVolatilityMeta(v: number): SellMeta {
   if (v === 50) {
     return {
       title: 'Low',
-      desc: '50% step between targets',
-      chip: '50% step',
+      // 50% option
+desc: 'Standard scale-out spacing',
+chip: 'Tight',
       bars: 3,
     }
   }
   if (v === 100) {
     return {
       title: 'Medium',
-      desc: '100% step between targets',
-      chip: '100% step',
+      // 100% option
+desc: 'Extended scale-out spacing',
+chip: 'Extended',
       bars: 5,
     }
   }
   if (v === 150) {
     return {
       title: 'High',
-      desc: '150% step between targets',
-      chip: '150% step',
+      // 150% option
+desc: 'Wide scale-out spacing',
+chip: 'Wide',
       bars: 7,
     }
   }
@@ -141,32 +144,36 @@ function sellIntensityMeta(v: number): SellMeta {
   if (v === 10) {
     return {
       title: 'Light Trim',
-      desc: 'Sell 10% at each target',
-      chip: '10% / level',
+// 10
+desc: 'Light pace; gradual exposure reduction',
+      chip: 'Low',
       bars: 3,
     }
   }
   if (v === 15) {
     return {
       title: 'Balanced Trim',
-      desc: 'Sell 15% at each target',
-      chip: '15% / level',
+// 15
+desc: 'Standard pace; steady exposure reduction',
+      chip: 'Standard',
       bars: 4,
     }
   }
   if (v === 20) {
     return {
       title: 'Firm Trim',
-      desc: 'Sell 20% at each target',
-      chip: '20% / level',
+// 20
+desc: 'Firm pace; faster exposure reduction',   
+   chip: 'High',
       bars: 5,
     }
   }
   if (v === 25) {
     return {
       title: 'Max Trim',
-      desc: 'Sell 25% at each target',
-      chip: '25% / level',
+// 25
+desc: 'Max pace; fastest exposure reduction',
+      chip: 'Max',
       bars: 6,
     }
   }
@@ -281,7 +288,7 @@ function SellDropdown({
         <div
           role="listbox"
           aria-label={ariaLabel}
-          className={`${baseBg} ${baseText} ${noBorder} mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg`}
+className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50`}
         >
           <div className="py-1">
             {options.map((opt) => {
@@ -290,8 +297,7 @@ function SellDropdown({
 
               // For Sell Intensity we want [10%], [15%], etc
               // For Coin Volatility we use meta.chip -> [50% step], etc
-              const bracketChip =
-                ariaLabel === 'Select sell intensity' ? `${opt}%` : meta.chip
+              const bracketChip = meta.chip
 
               // Dropdown label:
               // - Coin Volatility: "Low Volatility", "Medium Volatility", "High Volatility"
@@ -452,7 +458,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
   const help = useMemo(() => {
     const a = activeSell?.avg_lock_price
-    return a ? `Avg lock: ${fmtCurrency(Number(a))}` : 'Avg lock: — (uses on-plan avg while active)'
+    return a ? `Avg lock: ${fmtCurrency(Number(a))}` : ''
   }, [activeSell?.avg_lock_price])
 
   // Pool = on-hand tokens within the epoch (simple version)
@@ -652,7 +658,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       <div className="grid grid-cols-1 gap-2">
   {/* Card 2: Coin Volatility (step size per level) */}
   <label className="block">
-    <span className="text-sm font-medium text-slate-100">Coin Volatility</span>
+    <span className="text-xs text-slate-300">Coin Volatility</span>
     <SellDropdown
       value={step}
       options={stepOptions}
@@ -664,7 +670,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
   {/* Card 1: Sell Intensity (% of remaining each level) */}
   <label className="block">
-    <span className="text-sm font-medium text-slate-100">Sell Intensity</span>
+    <span className="text-xs text-slate-300">Sell Intensity</span>
     <SellDropdown
       value={sellPct}
       options={sellPctOptions}

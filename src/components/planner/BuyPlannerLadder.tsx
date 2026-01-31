@@ -168,14 +168,14 @@ const plan: BuyLevel[] = useMemo(() => {
       <div className="overflow-x-auto">
         <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-buy-planner>
           <thead className="text-[rgba(237, 237, 237, 1)]">
-
-            <tr>
+  <tr>
  <th className="w-1/6 px-3 py-2">
     <span className="inline-flex items-center gap-1">
       <span>Lvl</span>
       <Layers className="h-4 w-4 text-slate-400" aria-hidden="true" />
     </span>
-  </th>              <th className="w-1/6 px-3 py-2">
+  </th>             
+   <th className="w-1/6 px-3 py-2">
                 <span className="inline-flex items-center gap-1">
                   <span>Target</span>
                   <Target className="h-4 w-4 text-slate-400" aria-hidden="true" />
@@ -187,14 +187,12 @@ const plan: BuyLevel[] = useMemo(() => {
                   <Coins className="h-4 w-4 text-slate-400" aria-hidden="true" />
                 </span>
               </th>
-
               <th className="w-1/6 px-3 py-2">
                 <span className="inline-flex items-center gap-1">
                   <span>Planned</span>
                   <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
                 </span>
               </th>
-
               <th className="w-1/6 px-3 py-2">
                 <span className="inline-flex items-center gap-1">
                   <span>Missing</span>
@@ -206,7 +204,8 @@ const plan: BuyLevel[] = useMemo(() => {
       <span>Progress</span>
       <TrendingUp className="h-4 w-4 text-slate-400" aria-hidden="true" />
     </span>
-  </th>            </tr>
+  </th>        
+      </tr>
           </thead>
           <tbody>
             {plan.map((lv, i) => {
