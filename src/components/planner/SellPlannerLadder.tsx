@@ -180,9 +180,19 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       pct,
     }
   })
+  const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+
+  // "Active has alert" = at least one row is YELLOW (same condition used in row rendering)
+  const activeHasAlert =
+    hasLive &&
+    rows.some((r) => {
+      const green = r.pct >= 0.97
+      if (green) return false
+      return r.targetPrice > 0 && (livePrice as number) >= r.targetPrice * 0.985
+    })
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col" data-has-alert={activeHasAlert ? '1' : '0'}>
       <div className="flex-1 overflow-auto">
         <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-sell-planner>
           <thead className="text-[rgba(237, 237, 237, 1)]">

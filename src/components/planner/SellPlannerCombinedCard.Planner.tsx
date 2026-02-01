@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import useSWR from 'swr'
+import { usePrice } from '@/lib/dataCore'
 import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -60,6 +60,7 @@ export default function SellPlannerCombinedCardPlanner({
   const [selected, setSelected] = useState<'active' | number>('active')
   const [historyLength, setHistoryLength] = useState(0)
   const [alertLabels, setAlertLabels] = useState<number[]>([])
+  const [activeHasAlert, setActiveHasAlert] = useState(false)
   const activeRootRef = useRef<HTMLDivElement | null>(null)
   const historyRootRef = useRef<HTMLDivElement | null>(null)
   // ── UI state: confirm “Delete” (Sell Planner) ─────────────────────────────
@@ -89,6 +90,28 @@ export default function SellPlannerCombinedCardPlanner({
 
 
   const { user } = useUser()
+  // Active pill should turn yellow when the Active ladder reports an executable (yellow) row.
+  useEffect(() => {
+    const root = activeRootRef.current
+    if (!root) return
+
+    const read = () => {
+      const el = root.querySelector<HTMLElement>('[data-has-alert]')
+      const flag = el?.getAttribute('data-has-alert')
+      setActiveHasAlert(flag === '1' || flag === 'true')
+    }
+
+    const mo = new MutationObserver(read)
+    mo.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-has-alert'],
+    })
+
+    read()
+    return () => mo.disconnect()
+  }, [])
 
   // Track history length and keep selection valid
   useEffect(() => {
@@ -195,13 +218,12 @@ export default function SellPlannerCombinedCardPlanner({
   }, [coinIdFromPath])
 
 
-  const { data: priceData } = useSWR(
-    coinId ? `/api/price/${coinId}` : null,
-    (url: string) => fetch(url, { cache: 'no-store' }).then(r => r.json()),
-    { refreshInterval: 30_000 }
-  )
-  const livePrice: number | null = Number(priceData?.price ?? NaN)
-  const hasLivePrice = Number.isFinite(livePrice as number)
+  const { row: priceRow } = usePrice(coinId, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
+  const livePrice: number | null = priceRow?.price ?? null
+  const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
 
   return (
     <>
@@ -276,13 +298,17 @@ export default function SellPlannerCombinedCardPlanner({
             <button
               type="button"
               onClick={() => setSelected('active')}
-              className={[
+                     className={[
                 'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
                 selected === 'active'
                   ? 'bg-white/10 border-white/20'
                   : 'bg-white/5 hover:bg-white/10 border-white/10',
+                activeHasAlert
+                  ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
+                  : '',
                 // text inherits TEXT_RGB
               ].join(' ')}
+
             >
               Active
             </button>
