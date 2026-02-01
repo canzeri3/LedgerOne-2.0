@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
@@ -619,6 +619,11 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
           })
         )
       }
+          // Force immediate UI refresh (SWR) so user doesn’t need to reload
+      globalMutate(['/sell-active', user.id, coingeckoId])
+      globalMutate(['/sell-levels', user.id, coingeckoId, activeSell.id])
+      globalMutate(['/sells', user.id, coingeckoId, activeSell.id])
+
     } catch (e: any) {
       console.error(e)
       setErr(e?.message || 'Failed to generate ladder.')

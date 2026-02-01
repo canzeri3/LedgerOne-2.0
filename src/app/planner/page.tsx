@@ -235,6 +235,7 @@ export default function PlannerPage() {
 
   // ── Local state: inline search query for filtering the selector ───────────
   const [coinQuery, setCoinQuery] = useState<string>('')
+
   // ── UI state: confirm “Save New” (Buy Planner) ──────────────────────────
   const [confirmSaveNewOpen, setConfirmSaveNewOpen] = useState<boolean>(false)
   const confirmSaveCancelRef = useRef<HTMLButtonElement | null>(null)
@@ -284,7 +285,52 @@ export default function PlannerPage() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [confirmSaveNewOpen])
+  // ── UI state: confirm “Delete” (Buy Planner) ─────────────────────────────
+  const [confirmBuyDeleteOpen, setConfirmBuyDeleteOpen] = useState<boolean>(false)
+  const confirmBuyDeleteCancelRef = useRef<HTMLButtonElement | null>(null)
+  const lastFocusBuyDeleteRef = useRef<HTMLElement | null>(null)
 
+  const openConfirmBuyDelete = () => {
+    lastFocusBuyDeleteRef.current = (document.activeElement as HTMLElement) ?? null
+    setConfirmBuyDeleteOpen(true)
+  }
+
+  const closeConfirmBuyDelete = () => {
+    setConfirmBuyDeleteOpen(false)
+    setTimeout(() => lastFocusBuyDeleteRef.current?.focus?.(), 0)
+  }
+
+  const confirmBuyDelete = () => {
+    // IMPORTANT: confirmed:true prevents the native window.confirm in BuyPlannerInputs.tsx
+    window.dispatchEvent(
+      new CustomEvent('buyplanner:action', {
+        detail: { action: 'remove', confirmed: true },
+      })
+    )
+    closeConfirmBuyDelete()
+  }
+
+  useEffect(() => {
+    if (!confirmBuyDeleteOpen) return
+
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeConfirmBuyDelete()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    setTimeout(() => confirmBuyDeleteCancelRef.current?.focus(), 0)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [confirmBuyDeleteOpen])
   // ── URL selection + persistence ───────────────────────────────────────────
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -616,13 +662,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             {/* Delete current planner (soft-deactivate) on the left side */}
             <button
               type="button"
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent('buyplanner:action', {
-                    detail: { action: 'remove' },
-                  })
-                )
-              }
+              onClick={openConfirmBuyDelete}
               className="planner-delete-btn"
             >
               <span className="button__text">Delete</span>
@@ -808,25 +848,24 @@ headerRight={
                 This creates a new version for the current cycle.
               </p>
             </div>
+
             {/* subtle info (top-right) */}
             <div className="absolute right-3 top-3 z-20">
               <div className="relative group">
                 <span
                   role="img"
                   aria-label="Info"
-title="Saving a new Buy Planner freezes this cycle’s Sell Planner. It is no longer live and will not update from current Buys."
-className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(58,59,63)] bg-[rgb(33,34,36)] text-[11px] font-semibold text-slate-200 opacity-75 group-hover:opacity-100 cursor-default select-none"
+                  title="Saving a new Buy Planner locks this cycle’s Sell Planner—it's no longer live and won’t update to reflect the new Buy Planner."
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(58,59,63)] bg-[rgb(33,34,36)] text-[11px] font-semibold text-slate-200 opacity-75 group-hover:opacity-100 cursor-default select-none"
                 >
                   i
                 </span>
-
-               
               </div>
             </div>
 
-           
-
-
+            <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
+              Your current Buy Planner will be preserved as history. Continue?
+            </div>
 
             <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
               <button
@@ -840,6 +879,67 @@ className="inline-flex h-5 w-5 items-center justify-center rounded-full border b
 
               <button type="button" onClick={confirmSaveNew} className="button">
                 <span className="button-content">Save New</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {/* Confirm “Delete” (Buy Planner) */}
+      {confirmBuyDeleteOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-buy-delete-title"
+          className="fixed inset-0 z-[110] flex items-center justify-center px-4"
+        >
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Close delete confirmation"
+            onClick={closeConfirmBuyDelete}
+            className="absolute inset-0 bg-black/60"
+          />
+
+          {/* Panel */}
+          <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
+            <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
+              <h2
+                id="confirm-buy-delete-title"
+                className="text-sm font-semibold text-slate-100"
+              >
+                Delete Buy Planner?
+              </h2>
+              <p className="mt-1 text-[12px] text-slate-400">
+                This removes the current planner from Active.
+              </p>
+            </div>
+
+    <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
+  This will remove the current Buy Planner from Active and stop its levels and alerts for this coin.
+  Any trades you already recorded under this planner will remain saved and visible in your history.
+  <span className="block mt-2 text-slate-200 font-medium">
+    This action can’t be undone.
+  </span>
+</div>
+
+
+
+            <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+              <button
+                ref={confirmBuyDeleteCancelRef}
+                type="button"
+                onClick={closeConfirmBuyDelete}
+                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmBuyDelete}
+                className="rounded px-4 py-2 text-sm font-medium border border-[rgb(88,60,60)] bg-[rgb(44,34,34)] text-slate-100 hover:bg-[rgb(52,38,38)]"
+              >
+                Delete
               </button>
             </div>
           </div>

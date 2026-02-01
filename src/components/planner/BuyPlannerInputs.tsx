@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type React from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 
@@ -86,6 +87,12 @@ function LadderDepthDropdown({
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
 
+  // Portal menu refs/position (prevents clipping by overflow-hidden ancestors)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(
+    null
+  )
+
   // Order in UI: Conservative (90), Moderate (70), Aggressive (75)
   const OPTIONS: RiskDepth[] = ['90', '70', '75']
 
@@ -93,11 +100,18 @@ function LadderDepthDropdown({
   // Close when clicking outside
   useEffect(() => {
     function onDoc(e: MouseEvent) {
+      const t = e.target as Node
       if (!wrapRef.current) return
-      if (!wrapRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+
+      // click inside control -> keep open
+      if (wrapRef.current.contains(t)) return
+
+      // click inside portal menu -> keep open
+      if (menuRef.current && menuRef.current.contains(t)) return
+
+      setOpen(false)
     }
+
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
@@ -120,6 +134,29 @@ function LadderDepthDropdown({
     }
     btn.addEventListener('keydown', onKey)
     return () => btn.removeEventListener('keydown', onKey)
+  }, [open])
+  // Position portal menu under the button (updates on scroll/resize)
+  useEffect(() => {
+    if (!open) {
+      setMenuPos(null)
+      return
+    }
+
+    const update = () => {
+      const btn = buttonRef.current
+      if (!btn) return
+      const r = btn.getBoundingClientRect()
+      setMenuPos({ left: r.left, top: r.bottom, width: r.width })
+    }
+
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
   }, [open])
 
   const baseBg = 'bg-[rgb(41,42,43)]'
@@ -172,58 +209,69 @@ function LadderDepthDropdown({
         </span>
       </button>
 
-      {/* Inline dropdown menu (no absolute positioning outside container) */}
-      {open && (
-        <div
-          id="ladder-depth-listbox"
-          role="listbox"
-          aria-label="Select risk profile"
-className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50`}
-        >
-          <div className="py-1">
-            {OPTIONS.map(opt => {
-              const meta = DepthMeta(opt)
-              const selected = opt === value
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    onChange(opt)
-                    setOpen(false)
-                    buttonRef.current?.focus()
-                  }}
-                  className={`w-full text-left px-3 py-2 transition
-                              ${selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-sm">{meta.title}</span>
+      {/* Portal dropdown menu (prevents clipping by overflow-hidden ancestors) */}
+      {open && menuPos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              id="ladder-depth-listbox"
+              role="listbox"
+              aria-label="Select risk profile"
+              style={{
+                position: 'fixed',
+                left: menuPos.left,
+                top: menuPos.top + 8, // spacing under the button
+                width: menuPos.width,
+              }}
+              className={`${baseBg} ${baseText} ${noBorder} rounded-lg border border-[rgb(32,33,34)] shadow-lg z-[9999]`}
+            >
+              <div className="py-1">
+                {OPTIONS.map(opt => {
+                  const meta = DepthMeta(opt)
+                  const selected = opt === value
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => {
+                        onChange(opt)
+                        setOpen(false)
+                        buttonRef.current?.focus()
+                      }}
+                      className={`w-full text-left px-3 py-2 transition
+                                ${selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-sm">{meta.title}</span>
+                        </div>
 
-                    </div>
-                    <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-                      {meta.levels} levels
-                    </span>
-                  </div>
+                        <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
+                          {meta.levels} levels
+                        </span>
+                      </div>
 
-                  {/* mini level bars */}
-                  <div className="mt-2 flex items-center gap-1">
-                    {meta.bars.map((_, i) => (
-                      <span
-                        key={i}
-                        className="h-1.5 rounded-sm bg-[rgb(75,76,78)]"
-                        style={{ width: 12 + (i % 3) * 2 }}
-                      />
-                    ))}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+                      {/* mini level bars */}
+                      <div className="mt-2 flex items-center gap-1">
+                        {meta.bars.map((_, i) => (
+                          <span
+                            key={i}
+                            className="h-1.5 rounded-sm bg-[rgb(75,76,78)]"
+                            style={{ width: 12 + (i % 3) * 2 }}
+                          />
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
     </div>
   )
 }
@@ -323,11 +371,12 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   // Bridge: listen for global actions from the Card footer buttons
   useEffect(() => {
     function onAction(e: Event) {
-      const ce = e as CustomEvent<{ action: 'edit' | 'save' | 'remove' }>
+const ce = e as CustomEvent<{ action: 'edit' | 'save' | 'remove'; confirmed?: boolean }>
       if (!ce?.detail) return
       if (ce.detail.action === 'edit') onEdit()
       if (ce.detail.action === 'save') onSaveNew()
-      if (ce.detail.action === 'remove') onClearPlanner()
+if (ce.detail.action === 'remove')
+  onClearPlanner({ confirmed: ce.detail?.confirmed === true })
     }
     window.addEventListener('buyplanner:action', onAction as EventListener)
     return () =>
@@ -407,6 +456,28 @@ useEffect(() => {
 
       setMsg('Updated current Buy planner settings.')
       await mutate()
+
+      // Revalidate dependent SWR caches so the ladder/history updates immediately (no refresh needed)
+      await Promise.all([
+        mutateGlobal(['/buy-planner/active', user.id, coingeckoId]),
+        mutateGlobal(['/buy-planner/active-ladder', user.id, coingeckoId]),
+        mutateGlobal(['/buy-planner/latest-banner', user.id, coingeckoId]),
+        mutateGlobal(['/alerts/buy-planners', user.id]),
+        mutateGlobal(['/sell-active', user.id, coingeckoId]),
+        mutateGlobal(['/sell-planner/active', user.id, coingeckoId]),
+        mutateGlobal((key: any) => {
+          if (!Array.isArray(key)) return false
+          const head = key[0]
+          if (typeof head !== 'string') return false
+          if (!key.includes(user.id) || !key.includes(coingeckoId)) return false
+          return (
+            head.startsWith('/buy-planner/') ||
+            head.startsWith('/sell-') ||
+            head.startsWith('/trades/buys/for-ladder')
+          )
+        }),
+      ])
+
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to update Buy planner.')
     } finally {
@@ -415,7 +486,7 @@ useEffect(() => {
   }
 
   // Remove current planner (soft delete: mark as inactive)
-  const onClearPlanner = async () => {
+const onClearPlanner = async (opts?: { confirmed?: boolean }) => {
     setErr(null)
     setMsg(null)
 
@@ -428,10 +499,13 @@ useEffect(() => {
       return
     }
 
-    const confirmed = window.confirm(
-      'Remove the current Buy planner for this asset? This will stop alerts and the ladder for this coin, but keeps your past trades and history intact.'
-    )
-    if (!confirmed) return
+if (!opts?.confirmed) {
+  const confirmed = window.confirm(
+    'Remove the current Buy planner for this asset? This will stop alerts and the ladder for this coin, but keeps your past trades and history intact.'
+  )
+  if (!confirmed) return
+}
+
 
     setBusy(true)
     try {
@@ -531,6 +605,29 @@ useEffect(() => {
       if (error) throw error
       setMsg('Saved new Buy planner and rotated Sell planner.')
       await mutate()
+
+      // Revalidate dependent SWR caches so the UI updates immediately (no refresh needed)
+      await Promise.all([
+        mutateGlobal(['/buy-planner/active', user.id, coingeckoId]),
+        mutateGlobal(['/buy-planner/active-ladder', user.id, coingeckoId]),
+        mutateGlobal(['/buy-planner/latest-banner', user.id, coingeckoId]),
+        mutateGlobal(['/alerts/buy-planners', user.id]),
+        // Save New rotates Sell planner as well — refresh Sell planner UI keys
+        mutateGlobal(['/sell-active', user.id, coingeckoId]),
+        mutateGlobal(['/sell-planner/active', user.id, coingeckoId]),
+        mutateGlobal((key: any) => {
+          if (!Array.isArray(key)) return false
+          const head = key[0]
+          if (typeof head !== 'string') return false
+          if (!key.includes(user.id) || !key.includes(coingeckoId)) return false
+          return (
+            head.startsWith('/buy-planner/') ||
+            head.startsWith('/sell-') ||
+            head.startsWith('/trades/buys/for-ladder')
+          )
+        }),
+      ])
+
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to save new Buy planner.')
     } finally {

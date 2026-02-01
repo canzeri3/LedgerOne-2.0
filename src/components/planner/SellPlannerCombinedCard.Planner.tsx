@@ -62,6 +62,30 @@ export default function SellPlannerCombinedCardPlanner({
   const [alertLabels, setAlertLabels] = useState<number[]>([])
   const activeRootRef = useRef<HTMLDivElement | null>(null)
   const historyRootRef = useRef<HTMLDivElement | null>(null)
+  // ── UI state: confirm “Delete” (Sell Planner) ─────────────────────────────
+  const [confirmSellDeleteOpen, setConfirmSellDeleteOpen] = useState<boolean>(false)
+  const confirmSellDeleteCancelRef = useRef<HTMLButtonElement | null>(null)
+  const lastFocusSellDeleteRef = useRef<HTMLElement | null>(null)
+  const sellDeleteActionRef = useRef<null | (() => void | Promise<void>)>(null)
+
+  const openConfirmSellDelete = (action: () => void | Promise<void>) => {
+    lastFocusSellDeleteRef.current = (document.activeElement as HTMLElement) ?? null
+    sellDeleteActionRef.current = action
+    setConfirmSellDeleteOpen(true)
+  }
+
+  const closeConfirmSellDelete = () => {
+    setConfirmSellDeleteOpen(false)
+    sellDeleteActionRef.current = null
+    setTimeout(() => lastFocusSellDeleteRef.current?.focus?.(), 0)
+  }
+
+  const confirmSellDelete = async () => {
+    const fn = sellDeleteActionRef.current
+    if (!fn) return
+    await fn()
+    closeConfirmSellDelete()
+  }
 
 
   const { user } = useUser()
@@ -107,6 +131,28 @@ export default function SellPlannerCombinedCardPlanner({
     return () => mo.disconnect()
   }, [selected, newestFirst])
 
+  // Modal behavior: scroll lock + ESC to dismiss (Sell delete)
+  useEffect(() => {
+    if (!confirmSellDeleteOpen) return
+
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeConfirmSellDelete()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    setTimeout(() => confirmSellDeleteCancelRef.current?.focus(), 0)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [confirmSellDeleteOpen])
 
   const labels = useMemo(() => {
     const N = Math.min(10, Math.max(0, historyLength))
@@ -159,6 +205,64 @@ export default function SellPlannerCombinedCardPlanner({
 
   return (
     <>
+          {/* Confirm “Delete” (Sell Planner) */}
+      {confirmSellDeleteOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-sell-delete-title"
+          className="fixed inset-0 z-[110] flex items-center justify-center px-4"
+        >
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Close delete confirmation"
+            onClick={closeConfirmSellDelete}
+            className="absolute inset-0 bg-black/60"
+          />
+
+          {/* Panel */}
+          <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
+            <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
+              <h2 id="confirm-sell-delete-title" className="text-sm font-semibold text-slate-100">
+                Delete Sell Planner?
+              </h2>
+              <p className="mt-1 text-[12px] text-slate-400">
+                This permanently removes the selected Sell Planner version from History.
+              </p>
+            </div>
+
+            <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
+              This permanently removes the selected Sell Planner version from History.
+              Any trades you already recorded under this planner will remain saved and visible in your history.
+              <span className="block mt-2 text-slate-200 font-medium">
+                This action can’t be undone.
+              </span>
+            </div>
+
+
+            <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+              <button
+                ref={confirmSellDeleteCancelRef}
+                type="button"
+                onClick={closeConfirmSellDelete}
+                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmSellDelete}
+                className="rounded px-4 py-2 text-sm font-medium border border-[rgb(88,60,60)] bg-[rgb(44,34,34)] text-slate-100 hover:bg-[rgb(52,38,38)]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ───────────────── Header moved to OUTER card via portal ───────────────── */}
       {historyLength > 0 && (
         <HeaderPortal>
@@ -256,7 +360,7 @@ export default function SellPlannerCombinedCardPlanner({
                     <div className="mt-3 flex justify-end pt-1">
                       <button
                         type="button"
-                        onClick={handleDeleteSelected}
+  onClick={() => openConfirmSellDelete(handleDeleteSelected)}
                         className="sell-delete-btn"
                       >
                         <span className="button__text">Delete</span>
@@ -357,8 +461,8 @@ export default function SellPlannerCombinedCardPlanner({
     if (!target) return
     const id = target.getAttribute('data-history-id')
     if (!id) return
-    const ok = confirm('Delete this frozen planner version permanently? This cannot be undone.')
-    if (!ok) return
+      // Confirmation handled by in-website modal (no native confirm).
+
 
     try {
       if (!user) {

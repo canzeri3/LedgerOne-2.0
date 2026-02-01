@@ -1644,7 +1644,6 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
 
 
       <p className="text-xs text-slate-500">
-        “Max” spans from your first BUY across all coins. Data is cached per-coin and aggregated client-side for smooth, real-time feel without changing your backend.
       </p>
     </div>
   )
