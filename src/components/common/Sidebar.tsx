@@ -106,7 +106,7 @@ export default function Sidebar() {
 
   return (
     // Sidebar scrolls independently if content exceeds viewport
-    <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto">
+<div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden scrollbar-auto-hide">
         {/* Brand logo */}
 <div className="pt-4 pb-3 px-0 -ml-4 w-[calc(100%+16px)]">
         {/* Brand logo */}
@@ -237,7 +237,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
               </div>
 
               {/* Unified coins list (UI-only reordering: favourites float to the top) */}
-              <ul className="flex flex-col gap-1 max-h-72 overflow-auto pr-1">
+<ul className="flex flex-col gap-1 max-h-72 overflow-auto overflow-x-hidden pr-1 scrollbar-auto-hide">
                 {filteredCoins.map((c) => {
                   const isFav = favSet?.has?.(c.coingecko_id)
                   return (
