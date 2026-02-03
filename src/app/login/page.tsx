@@ -37,9 +37,20 @@ export default function LoginPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-[#131415] text-slate-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+return (
+  <div className="relative min-h-screen bg-[#131415] text-slate-100 flex items-center justify-center px-4 overflow-hidden">
+    {/* Full-page halo backdrop (behind card) */}
+    <div className="pointer-events-none absolute inset-0 z-0">
+      {/* Top wash */}
+      <div className="absolute -top-28 left-1/2 h-80 w-[72rem] max-w-[120vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/18 via-sky-500/10 to-emerald-500/14 blur-3xl" />
+      {/* Center glow behind card */}
+      <div className="absolute left-1/2 top-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/10 blur-3xl" />
+      {/* Subtle corner balance */}
+      <div className="absolute -bottom-44 -right-44 h-[34rem] w-[34rem] rounded-full bg-emerald-500/8 blur-3xl" />
+    </div>
+
+    <div className="w-full max-w-md relative z-10">
+
         {/* Brand header */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/70 px-4 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">

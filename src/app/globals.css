@@ -56,9 +56,6 @@ body {
 .scrollbar-auto-hide:hover {
   scrollbar-color: rgba(148, 163, 184, 0.28) transparent; /* Firefox: show thumb */
 }
-.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.28);
-}
 
 .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
   background-color: rgba(148, 163, 184, 0.28);
