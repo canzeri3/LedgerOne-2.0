@@ -5,13 +5,7 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import Button from '@/components/ui/Button'
-import {
-  buildBuyLevels,
-  computeBuyFills,
-  type BuyLevel,
-  type BuyTrade,
-} from '@/lib/planner'
+
 
 /* ── shared UI tokens matched to BuyPlannerInputs ─────────── */
 const baseBg = 'bg-[rgb(41,42,43)]'
@@ -461,29 +455,79 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     return a ? `Avg lock: ${fmtCurrency(Number(a))}` : ''
   }, [activeSell?.avg_lock_price])
 
-  // Pool = on-hand tokens within the epoch (simple version)
-  const getPoolTokens = async (plannerId: string) => {
-    const { data: sells, error: e1 } = await supabaseBrowser
+  // Pool = buys (active buy planner) - sells (this sell planner)
+  const getPoolTokens = async (sellPlannerId: string) => {
+    if (!user) return 0
+
+    const { data: bp, error: eBp } = await supabaseBrowser
+      .from('buy_planners')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (eBp) throw eBp
+    const buyPlannerId = (bp as any)?.id
+    if (!buyPlannerId) return 0
+
+    const { data: sells, error: eS } = await supabaseBrowser
       .from('trades')
       .select('quantity')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .eq('coingecko_id', coingeckoId)
       .eq('side', 'sell')
-      .eq('sell_planner_id', plannerId)
-    if (e1) throw e1
-    const soldQty = (sells ?? []).reduce((sum, t) => sum + Number(t.quantity ?? 0), 0)
+      .eq('sell_planner_id', sellPlannerId)
+    if (eS) throw eS
+    const soldQty = (sells ?? []).reduce((sum, t: any) => sum + Number(t.quantity ?? 0), 0)
 
-    const { data: buys, error: e2 } = await supabaseBrowser
+    const { data: buys, error: eB } = await supabaseBrowser
       .from('trades')
       .select('quantity')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .eq('coingecko_id', coingeckoId)
       .eq('side', 'buy')
-    if (e2) throw e2
-    const boughtQty = (buys ?? []).reduce((sum, t) => sum + Number(t.quantity ?? 0), 0)
+      .eq('buy_planner_id', buyPlannerId)
+    if (eB) throw eB
+    const boughtQty = (buys ?? []).reduce((sum, t: any) => sum + Number(t.quantity ?? 0), 0)
 
-    const pool = Math.max(0, boughtQty - soldQty)
-    return pool
+    return Math.max(0, boughtQty - soldQty)
+  }
+
+  // User-specific avg cost for the CURRENT active buy planner (trade-weighted)
+  const getCurrentBuyPlannerAvgCost = async (): Promise<number> => {
+    if (!user) return 0
+
+    const { data: bp, error: eBp } = await supabaseBrowser
+      .from('buy_planners')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (eBp) throw eBp
+    const buyPlannerId = (bp as any)?.id
+    if (!buyPlannerId) return 0
+
+    const { data: buysRaw, error: eBuys } = await supabaseBrowser
+      .from('trades')
+      .select('price,quantity,trade_time')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('side', 'buy')
+      .eq('buy_planner_id', buyPlannerId)
+      .order('trade_time', { ascending: true })
+    if (eBuys) throw eBuys
+
+    let cost = 0
+    let qty = 0
+    for (const t of (buysRaw ?? []) as any[]) {
+      const p = Number(t.price ?? 0)
+      const q = Number(t.quantity ?? 0)
+      if (!(p > 0) || !(q > 0)) continue
+      cost += p * q
+      qty += q
+    }
+    return qty > 0 ? cost / qty : 0
   }
 
   // Compute ACTIVE planner average from ON-PLAN allocations only (strict)
@@ -563,7 +607,9 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     setBusy(true)
     try {
       const poolTokens = await getPoolTokens(activeSell.id)
-      const avg = Number(activeSell.avg_lock_price || 0) || (await getCurrentOnPlanAvg())
+      const locked = Number(activeSell.avg_lock_price || 0)
+      const liveAvg = await getCurrentBuyPlannerAvgCost()
+      const avg = locked > 0 ? locked : liveAvg
       const baseAvg = avg > 0 ? avg : 0
       if (!baseAvg) {
         setErr('Unable to compute base average price.')

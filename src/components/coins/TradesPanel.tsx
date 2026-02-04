@@ -9,13 +9,6 @@ import { mutate as globalMutate } from 'swr'
 
 
 
-// NEW: reuse existing math so the dynamic average respects ON-PLAN allocation
-import {
-  buildBuyLevels,
-  computeBuyFills,
-  type BuyLevel,
-  type BuyTrade,
-} from '@/lib/planner'
 
 type PlannerId = string
 
@@ -360,63 +353,47 @@ const onFeeChange = makeLiveNumericChangeHandler(
     const pctOfRemaining = Number(first?.sell_pct_of_remaining ?? 0.10) // default 10%
     return { levels, stepPct, pctOfRemaining }
   }
-
-  // Compute the ON-PLAN moving average for the ACTIVE buy planner
+  // Compute user-specific average cost for the ACTIVE buy planner (trade-weighted)
   async function computeOnPlanAverage(): Promise<number> {
+    // 1) Resolve the active buy planner for this coin
     const { data: bp, error: eBp } = await supabaseBrowser
       .from('buy_planners')
-      .select('id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level')
+      .select('id')
       .eq('user_id', user!.id)
       .eq('coingecko_id', id)
       .eq('is_active', true)
       .maybeSingle()
+
     if (eBp) throw eBp
     if (!bp?.id) return 0
 
-  const top = Number((bp as any).top_price || 0)
-const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
-
-const depthNum = Number((bp as any).ladder_depth || 70)
-const depth = (depthNum === 90
-  ? 90
-  : depthNum === 75
-    ? 75
-    : 70) as 70 | 75 | 90
-
-const growth = Number((bp as any).growth_per_level ?? 1.25)
-
-const levels: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
-
-
+    // 2) Pull all buy trades tied to the active buy planner and compute trade-weighted avg cost
     const { data: buysRaw, error: eBuys } = await supabaseBrowser
       .from('trades')
-      .select('price,quantity,fee,trade_time,side,buy_planner_id')
+      .select('price,quantity,trade_time')
       .eq('user_id', user!.id)
       .eq('coingecko_id', id)
       .eq('side', 'buy')
-      .eq('buy_planner_id', (bp as any).id)
+      .eq('buy_planner_id', bp.id)
       .order('trade_time', { ascending: true })
+
     if (eBuys) throw eBuys
 
-    const buys: BuyTrade[] = (buysRaw ?? []).map(t => ({
-      price: Number(t.price),
-      quantity: Number(t.quantity),
-      fee: Number((t as any).fee ?? 0),
-      trade_time: (t as any).trade_time,
-    }))
+    let cost = 0
+    let qty = 0
 
-    if (!levels.length || !buys.length) return 0
+    for (const t of (buysRaw ?? []) as any[]) {
+      const p = Number(t.price ?? 0)
+      const q = Number(t.quantity ?? 0)
+      if (!(p > 0) || !(q > 0)) continue
+      cost += p * q
+      qty += q
+    }
 
-    const fills = computeBuyFills(levels, buys) // STRICT waterfall
-
-    const allocatedUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
-    const allocatedTokens = levels.reduce((sum, lv, i) => {
-      const usd = fills.allocatedUsd[i] ?? 0
-      return sum + (usd > 0 ? (usd / lv.price) : 0)
-    }, 0)
-
-    return allocatedTokens > 0 ? (allocatedUsd / allocatedTokens) : 0
+    return qty > 0 ? cost / qty : 0
   }
+
+
 
   // Pool tokens = buys (active buy planner) - sells (active sell planner)
   async function computePoolTokens(sellPlannerId: string): Promise<number> {
