@@ -530,62 +530,10 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     return qty > 0 ? cost / qty : 0
   }
 
-  // Compute ACTIVE planner average from ON-PLAN allocations only (strict)
-  const getCurrentOnPlanAvg = async (): Promise<number> => {
-    if (!user) return 0
+  // NOTE: Legacy "on-plan" avg (ladder-based waterfall math) removed.
+  // Sell ladder now uses the user's trade-weighted avg cost from the ACTIVE buy planner:
+  // see getCurrentBuyPlannerAvgCost() + onGenerate().
 
-    const { data: bp, error: eBp } = await supabaseBrowser
-      .from('buy_planners')
-      .select('id,top_price,budget_usd,total_budget,ladder_depth,growth_per_level')
-      .eq('user_id', user.id)
-      .eq('coingecko_id', coingeckoId)
-      .eq('is_active', true)
-      .maybeSingle()
-    if (eBp) throw eBp
-    if (!bp?.id) return 0
-
-    const top = Number((bp as any).top_price || 0)
-    const budget = Number((bp as any).budget_usd ?? (bp as any).total_budget ?? 0)
-
-    const depthNum = Number((bp as any).ladder_depth || 70)
-    const depth = (depthNum === 90
-      ? 90
-      : depthNum === 75
-        ? 75
-        : 70) as 70 | 75 | 90
-
-    const growth = Number((bp as any).growth_per_level ?? 25)
-
-    const levelsArr: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
-
-    const { data: buysRaw, error: eBuys } = await supabaseBrowser
-      .from('trades')
-      .select('price,quantity,fee,trade_time')
-      .eq('user_id', user.id)
-      .eq('coingecko_id', coingeckoId)
-      .eq('side', 'buy')
-      .order('trade_time', { ascending: true })
-    if (eBuys) throw eBuys
-
-    const buys: BuyTrade[] = (buysRaw ?? []).map(t => ({
-      price: Number(t.price),
-      quantity: Number(t.quantity),
-      fee: (t as any).fee ?? 0,
-      trade_time: (t as any).trade_time,
-    }))
-
-    if (!levelsArr.length || !buys.length) return 0
-
-    const fills = computeBuyFills(levelsArr, buys) // STRICT waterfall
-
-    const allocatedUsd = fills.allocatedUsd.reduce((s, v) => s + v, 0)
-    const allocatedTokens = levelsArr.reduce((sum, lv, i) => {
-      const usd = fills.allocatedUsd[i] ?? 0
-      return sum + (usd > 0 ? usd / lv.price : 0)
-    }, 0)
-
-    return allocatedTokens > 0 ? allocatedUsd / allocatedTokens : 0
-  }
 
   const onGenerate = async () => {
     setErr(null)
