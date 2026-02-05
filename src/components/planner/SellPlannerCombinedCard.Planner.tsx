@@ -21,20 +21,33 @@ const OUTER_HEADER_MOUNT_ID = 'sell-planner-header-right'
 const TEXT_RGB = 'rgb(204,213,223)' // requested global text color
 
 /** Tiny portal that renders children into the outer card header if present, else inline fallback */
-function HeaderPortal({ children }: { children: ReactNode }) {
+function HeaderPortal({
+  children,
+  ownerKey,
+}: {
+  children: ReactNode
+  ownerKey?: string | null
+}) {
   const [target, setTarget] = useState<HTMLElement | null>(null)
+
+  // Re-resolve the mount node when navigation/coin changes.
+  // This prevents portaling into a stale element that was replaced/unmounted.
   useEffect(() => {
-    if (typeof document !== 'undefined') {
-      setTarget(document.getElementById(OUTER_HEADER_MOUNT_ID))
-    }
-  }, [])
-  if (typeof window !== 'undefined' && target) {
-    // ensure header controls also use the unified text color
+    if (typeof document === 'undefined') return
+    const el = document.getElementById(OUTER_HEADER_MOUNT_ID)
+    setTarget(el && el.isConnected ? el : null)
+  }, [ownerKey])
+
+  const canPortal =
+    typeof window !== 'undefined' && !!target && target.isConnected
+
+  if (canPortal) {
     return createPortal(
       <div className="text-[rgb(204,213,223)]">{children}</div>,
-      target
+      target as HTMLElement
     )
   }
+
   // fallback (e.g., if component reused elsewhere without outer mount)
   return <div className="text-[rgb(204,213,223)]">{children}</div>
 }
@@ -287,7 +300,7 @@ export default function SellPlannerCombinedCardPlanner({
 
       {/* ───────────────── Header moved to OUTER card via portal ───────────────── */}
       {historyLength > 0 && (
-        <HeaderPortal>
+<HeaderPortal ownerKey={pathname}>
           <div className="flex items-center gap-2 overflow-x-auto">
             {/* Label (subtle). If you want it always visible, remove 'hidden md:inline'. */}
             <span className="hidden md:inline text-xs mr-2">

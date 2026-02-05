@@ -107,6 +107,7 @@ function findPumpCycle(
   let fallbackMaxHigh = 0
   let fallbackMaxHighTime: string | null = null
 
+  // 1) Collect local lows + fallback max of the series (whatever "p" represents)
   for (let i = 0; i < n; i++) {
     const p = points[i].p
     if (p != null && p > 0 && p > fallbackMaxHigh) {
@@ -121,16 +122,30 @@ function findPumpCycle(
     if (pCur == null || pCur <= 0) continue
 
     // local low: equal/lower than neighbors (we're using lows, not closes)
-    if (
-      (pPrev == null || pCur <= pPrev) &&
-      (pNext == null || pCur <= pNext)
-    ) {
+    if ((pPrev == null || pCur <= pPrev) && (pNext == null || pCur <= pNext)) {
       localLowIdxs.push(i)
     }
   }
 
   const localLowCount = localLowIdxs.length
   debugNotes.push(`localLows=${localLowCount}`)
+
+  // 2) Precompute suffix maxima so we can answer:
+  //    "What is the PEAK price after index k?" in O(1)
+  const suffixMax: number[] = new Array(n).fill(-Infinity)
+  const suffixMaxIdx: number[] = new Array(n).fill(-1)
+
+  let curMax = -Infinity
+  let curIdx = -1
+  for (let i = n - 1; i >= 0; i--) {
+    const p = points[i].p
+    if (p != null && p > 0 && p >= curMax) {
+      curMax = p
+      curIdx = i
+    }
+    suffixMax[i] = curMax
+    suffixMaxIdx[i] = curIdx
+  }
 
   let autoTopPrice: number | null = null
   let cycle: {
@@ -140,30 +155,33 @@ function findPumpCycle(
     highTime: string
   } | null = null
 
-  // Walk lows from newest back until we find one with a qualifying pump
+  // 3) Walk lows from newest back:
+  //    - Require: peak after that low is >= L * pumpMultiple (qualifying pump)
+  //    - Then return the PEAK after that low (not the first 1.5x crossing)
   for (let li = localLowIdxs.length - 1; li >= 0; li--) {
     const lowIdx = localLowIdxs[li]
     const lowPoint = points[lowIdx]
     const L = lowPoint.p
     if (L == null || L <= 0) continue
+    if (lowIdx + 1 >= n) continue
 
     const threshold = L * pumpMultiple
 
-    for (let j = lowIdx + 1; j < n; j++) {
-      const hp = points[j].p
-      if (hp == null || hp <= 0) continue
-      if (hp >= threshold) {
-        autoTopPrice = hp
-        cycle = {
-          lowPrice: L,
-          lowTime: new Date(lowPoint.t).toISOString(),
-          highPrice: hp,
-          highTime: new Date(points[j].t).toISOString(),
-        }
-        debugNotes.push(`auto_pump_found_from_low_idx=${lowIdx}`)
-        li = -1 // break outer loop
-        break
+    const peak = suffixMax[lowIdx + 1]
+    const peakIdx = suffixMaxIdx[lowIdx + 1]
+
+    if (peakIdx !== -1 && Number.isFinite(peak) && peak >= threshold) {
+      autoTopPrice = peak
+      cycle = {
+        lowPrice: L,
+        lowTime: new Date(lowPoint.t).toISOString(),
+        highPrice: peak,
+        highTime: new Date(points[peakIdx].t).toISOString(),
       }
+      debugNotes.push(
+        `auto_pump_peak_from_low_idx=${lowIdx};peak_idx=${peakIdx}`
+      )
+      break
     }
   }
 
