@@ -99,12 +99,53 @@ type StateRow = {
   last_alert_count: number | null
 }
 
+function normalizeFromField(raw: string) {
+  let s = String(raw ?? '')
+
+  // Remove zero-width chars + BOM, normalize NBSP, strip newlines
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, '')
+  s = s.replace(/\u00A0/g, ' ')
+  s = s.replace(/\r?\n/g, ' ')
+  s = s.trim()
+
+  // Strip wrapping quotes if user pasted them into Vercel
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim()
+  }
+
+  // Collapse whitespace + normalize spacing around "<"
+  s = s.replace(/\s+/g, ' ')
+  s = s.replace(/\s*</g, ' <') // also fixes "Name<email@x.com>"
+  s = s.trim()
+
+  return s
+}
+
+function isValidFromField(s: string) {
+  // email@example.com
+  const emailOnly = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/
+  // Name <email@example.com>
+  const nameEmail = /^.+\s<[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/
+  return emailOnly.test(s) || nameEmail.test(s)
+}
+
 async function sendResendEmail(args: { to: string; subject: string; text: string }) {
   const apiKey = env('RESEND_API_KEY')
-  const from = env('NOTIFY_EMAIL_FROM')
+  const rawFrom = env('NOTIFY_EMAIL_FROM')
+  const from = normalizeFromField(rawFrom)
 
   if (!apiKey || !from) {
     throw new Error('Email not configured (RESEND_API_KEY / NOTIFY_EMAIL_FROM).')
+  }
+
+  if (!isValidFromField(from)) {
+    // Show both raw+normalized so you can see hidden chars / quotes in logs
+    throw new Error(
+      `Invalid NOTIFY_EMAIL_FROM. raw=${JSON.stringify(rawFrom)} normalized=${JSON.stringify(from)}`
+    )
   }
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -374,13 +415,16 @@ export async function GET(req: NextRequest) {
         const prevSet = new Set(prevKeys)
         const newKeys = currentKeys.filter((k) => !prevSet.has(k))
 
-        const isFirstRun = !st
         const hasNew = newKeys.length > 0
-        const shouldSend = (!isFirstRun && hasNew) || (force && hasNew)
+
+        // Notify whenever we detect new alert keys (this includes first run: 0 -> 1).
+        // If `force=1`, re-send whenever there are ANY current alerts (useful for testing).
+        const shouldSend = hasNew || (force && currentKeys.length > 0)
 
         if (shouldSend && !dry) {
           const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
-          const coins = keysToHumanCoins(newKeys).slice(0, 3)
+          const sendKeys = force && !hasNew ? currentKeys : newKeys
+          const coins = keysToHumanCoins(sendKeys).slice(0, 3)
 
           const headline =
             coins.length === 1
