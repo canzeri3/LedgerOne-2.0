@@ -1,13 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ExternalLink, HelpCircle, Info, FlaskConical } from 'lucide-react'
+import { useUser } from '@/lib/useUser'
+import { supabaseBrowser } from '@/lib/supabaseClient'
 
-type TabId = 'general' | 'accounts' | 'about' | 'help' | 'experimental'
+type TabId = 'general' | 'notifications' | 'accounts' | 'about' | 'help' | 'experimental'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'about', label: 'About' },
   { id: 'help', label: 'Help' },
@@ -16,6 +19,16 @@ const TABS: { id: TabId; label: string }[] = [
 
 const APP_VERSION = '0.1.0'
 const APP_NAME = 'LedgerOne'
+
+type Channel = 'none' | 'email' | 'sms'
+
+type PrefRow = {
+  user_id: string
+  channel: Channel
+  email: string | null
+  phone_e164: string | null
+  updated_at: string | null
+}
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('general')
@@ -64,6 +77,7 @@ export default function SettingsPage() {
         {/* Tab content */}
         <div className="divide-y divide-white/5">
           {activeTab === 'general' && <GeneralTab />}
+          {activeTab === 'notifications' && <NotificationsTab />}
           {activeTab === 'accounts' && <AccountsTab />}
           {activeTab === 'about' && <AboutTab />}
           {activeTab === 'help' && <HelpTab />}
@@ -111,7 +125,11 @@ function SubtleButton(props: {
     'inline-flex items-center rounded-md border border-white/10 bg-[rgb(32,33,36)] px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-white/5 hover:border-white/25 transition-colors'
 
   if (!href) {
-    return <button className={baseClasses} type="button">{children}</button>
+    return (
+      <button className={baseClasses} type="button">
+        {children}
+      </button>
+    )
   }
 
   if (external) {
@@ -133,6 +151,45 @@ function SubtleButton(props: {
       {children}
     </Link>
   )
+}
+
+function Select(props: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <select
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+      className="h-9 rounded-md border border-white/10 bg-[rgb(32,33,36)] px-3 text-xs font-medium text-slate-100 hover:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgb(167,139,250)]/35"
+    >
+      {props.options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function TextInput(props: {
+  value: string
+  placeholder?: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <input
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+      placeholder={props.placeholder}
+      className="h-9 w-[240px] rounded-md border border-white/10 bg-[rgb(32,33,36)] px-3 text-xs font-medium text-slate-100 placeholder:text-slate-500 hover:border-white/25 focus:outline-none focus:ring-2 focus:ring-[rgb(167,139,250)]/35"
+    />
+  )
+}
+
+function InlineNote(props: { children: React.ReactNode }) {
+  return <div className="text-xs text-slate-400">{props.children}</div>
 }
 
 /* ── Individual tab components ─────────────────────────────── */
@@ -160,6 +217,159 @@ function GeneralTab() {
         description="LedgerOne uses a high-contrast institutional dark theme optimized for long sessions."
         action={<Pill label="Dark · Always on" />}
       />
+    </>
+  )
+}
+
+function NotificationsTab() {
+  const { user, loading } = useUser()
+
+  const [pref, setPref] = useState<PrefRow | null>(null)
+  const [channel, setChannel] = useState<Channel>('none')
+  const [phone, setPhone] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<string>('')
+
+  const email = useMemo(() => String(user?.email ?? '').trim(), [user?.email])
+
+  useEffect(() => {
+    let mounted = true
+    async function run() {
+      if (!user?.id) return
+      setStatus('')
+      const { data, error } = await supabaseBrowser
+        .from('notification_prefs')
+        .select('user_id,channel,email,phone_e164,updated_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!mounted) return
+      if (error) {
+        // Fail-soft: show as "none" if table doesn't exist yet or policies block
+        setPref(null)
+        setChannel('none')
+        setPhone('')
+        return
+      }
+
+      const row = (data ?? null) as PrefRow | null
+      setPref(row)
+      setChannel((row?.channel as Channel) || 'none')
+      setPhone(String(row?.phone_e164 ?? ''))
+    }
+    run()
+    return () => {
+      mounted = false
+    }
+  }, [user?.id])
+
+  const validatePhone = (v: string) => {
+    // simple E.164 check: + and 8-15 digits
+    const s = v.trim()
+    if (!s) return true
+    return /^\+\d{8,15}$/.test(s)
+  }
+
+  const onSave = async () => {
+    if (!user?.id) return
+    setStatus('')
+    setSaving(true)
+    try {
+      if (channel === 'sms' && !validatePhone(phone)) {
+        setStatus('Phone must be E.164 format (example: +15145551234).')
+        return
+      }
+
+      const payload: PrefRow = {
+        user_id: user.id,
+        channel,
+        email: email || null,
+        phone_e164: channel === 'sms' ? (phone.trim() || null) : null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabaseBrowser
+        .from('notification_prefs')
+        .upsert(payload, { onConflict: 'user_id' })
+
+      if (error) {
+        setStatus(error.message)
+        return
+      }
+
+      setPref(payload)
+      setStatus('Saved.')
+      window.setTimeout(() => setStatus(''), 1500)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Row
+        title="Alert delivery"
+        description="When an alert becomes active, send a short message (you still open the app for full context)."
+        action={
+          <Select
+            value={channel}
+            onChange={(v) => setChannel(v as Channel)}
+            options={[
+              { value: 'none', label: 'None' },
+              { value: 'email', label: 'Email' },
+              { value: 'sms', label: 'SMS' },
+            ]}
+          />
+        }
+      />
+
+      <Row
+        title="Destination"
+        description={
+          channel === 'email'
+            ? 'Uses your account email address.'
+            : channel === 'sms'
+              ? 'Enter a phone number in E.164 format.'
+              : 'Notifications are disabled.'
+        }
+        action={
+          channel === 'email' ? (
+            <Pill label={email ? email : 'No email'} />
+          ) : channel === 'sms' ? (
+            <TextInput
+              value={phone}
+              onChange={setPhone}
+              placeholder="+15145551234"
+            />
+          ) : (
+            <Pill label="—" />
+          )
+        }
+      />
+
+      <div className="px-4 py-4 sm:px-6">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || loading || !user?.id}
+            className={[
+              'inline-flex items-center rounded-md border border-white/10 bg-[rgb(32,33,36)] px-3 py-2 text-xs font-semibold text-slate-100',
+              'hover:bg-white/5 hover:border-white/25 transition-colors',
+              (saving || loading || !user?.id) ? 'opacity-60 cursor-not-allowed' : '',
+            ].join(' ')}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+
+          {status ? <InlineNote>{status}</InlineNote> : null}
+        </div>
+
+        <div className="mt-2 text-xs text-slate-500">
+          Message examples: <span className="text-slate-300">BTC trigger</span>,{' '}
+          <span className="text-slate-300">BTC new cycle</span>.
+        </div>
+      </div>
     </>
   )
 }
@@ -258,21 +468,10 @@ function ExperimentalTab() {
         action={
           <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
             <FlaskConical className="mr-1 h-3 w-3" />
-            Enabled by default
+            Enabled
           </span>
         }
-      />
-      <Row
-        title="Planner alerts surface"
-        description="Planner-driven alerts are shown on the dashboard and in-app notifications. Future releases may add email or push delivery channels."
-        action={<Pill label="In-app only" />}
-      />
-      <Row
-        title="Experimental UI"
-        description="Small visual refinements and layout experiments may be rolled out to your account before they are finalized."
-        action={<Pill label="Gradual rollout" />}
       />
     </>
   )
 }
-

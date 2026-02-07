@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { Reveal, ScrollSpread } from '@/components/landing/ScrollEffects'
+
 type CoinRow = {
   symbol: string
   name: string
@@ -55,7 +57,7 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute left-1/2 top-8 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl" />
 
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-start">
-          <div className="max-w-xl space-y-8">
+          <Reveal className="max-w-xl space-y-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-medium text-emerald-200">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               <span>Portfolio planning workspace</span>
@@ -93,17 +95,16 @@ export default function LandingPage() {
             <p className="text-xs text-slate-500">
               Already onboarded?{' '}
               <Link
-    href="/dashboard"
-className="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/30 px-2.5 py-0.5 text-[11px] font-medium leading-none text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
-  >
-    Open dashboard
-  </Link>
-              
+                href="/dashboard"
+                className="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/30 px-2.5 py-0.5 text-[11px] font-medium leading-none text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
+              >
+                Open dashboard
+              </Link>
             </p>
-          </div>
+          </Reveal>
 
           {/* Preview — keep as a “product screenshot” card for clarity */}
-          <div className="relative">
+          <Reveal className="relative" delayMs={120}>
             <div className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/12 via-emerald-500/8 to-sky-500/10 blur-2xl" />
             <div className="relative rounded-3xl border border-slate-800/50 bg-[#1f2021] px-5 py-4 shadow-2xl shadow-black/60">
               <header className="flex items-center justify-between gap-4 border-b border-slate-800/70 pb-3">
@@ -186,102 +187,120 @@ className="inline-flex items-center rounded-full border border-slate-700/70 bg-s
                 </p>
               </div>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* TRUST STRIP (simple, clean, not flashy) */}
-      <section id="methodology" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-5 py-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-<p className="text-sm text-slate-300 leading-relaxed">
- Institutional-style workflow for long-horizon investors—adapted for individual investors and built for process, risk controls, and clean reporting.</p>
+      <Reveal>
+        <section id="methodology" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Institutional-style workflow for long-horizon investors—adapted for individual investors and built for process, risk controls, and clean reporting.
+            </p>
 
-
-          <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
-            <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
-              Any portfolio size
-            </span>
-            <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
-              Long-horizon focus
-            </span>
-            <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
-              Rules-based workflow
-            </span>
+            <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+              <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+                Any portfolio size
+              </span>
+              <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+                Long-horizon focus
+              </span>
+              <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+                Rules-based workflow
+              </span>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </Reveal>
 
       {/* VALUE PILLARS (3 clear reasons; clean marketing) */}
       <section id="pillars" className="space-y-8">
-        <Kicker
-          label="LEDGERONE · PRINCIPLES"
-          title="Built around clarity, discipline, and reporting."
-          subtitle="LedgerOne is designed to reduce noise and increase consistency—by turning portfolio management into a repeatable workflow."
-        />
+        <Reveal>
+          <Kicker
+            label="LEDGERONE · PRINCIPLES"
+            title="Built around clarity, discipline, and reporting."
+            subtitle="LedgerOne is designed to reduce noise and increase consistency—by turning portfolio management into a repeatable workflow."
+          />
+        </Reveal>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Rules-first planning</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Define targets, bands, and ladder levels up front—so actions follow a plan, not headlines.
-            </p>
-          </div>
+        <ScrollSpread className="grid gap-6 lg:grid-cols-3">
+          <Reveal delayMs={0}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Rules-first planning</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Define targets, bands, and ladder levels up front—so actions follow a plan, not headlines.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Portfolio-level visibility</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Track positions, progress, and drift in one place with clean, calm reporting.
-            </p>
-          </div>
+          <Reveal delayMs={90}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Portfolio-level visibility</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Track positions, progress, and drift in one place with clean, calm reporting.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Risk posture and guardrails</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Stay within a defined mandate using structured constraints that help keep decisions consistent.
-            </p>
-          </div>
-        </div>
+          <Reveal delayMs={180}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Risk posture and guardrails</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Stay within a defined mandate using structured constraints that help keep decisions consistent.
+              </p>
+            </div>
+          </Reveal>
+        </ScrollSpread>
       </section>
 
-      {/* WORKFLOW (simple cards; no extra effects) */}
+      {/* WORKFLOW */}
       <section id="planner" className="space-y-8">
-        <Kicker
-          label="PRODUCT · WORKFLOW"
-          title="A simple workflow that keeps your portfolio on-plan."
-          subtitle="Define rules → execute with discipline → review progress over time."
-        />
+        <Reveal>
+          <Kicker
+            label="PRODUCT · WORKFLOW"
+            title="A simple workflow that keeps your portfolio on-plan."
+            subtitle="Define rules → execute with discipline → review progress over time."
+          />
+        </Reveal>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">01 · Define</p>
-            <p className="mt-2 text-sm font-semibold text-slate-100">Define your allocation rules</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Set targets, bands, and ladder levels per asset—before markets move.
-            </p>
-          </div>
+        <ScrollSpread className="grid gap-6 lg:grid-cols-3">
+          <Reveal delayMs={0}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">01 · Define</p>
+              <p className="mt-2 text-sm font-semibold text-slate-100">Define your allocation rules</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Set targets, bands, and ladder levels per asset—before markets move.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">02 · Execute</p>
-            <p className="mt-2 text-sm font-semibold text-slate-100">Execute with discipline</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Identify when a level is in range, triggered, or filled—so actions follow the plan.
-            </p>
-          </div>
+          <Reveal delayMs={90}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">02 · Execute</p>
+              <p className="mt-2 text-sm font-semibold text-slate-100">Execute with discipline</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Identify when a level is in range, triggered, or filled—so actions follow the plan.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">03 · Review</p>
-            <p className="mt-2 text-sm font-semibold text-slate-100">Review risk & progress</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Track drift, exposure, and plan adherence with clean portfolio-level reporting.
-            </p>
-          </div>
-        </div>
+          <Reveal delayMs={180}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">03 · Review</p>
+              <p className="mt-2 text-sm font-semibold text-slate-100">Review risk & progress</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Track drift, exposure, and plan adherence with clean portfolio-level reporting.
+              </p>
+            </div>
+          </Reveal>
+        </ScrollSpread>
       </section>
 
-      {/* ABOUT (floating statement — used sparingly, where it adds trust) */}
+      {/* ABOUT */}
       <section id="about" className="relative">
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-[42rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-500/12 via-emerald-500/8 to-sky-500/10 blur-3xl" />
-        <div className="relative mx-auto max-w-3xl text-center space-y-4 px-2">
+        <Reveal className="relative mx-auto max-w-3xl text-center space-y-4 px-2">
           <div className="flex justify-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               LEDGERONE · ABOUT
@@ -298,77 +317,84 @@ className="inline-flex items-center rounded-full border border-slate-700/70 bg-s
             were built for watching—not planning. LedgerOne focuses on your ledger, your rules, and clean
             reporting so decisions stay consistent across volatility.
           </p>
-        {/* Seam halo: overlaps into the next section without affecting layout */}
-        <div className="pointer-events-none absolute left-1/2 bottom-0 h-28 w-[46rem] max-w-[92vw] -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/7 to-sky-500/10 blur-3xl" />
 
-          <p className="text-[11px] text-slate-500">
-          </p>
-          
-        </div>
+          {/* Seam halo: overlaps into the next section without affecting layout */}
+          <div className="pointer-events-none absolute left-1/2 bottom-0 h-28 w-[46rem] max-w-[92vw] -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/7 to-sky-500/10 blur-3xl" />
+        </Reveal>
       </section>
 
       {/* WHO IT'S FOR */}
       <section id="teams" className="space-y-8">
-        <Kicker
-          label="RESOURCES · WHO IT’S FOR"
-          title="Designed for investors who want structure."
-          subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
-        />
+        <Reveal>
+          <Kicker
+            label="RESOURCES · WHO IT’S FOR"
+            title="Designed for investors who want structure."
+            subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
+          />
+        </Reveal>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Everyday investors</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Replace spreadsheets with a single workspace for positions, cost basis, and planning.
-            </p>
-          </div>
+        <ScrollSpread className="grid gap-6 lg:grid-cols-3">
+          <Reveal delayMs={0}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Everyday investors</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Replace spreadsheets with a single workspace for positions, cost basis, and planning.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Process-driven allocators</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Set guardrails and allocation bands to reduce reactive decisions during volatility.
-            </p>
-          </div>
+          <Reveal delayMs={90}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Process-driven allocators</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Set guardrails and allocation bands to reduce reactive decisions during volatility.
+              </p>
+            </div>
+          </Reveal>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
-            <p className="text-sm font-semibold text-slate-100">Long-horizon builders</p>
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-              Scale in and out over months or years with a plan you can actually stick to.
-            </p>
-          </div>
-        </div>
+          <Reveal delayMs={180}>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6">
+              <p className="text-sm font-semibold text-slate-100">Long-horizon builders</p>
+              <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                Scale in and out over months or years with a plan you can actually stick to.
+              </p>
+            </div>
+          </Reveal>
+        </ScrollSpread>
       </section>
 
       {/* FINAL CTA */}
-      <section id="pricing" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6">
-        <div className="flex flex-col items-center justify-between gap-4 text-center sm:text-left sm:flex-row">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-slate-100">Ready to bring structure to your portfolio?</p>
-            <p className="text-sm text-slate-400">
-              Sign in or request access to start using LedgerOne.
-            </p>
+      <Reveal>
+        <section id="pricing" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6">
+          <div className="flex flex-col items-center justify-between gap-4 text-center sm:text-left sm:flex-row">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-slate-100">Ready to bring structure to your portfolio?</p>
+              <p className="text-sm text-slate-400">
+                Sign in or request access to start using LedgerOne.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/login"
+                className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/signup"
+                className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/35 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
+              >
+                Request access
+              </Link>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/login"
-              className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/35 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
-            >
-              Request access
-            </Link>
-          </div>
-        </div>
-
-        <p className="mt-4 text-[11px] text-slate-500 text-center">
-          LedgerOne is a planning and tracking tool. It does not provide investment advice.
-        </p>
-      </section>
+          <p className="mt-4 text-[11px] text-slate-500 text-center">
+            LedgerOne is a planning and tracking tool. It does not provide investment advice.
+          </p>
+        </section>
+      </Reveal>
     </div>
   )
 }
