@@ -103,6 +103,109 @@ type ScrollSpreadProps = {
   endAt?: number   // 0..1 of viewport height
   maxRotateDeg?: number
 }
+type SplitRowProps = {
+  children: React.ReactNode
+  className?: string
+  /** Horizontal “split” distance in px for the left/right cards */
+  spreadX?: number
+  /** Vertical settle distance in px (adds depth without looking messy) */
+  liftY?: number
+  /** Transition duration in ms */
+  durationMs?: number
+  /** Stagger between cards in ms */
+  staggerMs?: number
+  /** Reveal once (recommended for clean feel) */
+  once?: boolean
+}
+
+/**
+ * Clean 3-up (or N-up) row animation:
+ * cards start slightly “clustered” + faded, then split apart into place with a stagger.
+ * This avoids jitter from continuous scroll-scrubbing.
+ */
+export function SplitRow({
+  children,
+  className = '',
+  spreadX = 34,
+  liftY = 14,
+  durationMs = 850,
+  staggerMs = 90,
+  once = true,
+}: SplitRowProps) {
+  const reducedMotion = usePrefersReducedMotion()
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [on, setOn] = useState(reducedMotion)
+
+  const items = useMemo(() => React.Children.toArray(children), [children])
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setOn(true)
+      return
+    }
+
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setOn(true)
+      return
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry?.isIntersecting) {
+          setOn(true)
+          if (once) io.disconnect()
+        } else if (!once) {
+          setOn(false)
+        }
+      },
+      // Slightly later trigger gives a more intentional “arrive + settle” feel
+      { threshold: 0.18, rootMargin: '0px 0px -10% 0px' }
+    )
+
+    io.observe(el)
+    return () => io.disconnect()
+  }, [once, reducedMotion])
+
+  const count = items.length
+  const mid = (count - 1) / 2
+
+  return (
+    <div ref={ref} className={className}>
+      {items.map((child, i) => {
+        // For a 3-up row: left moves from +spreadX, right from -spreadX, center from 0
+        // For N-up: move proportionally toward center.
+        const dir = count === 3 ? (i === 0 ? 1 : i === 2 ? -1 : 0) : (mid - i)
+
+        const x0 = dir * spreadX
+        const y0 = count === 3 ? (i === 1 ? liftY : liftY * 0.6) : Math.min(liftY, Math.abs(dir) * (liftY * 0.55))
+
+        const opacity = on ? 1 : 0
+        const scale = on ? 1 : 0.985
+        const x = on ? 0 : x0
+        const y = on ? 0 : y0
+
+        return (
+          <div
+            key={(child as any)?.key ?? i}
+            style={{
+              transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`,
+              opacity,
+              transitionProperty: 'transform, opacity',
+              transitionDuration: `${durationMs}ms`,
+              transitionTimingFunction: 'cubic-bezier(.2,.85,.2,1)',
+              transitionDelay: `${i * staggerMs}ms`,
+              willChange: 'transform, opacity',
+            }}
+          >
+            {child}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function inferOffsets(count: number): FromOffset[] {
   // Default “spread then settle” offsets (transform-only).
