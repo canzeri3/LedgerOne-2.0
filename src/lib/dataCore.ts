@@ -9,7 +9,8 @@
 // • On the client we use relative URLs (browser origin).
 // • Hooks are safe for React 19 and SWR 2.x.
 
-import useSWR, { SWRConfiguration } from "swr";
+import useSWR from "swr";
+import type { SWRConfiguration } from "swr";
 // Shared SWR defaults for all dataCore hooks.
 // Dev terms: this controls how often SWR refetches / dedupes requests.
 // Plain English: think of this as "house rules" for how often the waiter
