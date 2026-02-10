@@ -488,19 +488,21 @@ export async function GET(req: NextRequest) {
           sent++
         }
 
-        const { error: upErr } = await supabase
-          .from('notification_state')
-          .upsert(
-            {
-              user_id: userId,
-              last_alert_keys: currentKeys.join('|'),
-              last_alert_count: currentKeys.length,
-              updated_at: new Date().toISOString(),
-            } as any,
-            { onConflict: 'user_id' } as any
-          )
+        if (!dry) {
+          const { error: upErr } = await supabase
+            .from('notification_state')
+            .upsert(
+              {
+                user_id: userId,
+                last_alert_keys: currentKeys.join('|'),
+                last_alert_count: currentKeys.length,
+                updated_at: new Date().toISOString(),
+              } as any,
+              { onConflict: 'user_id' } as any
+            )
 
-        if (upErr) throw new Error(`notification_state upsert failed: ${upErr.message}`)
+          if (upErr) throw new Error(`notification_state upsert failed: ${upErr.message}`)
+        }
       } catch (e: any) {
         errors.push({
           user_id: userId,
