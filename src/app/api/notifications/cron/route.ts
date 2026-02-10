@@ -377,9 +377,10 @@ export async function GET(req: NextRequest) {
             if (!(p > 0)) return false
             const delta = Math.abs(live - p) / p
             if (delta < nearestDelta) nearestDelta = delta
-            const near = delta <= 0.02
-            const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
-            return near && notFilled
+            // Match UI: alert when live price drops to within 1.5% above the level
+            const within = live <= p * 1.015
+            const notFilled = Number(fills.fillPct?.[i] ?? 0) < 0.97
+            return within && notFilled
           })
 
           if (buyCheck) {
@@ -414,7 +415,7 @@ export async function GET(req: NextRequest) {
             .filter((t) => t.sell_planner_id === sp.id)
             .map((t) => ({ trade_time: t.trade_time, price: t.price, quantity: t.quantity, fee: t.fee }))
 
-          const fills = computeSellFills(lvls, mySells, 0.0)
+          const fills = computeSellFills(lvls, mySells, 0.05)
 
           let nearestDelta = Infinity
           const hit = lvls.some((lv, i) => {
@@ -422,9 +423,10 @@ export async function GET(req: NextRequest) {
             if (!(p > 0)) return false
             const delta = Math.abs(live - p) / p
             if (delta < nearestDelta) nearestDelta = delta
-            const near = delta <= 0.02
-            const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
-            return near && notFilled
+            // Match UI: alert when live price rises to within 3% below the level
+            const within = live >= p * 0.97
+            const notFilled = Number(fills.fillPct?.[i] ?? 0) < 0.97
+            return within && notFilled
           })
 
           if (sellCheck) {
