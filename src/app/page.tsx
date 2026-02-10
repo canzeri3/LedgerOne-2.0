@@ -575,41 +575,7 @@ export default function LandingPage() {
             </Reveal>
           </SplitRow>
         </section>
-
-        {/* WHO IT'S FOR */}
-        <section id="teams" className="space-y-8">
-          <Reveal>
-            <Kicker
-              label="RESOURCES · WHO IT’S FOR"
-              title="Designed for investors who want structure."
-              subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
-            />
-          </Reveal>
-
-          <SplitRow className="grid gap-6 lg:grid-cols-3">
-            <Reveal delayMs={0}>
-              <InfoCard
-                title="Everyday investors"
-                body="Replace spreadsheets with a single workspace for positions, cost basis, and planning."
-              />
-            </Reveal>
-
-            <Reveal delayMs={90}>
-              <InfoCard
-                title="Process-driven allocators"
-                body="Set guardrails and allocation bands to reduce reactive decisions during volatility."
-              />
-            </Reveal>
-
-            <Reveal delayMs={180}>
-              <InfoCard
-                title="Long-horizon builders"
-                body="Scale in and out over months or years with a plan you can actually stick to."
-              />
-            </Reveal>
-          </SplitRow>
-        </section>
-
+        
         {/* ABOUT */}
         <section id="about" className="relative">
           <Parallax
@@ -647,6 +613,41 @@ export default function LandingPage() {
               endAt={0.0}
             />
           </Reveal>
+        </section>
+
+
+        {/* WHO IT'S FOR */}
+        <section id="teams" className="space-y-8">
+          <Reveal>
+            <Kicker
+              label="RESOURCES · WHO IT’S FOR"
+              title="Designed for investors who want structure."
+              subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
+            />
+          </Reveal>
+
+          <SplitRow className="grid gap-6 lg:grid-cols-3">
+            <Reveal delayMs={0}>
+              <InfoCard
+                title="Everyday investors"
+                body="Replace spreadsheets with a single workspace for positions, cost basis, and planning."
+              />
+            </Reveal>
+
+            <Reveal delayMs={90}>
+              <InfoCard
+                title="Process-driven allocators"
+                body="Set guardrails and allocation bands to reduce reactive decisions during volatility."
+              />
+            </Reveal>
+
+            <Reveal delayMs={180}>
+              <InfoCard
+                title="Long-horizon builders"
+                body="Scale in and out over months or years with a plan you can actually stick to."
+              />
+            </Reveal>
+          </SplitRow>
         </section>
 
         {/* SECURITY & DATA */}

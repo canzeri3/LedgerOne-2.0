@@ -8,6 +8,7 @@ import {
   type SellPlanLevelForFill,
   type SellTrade,
 } from '@/lib/planner'
+import { buildAlertEmailHtml } from '@/lib/emailTemplate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -132,7 +133,7 @@ function isValidFromField(s: string) {
   return emailOnly.test(s) || nameEmail.test(s)
 }
 
-async function sendResendEmail(args: { to: string; subject: string; text: string }) {
+async function sendResendEmail(args: { to: string; subject: string; text: string; html?: string }) {
   const apiKey = env('RESEND_API_KEY')
   const rawFrom = env('NOTIFY_EMAIL_FROM')
   const from = normalizeFromField(rawFrom)
@@ -159,6 +160,7 @@ async function sendResendEmail(args: { to: string; subject: string; text: string
       to: [args.to],
       subject: args.subject,
       text: args.text,
+      ...(args.html ? { html: args.html } : {}),
     }),
   })
 
@@ -199,8 +201,11 @@ export async function GET(req: NextRequest) {
     if (testEmail) {
       const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
       const subject = 'LedgerOne · Test Alert'
-      const text = `Bitcoin trigger.\n\nOpen LedgerOne to review: ${base}`
-      if (!dry) await sendResendEmail({ to: testEmail, subject, text })
+      const headline = 'Bitcoin trigger.'
+      const reviewUrl = `${base}/planner`
+      const text = `${headline}\n\nOpen LedgerOne to review: ${reviewUrl}`
+      const html = buildAlertEmailHtml({ headline, reviewUrl })
+      if (!dry) await sendResendEmail({ to: testEmail, subject, text, html })
       return NextResponse.json(
         { ok: true, mode: 'testEmail', dry, sent: dry ? 0 : 1, to: testEmail },
         { status: 200 }
@@ -432,9 +437,11 @@ export async function GET(req: NextRequest) {
               : `${coins.length} triggers: ${coins.join(', ')}.`
 
           const subject = 'LedgerOne · Alert'
-          const text = `${headline}\n\nOpen LedgerOne to review: ${base}/planner`
+          const reviewUrl = `${base}/planner`
+          const text = `${headline}\n\nOpen LedgerOne to review: ${reviewUrl}`
+          const html = buildAlertEmailHtml({ headline, reviewUrl })
 
-          await sendResendEmail({ to: toEmail, subject, text })
+          await sendResendEmail({ to: toEmail, subject, text, html })
           sent++
         }
 
