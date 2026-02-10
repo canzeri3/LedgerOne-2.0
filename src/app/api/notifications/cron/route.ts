@@ -195,6 +195,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const dry = url.searchParams.get('dry') === '1'
     const force = url.searchParams.get('force') === '1'
+    const debug = url.searchParams.get('debug') === '1'
     const onlyUserId = (url.searchParams.get('userId') ?? '').trim() || null
     const testEmail = (url.searchParams.get('testEmail') ?? '').trim() || null
 
@@ -232,14 +233,17 @@ export async function GET(req: NextRequest) {
     let processedUsers = 0
     let sent = 0
     const errors: Array<{ user_id: string; message: string }> = []
+    const debugUsers: any[] = []
 
     for (const userId of userIds) {
       processedUsers++
+      const dbg: any = debug ? { userId, buyPlanners: [], sellPlanners: [], priceMap: {}, buyChecks: [], sellChecks: [], currentKeys: [], prevKeys: [], newKeys: [], shouldSend: false } : null
 
       try {
         const u = await supabase.auth.admin.getUserById(userId)
         const toEmail = (u.data?.user?.email ?? '').trim()
-        if (!toEmail) continue
+        if (!toEmail) { if (dbg) { dbg.skipped = 'no email'; debugUsers.push(dbg) } continue }
+        if (dbg) dbg.email = toEmail
 
         const { data: buyPlanners, error: eBuy } = await supabase
           .from('buy_planners')
@@ -269,6 +273,8 @@ export async function GET(req: NextRequest) {
           coingecko_id: canonId(String(r.coingecko_id)),
         })) as SellPlannerRow[]
 
+        if (dbg) { dbg.buyPlanners = buys; dbg.sellPlanners = sells }
+
         const buyPlannerIds = buys.map((b) => b.id)
         const sellPlannerIds = sells.map((s) => s.id)
 
@@ -277,6 +283,7 @@ export async function GET(req: NextRequest) {
         )
 
         const priceMap = await getCorePrices(coinIds, 'USD')
+        if (dbg) dbg.priceMap = priceMap
 
         let buyTrades: Array<BuyTrade & { buy_planner_id: string }> = []
         let sellTrades: Array<SellTrade & { sell_planner_id: string }> = []
@@ -343,8 +350,11 @@ export async function GET(req: NextRequest) {
           const top = Number(bp.top_price ?? 0)
           const budget = Number(bp.budget_usd ?? bp.total_budget ?? 0)
 
+          const buyCheck: any = dbg ? { cid, live, top, budget, cycle: false, levelsCount: 0, nearestDelta: null, hit: false } : null
+
           if (live > 0 && top > 0 && live > top) {
             currentKeys.push(`CYCLE:${cid}:${bp.id}`)
+            if (buyCheck) buyCheck.cycle = true
           }
 
           const depthRaw = Number(bp.ladder_depth ?? 70)
@@ -352,7 +362,8 @@ export async function GET(req: NextRequest) {
           const growth = Number(bp.growth_per_level ?? 1.25)
 
           const levels = buildBuyLevels(top, budget, depth, growth)
-          if (!levels.length || !(live > 0)) continue
+          if (buyCheck) buyCheck.levelsCount = levels.length
+          if (!levels.length || !(live > 0)) { if (buyCheck) { buyCheck.skip = !levels.length ? 'no levels' : 'no live price'; dbg.buyChecks.push(buyCheck) } continue }
 
           const myBuys = buyTrades
             .filter((t) => t.buy_planner_id === bp.id)
@@ -360,13 +371,24 @@ export async function GET(req: NextRequest) {
 
           const fills = computeBuyFills(levels, myBuys, 0.0)
 
+          let nearestDelta = Infinity
           const hit = levels.some((lv, i) => {
             const p = Number((lv as any).price ?? 0)
             if (!(p > 0)) return false
-            const near = Math.abs(live - p) / p <= 0.015
+            const delta = Math.abs(live - p) / p
+            if (delta < nearestDelta) nearestDelta = delta
+            const near = delta <= 0.015
             const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
             return near && notFilled
           })
+
+          if (buyCheck) {
+            buyCheck.nearestDelta = nearestDelta === Infinity ? null : +(nearestDelta * 100).toFixed(3)
+            buyCheck.hit = hit
+            buyCheck.levelPrices = levels.map((lv: any) => lv.price)
+            buyCheck.fillPcts = fills.fillPct
+            dbg.buyChecks.push(buyCheck)
+          }
 
           if (hit) currentKeys.push(`BUY:${cid}:${bp.id}`)
         }
@@ -375,7 +397,8 @@ export async function GET(req: NextRequest) {
         for (const sp of sells) {
           const cid = sp.coingecko_id
           const live = Number(priceMap[cid] ?? 0)
-          if (!(live > 0)) continue
+          const sellCheck: any = dbg ? { cid, live, levelsCount: 0, nearestDelta: null, hit: false } : null
+          if (!(live > 0)) { if (sellCheck) { sellCheck.skip = 'no live price'; dbg.sellChecks.push(sellCheck) } continue }
 
           const lvls: SellPlanLevelForFill[] = sellLevels
             .filter((r) => r.sell_planner_id === sp.id)
@@ -384,7 +407,8 @@ export async function GET(req: NextRequest) {
               planned_tokens: Number(r.sell_tokens),
             }))
 
-          if (!lvls.length) continue
+          if (sellCheck) sellCheck.levelsCount = lvls.length
+          if (!lvls.length) { if (sellCheck) { sellCheck.skip = 'no levels'; dbg.sellChecks.push(sellCheck) } continue }
 
           const mySells = sellTrades
             .filter((t) => t.sell_planner_id === sp.id)
@@ -392,13 +416,24 @@ export async function GET(req: NextRequest) {
 
           const fills = computeSellFills(lvls, mySells, 0.0)
 
+          let nearestDelta = Infinity
           const hit = lvls.some((lv, i) => {
             const p = Number(lv.target_price)
             if (!(p > 0)) return false
-            const near = Math.abs(live - p) / p <= 0.03
+            const delta = Math.abs(live - p) / p
+            if (delta < nearestDelta) nearestDelta = delta
+            const near = delta <= 0.03
             const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
             return near && notFilled
           })
+
+          if (sellCheck) {
+            sellCheck.nearestDelta = nearestDelta === Infinity ? null : +(nearestDelta * 100).toFixed(3)
+            sellCheck.hit = hit
+            sellCheck.levelPrices = lvls.map((lv) => lv.target_price)
+            sellCheck.fillPcts = fills.fillPct
+            dbg.sellChecks.push(sellCheck)
+          }
 
           if (hit) currentKeys.push(`SELL:${cid}:${sp.id}`)
         }
@@ -425,6 +460,14 @@ export async function GET(req: NextRequest) {
         // Notify whenever we detect new alert keys (this includes first run: 0 -> 1).
         // If `force=1`, re-send whenever there are ANY current alerts (useful for testing).
         const shouldSend = hasNew || (force && currentKeys.length > 0)
+
+        if (dbg) {
+          dbg.currentKeys = currentKeys
+          dbg.prevKeys = prevKeys
+          dbg.newKeys = newKeys
+          dbg.shouldSend = shouldSend
+          debugUsers.push(dbg)
+        }
 
         if (shouldSend && !dry) {
           const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
@@ -472,6 +515,7 @@ export async function GET(req: NextRequest) {
         processedUsers,
         sent,
         errorsCount: errors.length,
+        ...(debug ? { debug: debugUsers } : {}),
         errors,
         ms: Date.now() - started,
       },
