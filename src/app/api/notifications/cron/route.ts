@@ -377,7 +377,7 @@ export async function GET(req: NextRequest) {
             if (!(p > 0)) return false
             const delta = Math.abs(live - p) / p
             if (delta < nearestDelta) nearestDelta = delta
-            const near = delta <= 0.015
+            const near = delta <= 0.02
             const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
             return near && notFilled
           })
@@ -422,7 +422,7 @@ export async function GET(req: NextRequest) {
             if (!(p > 0)) return false
             const delta = Math.abs(live - p) / p
             if (delta < nearestDelta) nearestDelta = delta
-            const near = delta <= 0.03
+            const near = delta <= 0.02
             const notFilled = Number(fills.fillPct?.[i] ?? 0) < 1.0
             return near && notFilled
           })
