@@ -22,6 +22,8 @@ export default function CoinLogo({ symbol, name, className = 'h-8 w-8 md:h-10 md
 
   const sources = useMemo(() => {
     const list: { url: string; srcSet?: string }[] = []
+    // 0) LOCAL FIRST: bundled SVGs in /public/icons/coins/ (instant, no network)
+    list.push({ url: `/icons/coins/${s}.svg` })
     // 1) CryptoIcons API (PNG; dynamically served)
     list.push({
       url: `https://cryptoicons.org/api/icon/${s}/200.png`,
