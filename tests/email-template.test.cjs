@@ -73,7 +73,7 @@ describe("buildAlertEmailHtml", () => {
 
   test("uses dark background colors", () => {
     expect(html).toContain("#131415");
-    expect(html).toContain("#1f2021");
+    expect(html).toContain("#1c1d1f");
   });
 
   test("has no external CSS links", () => {

@@ -1,6 +1,7 @@
 /**
  * Branded HTML email template for LedgerOne alert notifications.
  * Table-based layout with inline CSS for maximum email-client compatibility.
+ * Matches the dark theme from the LedgerOne web app (planner/login pages).
  *
  * Enterprise layout:
  *  1. LEDGERONE header
@@ -60,17 +61,38 @@ function dedup(entries: AlertEntry[]): AlertEntry[] {
   return out
 }
 
+/* ─── Design tokens (match LedgerOne web app) ────────────────── */
+const T = {
+  pageBg: '#131415',
+  cardBg: '#1c1d1f',
+  cardBorder: '#2b2c2d',
+  divider: '#292a2d',
+  textPrimary: '#e5e7eb',
+  textSecondary: '#d1d5db',
+  textDim: '#a3a3a4',
+  textMuted: '#94a3b8',
+  textFaint: '#64748b',
+  accentPurple: '#8880d5',
+  accentPurpleDark: '#6e68b0',
+  white: '#ffffff',
+  font: 'Arial, Helvetica, sans-serif',
+  mono: "'Courier New', monospace",
+} as const
+
 /* ─── row builders ────────────────────────────────────────────── */
 
-function alertRow(entry: AlertEntry, fontSize: number): string {
+function alertRow(entry: AlertEntry, size: 'lg' | 'sm'): string {
   const s = sideStyle(entry.side)
   const name = escapeHtml(humanCoin(entry.coin))
+  const fontSize = size === 'lg' ? 15 : 13
+  const nameColor = size === 'lg' ? T.textPrimary : T.textSecondary
+  const padV = size === 'lg' ? 8 : 5
   return `
 <tr>
-  <td style="padding:6px 0;">
+  <td style="padding:${padV}px 0;">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td style="padding:3px 10px;border-radius:4px;background-color:${s.bg};font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:${s.text};">${s.label}</td>
-      <td style="padding-left:12px;font-family:Arial,Helvetica,sans-serif;font-size:${fontSize}px;color:#e5e7eb;">${name}</td>
+      <td style="padding:4px 10px;border-radius:4px;background-color:${s.bg};font-family:${T.font};font-size:10px;font-weight:700;letter-spacing:1.2px;color:${s.text};line-height:14px;">${s.label}</td>
+      <td style="padding-left:12px;font-family:${T.font};font-size:${fontSize}px;font-weight:500;color:${nameColor};line-height:20px;">${name}</td>
     </tr></table>
   </td>
 </tr>`
@@ -98,19 +120,23 @@ export function buildAlertEmailHtml(opts: {
     (a) => !newKeys.has(`${a.side}:${a.coin}`)
   )
 
-  const newRows = newAlerts.map((a) => alertRow(a, 16)).join('')
+  const newRows = newAlerts.map((a) => alertRow(a, 'lg')).join('')
 
   const outstandingSection =
     outstanding.length > 0
       ? `
-<!-- Outstanding Alerts divider -->
+<!-- Outstanding Alerts -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr><td style="padding:24px 0 12px 0;border-top:1px solid #2a2b2c;">
-<span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;">Outstanding Alerts</span>
+<tr><td style="padding:20px 0 0 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td style="border-top:1px solid ${T.divider};padding:16px 0 10px 0;">
+    <span style="font-family:${T.font};font-size:10px;font-weight:600;letter-spacing:1.5px;color:${T.textDim};text-transform:uppercase;">Outstanding Alerts</span>
+  </td></tr>
+  </table>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  ${outstanding.map((a) => alertRow(a, 'sm')).join('')}
+  </table>
 </td></tr>
-</table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-${outstanding.map((a) => alertRow(a, 14)).join('')}
 </table>`
       : ''
 
@@ -131,69 +157,76 @@ ${outstanding.map((a) => alertRow(a, 14)).join('')}
 <style>table{border-collapse:collapse;}td{font-family:Arial,sans-serif;}</style>
 <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#131415;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#131415;">
-<tr><td align="center" style="padding:32px 16px 0 16px;">
+<body style="margin:0;padding:0;background-color:${T.pageBg};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+
+<!-- Full-width background wrapper -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${T.pageBg};min-height:100%;">
+<tr><td align="center" style="padding:40px 16px 32px 16px;">
 
 <!-- Brand header -->
 <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;">
-<tr><td align="center" style="padding-bottom:8px;">
-<span style="font-family:'Courier New',monospace;font-size:22px;font-weight:700;letter-spacing:4px;color:#e5e7eb;">LEDGERONE</span>
+<tr><td align="center" style="padding-bottom:6px;">
+  <span style="font-family:${T.mono};font-size:20px;font-weight:700;letter-spacing:5px;color:${T.textPrimary};text-transform:uppercase;">LEDGERONE</span>
 </td></tr>
-<tr><td align="center" style="padding-bottom:28px;">
-<span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;letter-spacing:2px;">planner &middot; tracker</span>
-</td></tr>
-</table>
-
-<!-- Card -->
-<table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;background-color:#1f2021;border-radius:8px;">
-<tr><td style="padding:32px 28px 28px 28px;">
-
-<!-- New Alert heading -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr><td style="padding-bottom:16px;">
-<span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;">New Alert</span>
+<tr><td align="center" style="padding-bottom:24px;">
+  <span style="font-family:${T.font};font-size:11px;font-weight:400;color:${T.textMuted};letter-spacing:2px;">planner &middot; tracker</span>
 </td></tr>
 </table>
 
-<!-- New alert rows -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-${newRows}
-</table>
+<!-- Main card -->
+<table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;background-color:${T.cardBg};border:1px solid ${T.cardBorder};border-radius:12px;">
+<tr><td style="padding:28px 24px 24px 24px;">
 
-<!-- CTA button -->
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="padding-top:24px;">
-<tr><td align="center" style="border-radius:6px;background-color:#6366f1;">
-<!--[if mso]>
-<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${reviewUrl}" style="height:44px;v-text-anchor:middle;width:240px;" arcsize="14%" strokecolor="#6366f1" fillcolor="#6366f1">
-<w:anchorlock/>
-<center style="font-family:Arial,sans-serif;font-size:14px;font-weight:600;color:#ffffff;">Review on LedgerOne</center>
-</v:roundrect>
-<![endif]-->
-<!--[if !mso]><!--><a href="${reviewUrl}" target="_blank" style="display:inline-block;padding:12px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:#ffffff;background-color:#6366f1;border-radius:6px;text-decoration:none;text-align:center;">Review on LedgerOne</a><!--<![endif]-->
-</td></tr>
-</table>
+  <!-- Section label -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td style="padding-bottom:14px;">
+    <span style="font-family:${T.font};font-size:10px;font-weight:600;letter-spacing:1.5px;color:${T.textDim};text-transform:uppercase;">New Alert</span>
+  </td></tr>
+  </table>
 
-${outstandingSection}
+  <!-- New alert rows -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  ${newRows}
+  </table>
+
+  <!-- CTA button -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr><td style="padding-top:22px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr><td align="center" style="border-radius:6px;background-color:${T.accentPurple};">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${reviewUrl}" style="height:40px;v-text-anchor:middle;width:200px;" arcsize="15%" strokecolor="${T.accentPurple}" fillcolor="${T.accentPurple}">
+      <w:anchorlock/>
+      <center style="font-family:Arial,sans-serif;font-size:13px;font-weight:600;color:${T.white};">Review on LedgerOne</center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!--><a href="${reviewUrl}" target="_blank" style="display:inline-block;padding:10px 28px;font-family:${T.font};font-size:13px;font-weight:600;color:${T.white};background-color:${T.accentPurple};border-radius:6px;text-decoration:none;text-align:center;line-height:20px;">Review on LedgerOne</a><!--<![endif]-->
+    </td></tr>
+    </table>
+  </td></tr>
+  </table>
+
+  ${outstandingSection}
 
 </td></tr>
 </table>
 
 <!-- Footer -->
 <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%;">
-<tr><td style="padding:24px 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;text-align:center;">
+<tr><td style="padding:20px 0 6px 0;font-family:${T.font};font-size:11px;color:${T.textMuted};text-align:center;line-height:16px;">
 ${escapeHtml(ts)}
 </td></tr>
-<tr><td style="padding:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#64748b;text-align:center;">
+<tr><td style="padding:0 0 6px 0;font-family:${T.font};font-size:11px;color:${T.textFaint};text-align:center;line-height:16px;">
 This is an automated alert based on your planner settings. Not financial advice.
 </td></tr>
-<tr><td style="padding:0 0 32px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#64748b;text-align:center;">
+<tr><td style="padding:0 0 0 0;font-family:${T.font};font-size:11px;color:${T.textFaint};text-align:center;line-height:16px;">
 LedgerOne.app
 </td></tr>
 </table>
 
 </td></tr>
 </table>
+
 </body>
 </html>`
 }
