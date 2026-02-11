@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -457,7 +458,8 @@ function ScrollingNumericText({ text }: { text: string }) {
 
 /* ── page ──────────────────────────────────────────────────── */
 export default function Page() {
-  const { user } = useUser()
+  const { user, loading: authLoading } = useUser()
+  const router = useRouter()
   const [tf, setTf] = useState<Timeframe>('30d')
   const STORAGE_KEY_TOTAL_PL = 'lg1.dashboard.showTotalPL'
   const [showTotalPL, setShowTotalPL] = useState(false)
@@ -483,7 +485,11 @@ export default function Page() {
     }
   }, [showTotalPL])
 
-  
+  // Redirect unauthenticated users to landing page
+  useEffect(() => {
+    if (!authLoading && !user) router.replace('/')
+  }, [authLoading, user, router])
+
   // Trades (all-time) — fail-soft + consistent options
   const { data: trades } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
