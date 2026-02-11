@@ -8,7 +8,7 @@ import {
   type SellPlanLevelForFill,
   type SellTrade,
 } from '@/lib/planner'
-import { buildAlertEmailHtml } from '@/lib/emailTemplate'
+import { buildAlertEmailHtml, type AlertEntry } from '@/lib/emailTemplate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -172,14 +172,18 @@ async function sendResendEmail(args: { to: string; subject: string; text: string
   return res.json().catch(() => ({}))
 }
 
-function keysToHumanCoins(keys: string[]) {
-  const out: string[] = []
+function keysToAlertEntries(keys: string[]): AlertEntry[] {
+  const out: AlertEntry[] = []
   for (const k of keys) {
     const parts = String(k).split(':')
-    const cid = parts.length >= 2 ? parts[1] : ''
-    if (cid) out.push(cid)
+    const sideRaw = (parts[0] ?? '').toUpperCase()
+    const coin = parts[1] ?? ''
+    if (!coin) continue
+    const side: AlertEntry['side'] =
+      sideRaw === 'SELL' ? 'Sell' : sideRaw === 'CYCLE' ? 'Cycle' : 'Buy'
+    out.push({ side, coin })
   }
-  return Array.from(new Set(out))
+  return out
 }
 
 export async function GET(req: NextRequest) {
@@ -202,10 +206,15 @@ export async function GET(req: NextRequest) {
     if (testEmail) {
       const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
       const subject = 'LedgerOne · Test Alert'
-      const headline = 'Bitcoin trigger.'
       const reviewUrl = `${base}/planner`
-      const text = `${headline}\n\nOpen LedgerOne to review: ${reviewUrl}`
-      const html = buildAlertEmailHtml({ headline, reviewUrl })
+      const newAlerts: AlertEntry[] = [{ side: 'Buy', coin: 'bitcoin' }]
+      const currentAlerts: AlertEntry[] = [
+        { side: 'Buy', coin: 'bitcoin' },
+        { side: 'Sell', coin: 'ethereum' },
+        { side: 'Cycle', coin: 'solana' },
+      ]
+      const text = `New alert: Bitcoin (Buy)\n\nOutstanding: Bitcoin (Buy), Ethereum (Sell), Solana (Cycle)\n\nOpen LedgerOne to review: ${reviewUrl}`
+      const html = buildAlertEmailHtml({ newAlerts, currentAlerts, reviewUrl })
       if (!dry) await sendResendEmail({ to: testEmail, subject, text, html })
       return NextResponse.json(
         { ok: true, mode: 'testEmail', dry, sent: dry ? 0 : 1, to: testEmail },
@@ -474,8 +483,10 @@ export async function GET(req: NextRequest) {
         if (shouldSend && !dry) {
           const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
           const sendKeys = force && !hasNew ? currentKeys : newKeys
-          const coins = keysToHumanCoins(sendKeys).slice(0, 3)
+          const newAlerts = keysToAlertEntries(sendKeys)
+          const allAlerts = keysToAlertEntries(currentKeys)
 
+          const coins = newAlerts.map((a) => a.coin).filter((v, i, arr) => arr.indexOf(v) === i).slice(0, 3)
           const headline =
             coins.length === 1
               ? `${coins[0]} trigger.`
@@ -484,7 +495,7 @@ export async function GET(req: NextRequest) {
           const subject = 'LedgerOne · Alert'
           const reviewUrl = `${base}/planner`
           const text = `${headline}\n\nOpen LedgerOne to review: ${reviewUrl}`
-          const html = buildAlertEmailHtml({ headline, reviewUrl })
+          const html = buildAlertEmailHtml({ newAlerts, currentAlerts: allAlerts, reviewUrl })
 
           await sendResendEmail({ to: toEmail, subject, text, html })
           sent++
