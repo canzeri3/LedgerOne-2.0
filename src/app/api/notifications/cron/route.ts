@@ -26,7 +26,10 @@ function readCronSecret(req: NextRequest) {
   const url = new URL(req.url)
   const qs = (url.searchParams.get('secret') ?? '').trim()
   const hdr = (req.headers.get('x-cron-secret') ?? '').trim()
-  return hdr || qs
+  // Vercel cron sends the secret as "Authorization: Bearer <CRON_SECRET>"
+  const auth = (req.headers.get('authorization') ?? '').trim()
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : ''
+  return bearer || hdr || qs
 }
 
 function getSupabaseAdmin() {
