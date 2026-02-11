@@ -11,30 +11,19 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Make Next.js quieter and deterministic in CI
-      NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
-
-      # Your app expects these at runtime
       NEXT_PUBLIC_DATA_CORE: new
       DATA_CORE_DEFAULT: new
       INTERNAL_BASE_URL: "http://localhost:3000"
-
-      # Reduce external calls during tests (ok: tests only assert shape)
       DISABLE_24H: "1"
-
-      # Providers: use your repo secret (add in GitHub → Settings → Secrets → Actions)
       CG_API_KEY: ${{ secrets.CG_API_KEY }}
-
-      # Optional: if your server code needs it; otherwise omit
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-      # Tests hit the local server we start below
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       TEST_HOST: "http://localhost:3000"
 
     steps:
       - name: Checkout
-      # v4 of checkout (stable)
         uses: actions/checkout@v4
 
       - name: Use Node 20
@@ -43,26 +32,18 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      - name: Install deps (clean)
+      - name: Install deps
         run: npm ci
 
       - name: Build Next.js
         run: npm run build
+        env:
+          NODE_ENV: production
 
       - name: Start server (background)
         run: |
-          # Start Next on 3000 in the background
           nohup npm run start >/dev/null 2>&1 &
-          # Wait for it to come up
           npx wait-on http://localhost:3000
 
       - name: Run contract tests
         run: npm test
-
-      - name: Print minimal logs on failure
-        if: failure()
-        run: |
-          echo "Tests failed. Printing last Next logs (if any)."
-          # Nothing special to cat here since we ran with nohup to background;
-          # Your routes log to stdout; GitHub captures step logs automatically.
-
