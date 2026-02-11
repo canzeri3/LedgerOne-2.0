@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import CoinLogo from '@/components/common/CoinLogo'
 import { fmtCurrency, fmtPct } from '@/lib/format'
 import { useFavorites } from '@/lib/useFavorites'
 import { TrendingUp, TrendingDown } from 'lucide-react'
@@ -177,73 +178,7 @@ function StarFilled({ className }: { className?: string }) {
   )
 }
 
-/* ---------- ultra-robust, UI-only logo (symbol-based) ---------- */
-function CoinLogo({ symbol, name }: { symbol: string; name: string }) {
-  // Normalize and alias a few common edge cases (UI-only)
-  const sym = (symbol || '').toLowerCase().trim()
-  const alias = (s: string) => {
-    if (s === 'xbt') return 'btc'
-    if (s === 'miota') return 'iota'
-    if (s === 'bcc') return 'bch'
-    if (s === 'xbt') return 'btc'
-    return s
-  }
-  const s = alias(sym)
-
-  // Ordered, reliable public sources by symbol.
-  // (PNG/SVG sets from spothq; PNG + @2x from CoinCap; dynamic PNG from CryptoIcons API)
-  const sources = useMemo(() => {
-    const list: { url: string; srcSet?: string }[] = []
-
-    // 1) CryptoIcons API (PNG; dynamic rendering of the spothq set)
-    list.push({
-      url: `https://cryptoicons.org/api/icon/${s}/200.png`,
-      srcSet: `https://cryptoicons.org/api/icon/${s}/200.png 2x, https://cryptoicons.org/api/icon/${s}/128.png 1x`
-    })
-    // 2) CoinCap assets (PNG + @2x)
-    list.push({
-      url: `https://assets.coincap.io/assets/icons/${s}@2x.png`,
-      srcSet: `https://assets.coincap.io/assets/icons/${s}.png 1x, https://assets.coincap.io/assets/icons/${s}@2x.png 2x`
-    })
-    // 3) spothq PNG (static 128px)
-    list.push({
-      url: `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${s}.png`,
-      srcSet: `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${s}.png 2x`
-    })
-    // 4) spothq SVG (vector)
-    list.push({
-      url: `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/svg/color/${s}.svg`
-    })
-
-    return list
-  }, [s])
-
-  const [idx, setIdx] = useState(0)
-  const [hidden, setHidden] = useState(false)
-
-  if (!s || hidden) return null
-
-  const current = sources[idx]
-
-  return (
-    <img
-      key={current.url}
-      src={current.url}
-      srcSet={current.srcSet}
-      sizes="(min-width: 768px) 40px, 32px"
-      alt={`${name} logo`}
-      className="h-8 w-8 md:h-10 md:w-10 rounded-full shadow-sm"
-      onError={() => {
-        if (idx < sources.length - 1) setIdx(idx + 1)
-        else setHidden(true)
-      }}
-      loading="eager"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      // crossorigin not required; all images are public and we don't read pixels
-    />
-  )
-}
+/* ---------- coin logo: uses shared CoinLogo (local SVG first → remote fallback) ---------- */
 
 export default function CoinOverview({ id, name, symbol }: Props) {
   // Favorites (optimistic)
