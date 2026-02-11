@@ -35,7 +35,7 @@ const DEFAULT_OPTS = {
     { side: "Sell", coin: "ethereum" },
     { side: "Cycle", coin: "solana" },
   ],
-  reviewUrl: "https://app.ledgerone.app/planner",
+  reviewUrl: "https://app.ledgerone.app/dashboard",
 };
 
 let html;
@@ -55,7 +55,7 @@ describe("buildAlertEmailHtml", () => {
   });
 
   test("contains the review URL in an href", () => {
-    expect(html).toContain('href="https://app.ledgerone.app/planner"');
+    expect(html).toContain('href="https://app.ledgerone.app/dashboard"');
   });
 
   test("contains the CTA text", () => {
@@ -162,7 +162,7 @@ describe("buildAlertEmailHtml", () => {
     const noOutstanding = renderTemplate({
       newAlerts: [{ side: "Buy", coin: "bitcoin" }],
       currentAlerts: [{ side: "Buy", coin: "bitcoin" }],
-      reviewUrl: "https://app.ledgerone.app/planner",
+      reviewUrl: "https://app.ledgerone.app/dashboard",
     });
     expect(noOutstanding).not.toContain("Outstanding Alerts");
   });
@@ -189,7 +189,7 @@ describe("buildAlertEmailHtml", () => {
     const multi = renderTemplate({
       newAlerts: [{ side: "Buy", coin: "bitcoin-cash" }],
       currentAlerts: [],
-      reviewUrl: "https://app.ledgerone.app/planner",
+      reviewUrl: "https://app.ledgerone.app/dashboard",
     });
     expect(multi).toContain("Bitcoin Cash");
   });

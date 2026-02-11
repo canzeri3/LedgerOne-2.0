@@ -206,7 +206,7 @@ export async function GET(req: NextRequest) {
     if (testEmail) {
       const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
       const subject = 'LedgerOne · Test Alert'
-      const reviewUrl = `${base}/planner`
+      const reviewUrl = `${base}/dashboard`
       const newAlerts: AlertEntry[] = [{ side: 'Buy', coin: 'bitcoin' }]
       const currentAlerts: AlertEntry[] = [
         { side: 'Buy', coin: 'bitcoin' },
@@ -493,7 +493,7 @@ export async function GET(req: NextRequest) {
               : `${coins.length} triggers: ${coins.join(', ')}.`
 
           const subject = 'LedgerOne · Alert'
-          const reviewUrl = `${base}/planner`
+          const reviewUrl = `${base}/dashboard`
           const text = `${headline}\n\nOpen LedgerOne to review: ${reviewUrl}`
           const html = buildAlertEmailHtml({ newAlerts, currentAlerts: allAlerts, reviewUrl })
 
