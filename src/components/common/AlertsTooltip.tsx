@@ -483,7 +483,7 @@ type AlertItem = { side: 'Buy' | 'Sell' | 'Cycle'; symbol: string; cid: string }
       const hit = levels.some((lv, i) => {
         const lvl = Number(lv.target_price)
         if (!(lvl > 0)) return false
-        const within = live >= lvl * 0.97
+        const within = live >= lvl * 0.985
         const notFilled = (fill.fillPct?.[i] ?? 0) < 0.97
         return within && notFilled
       })

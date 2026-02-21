@@ -211,16 +211,16 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
           const live = hasLive ? (livePrice as number) : null
 
           const rows = v.rows ?? []
-          const plannerHasAlert =
-            !!live &&
-            rows.some((r) => {
-              const lvl = r.targetPrice
-              if (!(lvl > 0)) return false
-              // “Alert” if live price is within ~3% of target and level not fully filled
-              const within = (live as number) >= lvl * 0.97
-              const notFilled = r.pct < 0.98
-              return within && notFilled
-            })
+const plannerHasAlert =
+  !!live &&
+  rows.some((r) => {
+    const lvl = r.targetPrice
+    if (!(lvl > 0)) return false
+    // “Alert” if live price is within ~1.5% of target and level not fully filled
+    const within = (live as number) >= lvl * 0.985
+    const notFilled = r.pct < 0.98
+    return within && notFilled
+  })
 
           return (
             <div

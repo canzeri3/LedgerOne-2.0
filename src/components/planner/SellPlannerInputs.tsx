@@ -601,9 +601,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       const { error: eIns } = await supabaseBrowser.from('sell_levels').insert(rows)
       if (eIns) throw eIns
 
-      setMsg(
-        `Generated ${plan.length} levels: +${step}% steps, sell ${sellPct}% of remaining each level.`
-      )
+    setMsg('Level generation complete.')
 
       // Emit a browser event so ladder cards can refresh
       if (typeof window !== 'undefined') {
