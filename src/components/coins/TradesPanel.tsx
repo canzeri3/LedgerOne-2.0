@@ -6,7 +6,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { usePrice } from '@/lib/dataCore'
 import { fmtCurrency } from '@/lib/format'
-import { computeSellFills } from '@/lib/planner'
+import { buildBuyLevels, computeBuyFills, computeSellFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 import { AlertTriangle, LockKeyhole, LockKeyholeOpen, X } from 'lucide-react'
 import { mutate as globalMutate } from 'swr'
 
@@ -19,8 +19,15 @@ type BuyPlanner = {
   id: PlannerId
   user_id: string
   coingecko_id: string
-  is_active: boolean
-  started_at: string
+  is_active: boolean | null
+  started_at: string | null
+
+  // Settings used to build the buy ladder (same fields used by BuyPlannerLadder)
+  top_price?: number | null
+  budget_usd?: number | null
+  total_budget?: number | null
+  ladder_depth?: 70 | 75 | 90 | number | null
+  growth_per_level?: number | null
 }
 
 type SellPlanner = {
@@ -33,6 +40,7 @@ type SellPlanner = {
   avg_lock_price?: number | null
 }
 type ConfirmOffPlanCtx = {
+  tradeSide: 'buy' | 'sell'
   plannerLabel: string
   allowedTokens: number
   enteredTokens: number
@@ -52,6 +60,22 @@ type PendingSell = {
     trade_time: string
     sell_planner_id: PlannerId
     buy_planner_id: null
+  }
+}
+
+type PendingBuy = {
+  buyPlannerId: PlannerId
+  sellPlannerId: PlannerId | null
+  payload: {
+    user_id: string
+    coingecko_id: string
+    side: 'buy'
+    price: number
+    quantity: number
+    fee: number
+    trade_time: string
+    buy_planner_id: PlannerId
+    sell_planner_id: PlannerId | null
   }
 }
 /** Local "YYYY-MM-DDTHH:mm" -> ISO */
@@ -213,6 +237,7 @@ const onFeeChange = makeLiveNumericChangeHandler(
   const [confirmOffPlanOpen, setConfirmOffPlanOpen] = useState(false)
   const [confirmOffPlanCtx, setConfirmOffPlanCtx] = useState<ConfirmOffPlanCtx | null>(null)
   const [pendingSell, setPendingSell] = useState<PendingSell | null>(null)
+  const [pendingBuy, setPendingBuy] = useState<PendingBuy | null>(null)
 
   // Modal refs (Cancel is focused by default; Panel is used for focus-trap)
   const confirmOffPlanCancelRef = useRef<HTMLButtonElement>(null)
@@ -661,39 +686,134 @@ useEffect(() => {
 
     return { allowedTokens: Number(allowedTokens.toFixed(8)), hasLevels: true }
   }
+  // ─────────────────────────────────────────────────────────
+  // NEW: “yellow row” allowance (Buy > alerted allocation => confirm)
+  // Reads the same Yellow/Green rules as BuyPlannerLadder:
+  // - Yellow when live price <= level price * 1.015 (and level not ~full)
+  // - Green when missing <= 2% of planned
+  // Allowance is the SUM of remaining (missing) USD across CURRENT yellow rows.
+  // ─────────────────────────────────────────────────────────
+  async function computeBuyAlertAllowance(
+    buyPlanner: BuyPlanner,
+    referencePrice: number
+  ): Promise<{ allowedUsd: number; allowedTokens: number; hasLevels: boolean }> {
+    if (!user) return { allowedUsd: 0, allowedTokens: 0, hasLevels: false }
 
+    const top = Number(buyPlanner.top_price ?? 0)
+    const budget = Number(buyPlanner.budget_usd ?? buyPlanner.total_budget ?? 0)
+
+    const depthNum = Number(buyPlanner.ladder_depth ?? 70)
+    const depth = (depthNum === 90 ? 90 : depthNum === 75 ? 75 : 70) as 70 | 75 | 90
+
+    const growth = Number(buyPlanner.growth_per_level ?? 1.25)
+
+    const plan: BuyLevel[] = buildBuyLevels(top, budget, depth, growth)
+    if (!plan.length) return { allowedUsd: 0, allowedTokens: 0, hasLevels: false }
+
+    const { data: buysRaw, error: eBuys } = await supabaseBrowser
+      .from('trades')
+      .select('price,quantity,fee,trade_time')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', id)
+      .eq('side', 'buy')
+      .eq('buy_planner_id', buyPlanner.id)
+      .order('trade_time', { ascending: true })
+
+    if (eBuys) throw eBuys
+
+    const buys: BuyTrade[] = (buysRaw ?? []).map((r: any) => ({
+      price: Number(r.price ?? 0),
+      quantity: Number(r.quantity ?? 0),
+      fee: r.fee != null ? Number(r.fee) : 0,
+      trade_time: r.trade_time ?? undefined,
+    }))
+
+    const fills = computeBuyFills(plan, buys, 0)
+    const allocatedUsd = Array.isArray((fills as any)?.allocatedUsd)
+      ? ((fills as any).allocatedUsd as number[])
+      : plan.map(() => 0)
+
+    const hasRef = Number.isFinite(referencePrice) && referencePrice > 0
+    if (!hasRef) return { allowedUsd: 0, allowedTokens: 0, hasLevels: true }
+
+    let allowedUsd = 0
+    const EPS = 1e-8
+
+    for (let i = 0; i < plan.length; i++) {
+      const plannedUsd = Number(plan[i].allocation ?? 0)
+      const filledUsd = Number(allocatedUsd[i] ?? 0)
+      const missingUsd = Math.max(0, plannedUsd - filledUsd)
+
+      // Green when ≥98% filled (same as ladder)
+      const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
+
+      // Yellow when live price <= target * 1.015 (and not full)
+      const lvlPx = Number(plan[i].price ?? 0)
+      const yellow = !full && (lvlPx > 0) && referencePrice <= lvlPx * 1.015
+
+      if (!yellow) continue
+      allowedUsd += missingUsd
+    }
+
+    allowedUsd = Number(allowedUsd.toFixed(2))
+    const allowedTokens = allowedUsd > 0 ? Number((allowedUsd / referencePrice).toFixed(8)) : 0
+
+    return { allowedUsd, allowedTokens, hasLevels: true }
+  }
   function plannerLabelFor(plannerId: string): string {
     return plannerOptions.find(p => p.id === plannerId)?.label ?? 'Selected planner'
   }
 
-  function closeConfirmOffPlan() {
+    function closeConfirmOffPlan() {
     setConfirmOffPlanOpen(false)
     setConfirmOffPlanCtx(null)
     setPendingSell(null)
+    setPendingBuy(null)
   }
 
   async function confirmOffPlanProceed() {
-    if (!pendingSell) { closeConfirmOffPlan(); return }
-    const { payload, chosenId } = pendingSell
+    const sell = pendingSell
+    const buy = pendingBuy
+    if (!sell && !buy) { closeConfirmOffPlan(); return }
+
+    // Capture pending payload before closing (close clears pending state)
     closeConfirmOffPlan()
 
     setSaving(true); setErr(null); setOk(null)
     try {
-      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-      if (error) throw error
+      if (buy) {
+        const { error } = await supabaseBrowser.from('trades').insert(buy.payload as any)
+        if (error) throw error
 
-      setOk('Sell recorded.')
-      broadcast()
-      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosenId })
-      refreshHoldingsTokens()
-      resetAfterSubmit()
+        // Keep existing behavior: after any BUY, regenerate the ACTIVE sell ladder
+        try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
+
+        setOk('Buy recorded.')
+        broadcast()
+        refreshUiAfterTrade({ buyPlannerId: buy.buyPlannerId, sellPlannerId: buy.sellPlannerId })
+        refreshHoldingsTokens()
+        resetAfterSubmit()
+        return
+      }
+
+      if (sell) {
+        const { error } = await supabaseBrowser.from('trades').insert(sell.payload as any)
+        if (error) throw error
+
+        setOk('Sell recorded.')
+        broadcast()
+        refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: sell.chosenId })
+        refreshHoldingsTokens()
+        resetAfterSubmit()
+        return
+      }
     } catch (e: any) {
       setErr(e?.message || String(e))
     } finally {
       setSaving(false)
     }
   }
-  async function submitTrade() {
+    async function submitTrade() {
     if (!user) return
     setSaving(true); setErr(null); setOk(null)
 
@@ -710,15 +830,45 @@ useEffect(() => {
 
     if (side === 'buy') {
 if (!activeBuy) { setErr('Cannot save trade: no active plan available for this coin.'); setSaving(false); return }
-      const payload = {
+      const payload: PendingBuy['payload'] = {
         user_id: user.id, coingecko_id: id, side: 'buy',
         price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
         buy_planner_id: activeBuy.id, sell_planner_id: activeSell?.id ?? null,
       }
-      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-      if (error) { setErr(error.message); setSaving(false); return }
 
-      // NEW: Immediately regenerate ACTIVE sell ladder so rows/prices move with new average
+      // NEW: confirm if buy exceeds the “yellow/alert” allowance of the ACTIVE Buy Planner
+      const refPx =
+        Number.isFinite(livePrice as number) && (livePrice as number) > 0
+          ? (livePrice as number)
+          : (p > 0 ? p : null)
+
+      if (refPx) {
+        try {
+          const { allowedUsd, allowedTokens, hasLevels } = await computeBuyAlertAllowance(activeBuy, refPx)
+if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            setConfirmOffPlanCtx({
+              tradeSide: 'buy',
+              plannerLabel: 'Buy Planner',
+              allowedTokens,
+              enteredTokens: quantityTokens,
+              allowedUsd,
+              enteredUsd: quantityTokens * refPx,
+            })
+            setPendingBuy({
+              buyPlannerId: activeBuy.id,
+              sellPlannerId: activeSell?.id ?? null,
+              payload,
+            })
+            setConfirmOffPlanOpen(true)
+            setSaving(false)
+            return
+          }
+        } catch {
+          // Soft-fail: never block trade entry if allowance computation fails.
+        }
+      }
+
+      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
+      if (error) { setErr(error.message); setSaving(false); return }      // NEW: Immediately regenerate ACTIVE sell ladder so rows/prices move with new average
       try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
 
           setOk('Buy recorded.')
@@ -759,8 +909,8 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
       if (refPx) {
         try {
           const { allowedTokens, hasLevels } = await computeAlertAllowance(chosen, refPx)
-          if (hasLevels && quantityTokens > allowedTokens + 1e-12) {
-            setConfirmOffPlanCtx({
+if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            setConfirmOffPlanCtx({
+              tradeSide: 'sell',
               plannerLabel: plannerLabelFor(chosen),
               allowedTokens,
               enteredTokens: quantityTokens,
@@ -819,7 +969,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
 
   // Dynamic placeholder for Quantity
   const qtyPlaceholder = qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'
-
+  const confirmVerb = confirmOffPlanCtx?.tradeSide === 'buy' ? 'buy' : 'sell'
   return (
     <>
 {confirmOffPlanOpen && confirmOffPlanCtx ? (
@@ -855,15 +1005,14 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
 />
 
               <div className="min-w-0">
-                <h2 id="confirm-offplan-title" className="text-[13px] font-semibold text-slate-50 tracking-wide">
-                  Confirm sell amount
-                </h2>
-                <p id="confirm-offplan-desc" className="mt-1 text-[13px] leading-5 text-slate-300">
-                  This sell exceeds your planned amount based on the currently <span className="font-medium text-slate-100">alerted levels</span> in{' '}
-                  <span className="font-medium text-slate-100">{confirmOffPlanCtx.plannerLabel}</span>.
-                  If you proceed, the excess will be recorded as <span className="font-medium text-amber-300">Off-Plan</span>.
-                </p>
-              </div>
+<h2 id="confirm-offplan-title" className="text-[13px] font-semibold text-slate-50 tracking-wide">
+  Confirm {confirmVerb} amount
+</h2>
+<p id="confirm-offplan-desc" className="mt-1 text-[13px] leading-5 text-slate-300">
+  This {confirmVerb} exceeds your planned amount based on the currently <span className="font-medium text-slate-100">alerted levels</span> in{' '}
+  <span className="font-medium text-slate-100">{confirmOffPlanCtx.plannerLabel}</span>.
+  If you proceed, the excess will be recorded as <span className="font-medium text-amber-300">Off-Plan</span>.
+</p>              </div>
             </div>
 
             <button
@@ -904,8 +1053,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
           </div>
 
           <p className="mt-3 text-[12px] leading-5 text-slate-400">
-            To remain on-plan, reduce the sell size to the planned allowance shown above.
-          </p>
+To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown above.          </p>
         </div>
 
         {/* Actions */}
