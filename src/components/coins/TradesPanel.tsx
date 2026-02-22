@@ -4,7 +4,10 @@ import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
-import { LockKeyhole, LockKeyholeOpen } from 'lucide-react'
+import { usePrice } from '@/lib/dataCore'
+import { fmtCurrency } from '@/lib/format'
+import { computeSellFills } from '@/lib/planner'
+import { AlertTriangle, LockKeyhole, LockKeyholeOpen, X } from 'lucide-react'
 import { mutate as globalMutate } from 'swr'
 
 
@@ -29,7 +32,28 @@ type SellPlanner = {
   frozen_at: string | null
   avg_lock_price?: number | null
 }
+type ConfirmOffPlanCtx = {
+  plannerLabel: string
+  allowedTokens: number
+  enteredTokens: number
+  allowedUsd: number
+  enteredUsd: number
+}
 
+type PendingSell = {
+  chosenId: PlannerId
+  payload: {
+    user_id: string
+    coingecko_id: string
+    side: 'sell'
+    price: number
+    quantity: number
+    fee: number
+    trade_time: string
+    sell_planner_id: PlannerId
+    buy_planner_id: null
+  }
+}
 /** Local "YYYY-MM-DDTHH:mm" -> ISO */
 function toIso(localValue: string): string {
   try {
@@ -178,7 +202,84 @@ const onFeeChange = makeLiveNumericChangeHandler(
   // NEW: per-coin holdings safeguard (tokens)
   const [holdingsTokens, setHoldingsTokens] = useState<number>(0)
   const [holdingsLoading, setHoldingsLoading] = useState<boolean>(false)
+  // NEW: live price via NEW data core (used only to evaluate “yellow/alert” sell rows)
+  const { row: priceRow } = usePrice(id, 'USD', {
+    revalidateOnFocus: false,
+    dedupingInterval: 15000,
+  })
+  const livePrice = priceRow?.price ?? null
 
+  // NEW: confirm modal when user sells more than the currently alerted (“yellow”) allocation
+  const [confirmOffPlanOpen, setConfirmOffPlanOpen] = useState(false)
+  const [confirmOffPlanCtx, setConfirmOffPlanCtx] = useState<ConfirmOffPlanCtx | null>(null)
+  const [pendingSell, setPendingSell] = useState<PendingSell | null>(null)
+
+  // Modal refs (Cancel is focused by default; Panel is used for focus-trap)
+  const confirmOffPlanCancelRef = useRef<HTMLButtonElement>(null)
+  const confirmOffPlanPanelRef = useRef<HTMLDivElement>(null)
+
+useEffect(() => {
+  if (!confirmOffPlanOpen) return
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+  // Scroll-lock (prevents background scrolling while modal is open)
+  const prevOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+
+  // Focus the safe action by default
+  requestAnimationFrame(() => confirmOffPlanCancelRef.current?.focus())
+
+  const focusableSelector = [
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(',')
+
+  const getFocusable = () => {
+    const root = confirmOffPlanPanelRef.current
+    if (!root) return [] as HTMLElement[]
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(focusableSelector))
+    return nodes.filter(el => !el.hasAttribute('disabled') && el.tabIndex !== -1)
+  }
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeConfirmOffPlan()
+      return
+    }
+
+    // Focus trap: keep Tab navigation inside the modal
+    if (e.key === 'Tab') {
+      const focusables = getFocusable()
+      if (focusables.length === 0) return
+
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      const active = document.activeElement as HTMLElement | null
+
+      if (e.shiftKey) {
+        if (!active || active === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+  }
+
+  window.addEventListener('keydown', onKey)
+  return () => {
+    window.removeEventListener('keydown', onKey)
+    document.body.style.overflow = prevOverflow
+  }
+}, [confirmOffPlanOpen])
   function fmtTokens(x: number): string {
     if (!Number.isFinite(x)) return '0'
     const s = x.toFixed(8)
@@ -488,7 +589,110 @@ const onFeeChange = makeLiveNumericChangeHandler(
       window.dispatchEvent(new CustomEvent('sellPlannerUpdated', { detail: { coinId: id } }))
     }
   }
+  // ─────────────────────────────────────────────────────────
+  // NEW: “yellow row” allowance (Sell > alerted allocation => confirm)
+  // ─────────────────────────────────────────────────────────
+  const SELL_ALERT_TOLERANCE = 0.0005
+  const ALERT_YELLOW_MULT = 0.985
+  const ALERT_GREEN_PCT = 0.97
 
+  async function computeAlertAllowance(
+    sellPlannerId: string,
+    referencePrice: number
+  ): Promise<{ allowedTokens: number; hasLevels: boolean }> {
+    if (!user) return { allowedTokens: 0, hasLevels: false }
+
+    const { data: lvlRaw, error: eLvls } = await supabaseBrowser
+      .from('sell_levels')
+      .select('level,price,sell_tokens')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', id)
+      .eq('sell_planner_id', sellPlannerId)
+      .order('level', { ascending: true })
+
+    if (eLvls) throw eLvls
+    const lvlRows = (lvlRaw ?? []) as Array<{ level: number; price: number | null; sell_tokens: number | null }>
+    if (!lvlRows.length) return { allowedTokens: 0, hasLevels: false }
+
+    const levels = lvlRows.map(r => ({
+      target_price: Number(r.price ?? 0),
+      planned_tokens: Math.max(0, Number(r.sell_tokens ?? 0)),
+    }))
+
+    const { data: sellsRaw, error: eSells } = await supabaseBrowser
+      .from('trades')
+      .select('price,quantity,trade_time,side')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', id)
+      .eq('sell_planner_id', sellPlannerId)
+      .eq('side', 'sell')
+      .order('trade_time', { ascending: true })
+
+    if (eSells) throw eSells
+
+    const sells = (sellsRaw ?? []).map((r: any) => ({
+      price: Number(r.price ?? 0),
+      quantity: Number(r.quantity ?? 0),
+      trade_time: r.trade_time ?? undefined,
+    }))
+
+    // Allocate prior sells to planned levels so we only allow the remaining “yellow” capacity
+    const fill = computeSellFills(levels, sells, SELL_ALERT_TOLERANCE)
+    const allocated = Array.isArray(fill?.allocatedTokens) ? fill.allocatedTokens : levels.map(() => 0)
+
+    let allowedTokens = 0
+
+    for (let i = 0; i < levels.length; i++) {
+      const target = Number(levels[i].target_price || 0)
+      const planned = Number(levels[i].planned_tokens || 0)
+      if (!(target > 0) || !(planned > 0)) continue
+
+      const alloc = Number(allocated[i] ?? 0)
+      const pct = planned > 0 ? (alloc / planned) : 0
+      const green = pct >= ALERT_GREEN_PCT
+      const yellow = !green && referencePrice >= target * ALERT_YELLOW_MULT
+
+      if (!yellow) continue
+
+      // Remaining tokens in “yellow” rows are the planned sell capacity before we warn
+      const remaining = Math.max(0, planned - alloc)
+      allowedTokens += remaining
+    }
+
+    return { allowedTokens: Number(allowedTokens.toFixed(8)), hasLevels: true }
+  }
+
+  function plannerLabelFor(plannerId: string): string {
+    return plannerOptions.find(p => p.id === plannerId)?.label ?? 'Selected planner'
+  }
+
+  function closeConfirmOffPlan() {
+    setConfirmOffPlanOpen(false)
+    setConfirmOffPlanCtx(null)
+    setPendingSell(null)
+  }
+
+  async function confirmOffPlanProceed() {
+    if (!pendingSell) { closeConfirmOffPlan(); return }
+    const { payload, chosenId } = pendingSell
+    closeConfirmOffPlan()
+
+    setSaving(true); setErr(null); setOk(null)
+    try {
+      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
+      if (error) throw error
+
+      setOk('Sell recorded.')
+      broadcast()
+      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosenId })
+      refreshHoldingsTokens()
+      resetAfterSubmit()
+    } catch (e: any) {
+      setErr(e?.message || String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
   async function submitTrade() {
     if (!user) return
     setSaving(true); setErr(null); setOk(null)
@@ -540,11 +744,39 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         // If this fails, allow DB trigger to enforce.
       }
 
-      const payload = {
+      const payload: PendingSell['payload'] = {
         user_id: user.id, coingecko_id: id, side: 'sell',
         price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
         sell_planner_id: chosen, buy_planner_id: null,
       }
+
+      // NEW: confirm if sell exceeds the “yellow/alert” allocation of the selected Sell Planner
+      const refPx =
+        Number.isFinite(livePrice as number) && (livePrice as number) > 0
+          ? (livePrice as number)
+          : (p > 0 ? p : null)
+
+      if (refPx) {
+        try {
+          const { allowedTokens, hasLevels } = await computeAlertAllowance(chosen, refPx)
+          if (hasLevels && quantityTokens > allowedTokens + 1e-12) {
+            setConfirmOffPlanCtx({
+              plannerLabel: plannerLabelFor(chosen),
+              allowedTokens,
+              enteredTokens: quantityTokens,
+              allowedUsd: allowedTokens * refPx,
+              enteredUsd: quantityTokens * refPx,
+            })
+            setPendingSell({ chosenId: chosen, payload })
+            setConfirmOffPlanOpen(true)
+            setSaving(false)
+            return
+          }
+        } catch {
+          // Soft-fail: never block trade entry if allowance computation fails.
+        }
+      }
+
       const { error } = await supabaseBrowser.from('trades').insert(payload as any)
       if (error) { setErr(error.message); setSaving(false); return }
 
@@ -589,8 +821,118 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
   const qtyPlaceholder = qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'
 
   return (
-    <div className="add-trade-card text-[13px] rounded-2xl border border-slate-700/40 bg-slate-800/40 ring-1 ring-slate-600/30 p-3 space-y-3 w-full">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <>
+{confirmOffPlanOpen && confirmOffPlanCtx ? (
+  <div
+    className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="confirm-offplan-title"
+    aria-describedby="confirm-offplan-desc"
+  >
+    {/* Backdrop (click outside to close) */}
+    <button
+      type="button"
+      aria-label="Close confirmation"
+      onClick={closeConfirmOffPlan}
+      className="absolute inset-0 lg1-modal-backdrop"
+    />
+
+    {/* Panel */}
+    <div
+      ref={confirmOffPlanPanelRef}
+      className="relative z-10 w-full max-w-lg lg1-modal-panel"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="rounded-2xl border border-slate-700/50 bg-[rgba(16,17,19,0.92)] backdrop-blur-xl shadow-[0_28px_80px_-28px_rgba(0,0,0,0.85)]">
+        {/* Header */}
+        <div className="px-6 pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+<AlertTriangle
+  aria-hidden="true"
+  className="mt-1 h-5 w-5 shrink-0 text-amber-300 drop-shadow-[0_6px_18px_rgba(0,0,0,0.45)]"
+/>
+
+              <div className="min-w-0">
+                <h2 id="confirm-offplan-title" className="text-[13px] font-semibold text-slate-50 tracking-wide">
+                  Confirm sell amount
+                </h2>
+                <p id="confirm-offplan-desc" className="mt-1 text-[13px] leading-5 text-slate-300">
+                  This sell exceeds your planned amount based on the currently <span className="font-medium text-slate-100">alerted levels</span> in{' '}
+                  <span className="font-medium text-slate-100">{confirmOffPlanCtx.plannerLabel}</span>.
+                  If you proceed, the excess will be recorded as <span className="font-medium text-amber-300">Off-Plan</span>.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={closeConfirmOffPlan}
+              className="shrink-0 rounded-xl border border-slate-700/60 bg-white/5 p-2 text-slate-200 hover:bg-white/10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Summary */}
+          <div className="mt-4 rounded-2xl border border-slate-700/50 bg-white/5 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Planned (alerted) allowance</div>
+              <div className="text-[12px] tabular-nums text-slate-200">
+                {fmtTokens(confirmOffPlanCtx.allowedTokens)} · {fmtCurrency(confirmOffPlanCtx.allowedUsd)}
+              </div>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-4">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Requested</div>
+              <div className="text-[12px] tabular-nums text-slate-50">
+                {fmtTokens(confirmOffPlanCtx.enteredTokens)} · {fmtCurrency(confirmOffPlanCtx.enteredUsd)}
+              </div>
+            </div>
+
+            <div className="my-3 h-px bg-slate-700/50" />
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Exceeds plan</div>
+              <div className="text-[12px] tabular-nums font-semibold text-amber-300">
+                {fmtTokens(Math.max(0, confirmOffPlanCtx.enteredTokens - confirmOffPlanCtx.allowedTokens))} ·{' '}
+                {fmtCurrency(Math.max(0, confirmOffPlanCtx.enteredUsd - confirmOffPlanCtx.allowedUsd))}
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-3 text-[12px] leading-5 text-slate-400">
+            To remain on-plan, reduce the sell size to the planned allowance shown above.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-700/50 px-6 py-4 sm:flex-row sm:justify-end">
+          <button
+            ref={confirmOffPlanCancelRef}
+            type="button"
+            onClick={closeConfirmOffPlan}
+            className="rounded-xl border border-slate-700/60 bg-white/5 px-3.5 py-2 text-[13px] font-medium text-slate-200 hover:bg-white/10"
+          >
+            No, keep on plan
+          </button>
+
+          <button
+            type="button"
+            onClick={confirmOffPlanProceed}
+            className="lg1-confirm-primary w-full sm:w-auto"
+          >
+            <span className="lg1-confirm-primary__content">Yes, proceed off-plan</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+) : null}
+<div className="add-trade-card text-[13px] rounded-2xl bg-[rgba(16,17,19,0.72)] backdrop-blur-xl p-3 space-y-3 w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.06),_0_24px_70px_-35px_rgba(0,0,0,0.88)]">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-bold text-lg">Add Trade</h2>
 
         <div className="text-[11px] text-slate-400">
@@ -613,7 +955,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
       <div className="grid gap-2 grid-cols-1 md:grid-cols-[10rem_1fr_1fr_10rem_1fr] min-w-0">
 
         {/* SIDE — thin ring + glow via :focus-within */}
-        <div className={`side-equal rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] ring-1 ring-[rgb(40,40,42)] px-3 h-[48px] min-w-0 flex items-center justify-between gap-2 transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
+<div className={`side-equal rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3 h-[48px] min-w-0 flex items-center justify-between gap-2 transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
           <span className="text-[11px] text-slate-400 shrink-0">Side</span>
           <div className="radio-buttons-container shrink-0" role="radiogroup" aria-label="Trade side">
             <label className="radio-button">
@@ -649,7 +991,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         <div className="min-w-0">
           <input
             ref={priceRef}
-            className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] ring-1 ring-[rgb(40,40,42)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
+className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
             placeholder="Price"
             inputMode="decimal"
             type="text"
@@ -660,7 +1002,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
 
         {/* QUANTITY — wrapper gets thin ring + glow via :focus-within */}
         <div className="min-w-0">
-          <div className={`relative h-[48px] rounded-2xl border border-slate-700/40 bg-slate-800/40 ring-1 ring-[rgb(40,40,42)] overflow-hidden transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
+<div className={`relative h-[48px] rounded-2xl border border-slate-700/40 bg-slate-800/40 overflow-hidden transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
             <input
               ref={qtyRef}
               className="no-spinner w-full h-full min-w-0 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] pr-24 focus:outline-none"
@@ -731,7 +1073,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         <div className="min-w-0">
           <input
             ref={feeRef}
-            className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] ring-1 ring-[rgb(40,40,42)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
+className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
             placeholder="Fee (optional)"
             inputMode="decimal"
             type="text"
@@ -743,7 +1085,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         {/* DATE/TIME — thin ring + glow */}
         <div className="min-w-0">
           <input
-            className={`w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] ring-1 ring-[rgb(40,40,42)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none text-[rgb(157,163,175)]`}
+className={`w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none text-[rgb(157,163,175)]`}
             placeholder="Trade time"
             type="datetime-local"
             value={time}
@@ -775,7 +1117,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
           <select
             value={selectedSellPlannerId}
             onChange={(e) => setSelectedSellPlannerId(e.target.value)}
-            className={`md:col-span-3 text-[15px] rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] text-[rgb(227,232,240)] ring-1 ring-[rgb(40,40,42)] px-3.5 py-2.5 transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
+className={`md:col-span-3 text-[15px] rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] text-[rgb(227,232,240)] px-3.5 py-2.5 transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
             title="Choose which Sell Planner this trade should belong to"
           >
             <option value="" disabled>
@@ -806,8 +1148,8 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         <button
           onClick={submitTrade}
           disabled={!canSubmit || saving}
-          className={`text-sm rounded-xl border border-slate-700/40 ring-1 ring-slate-600/30 px-3 py-2 ${
-            !canSubmit || saving
+className={`text-sm rounded-xl border border-slate-700/40 px-3 py-2 ${
+              !canSubmit || saving
               ? 'bg-[rgb(31,32,33)] backdrop-blur-[0px] text-slate-500 cursor-not-allowed'
               : 'bg-[rgb(42,43,44)] backdrop-blur-[0px] hover:bg-[rgb(61,61,61)] text-slate-200'
           }`}
@@ -816,7 +1158,7 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
         </button>
         <button
           onClick={resetAfterSubmit}
-          className="text-sm rounded-xl border border-slate-700/40 bg-[rgb(42,43,44)] backdrop-blur-[0px] ring-1 ring-slate-600/30 px-3 py-2 hover:bg-[rgb(61,61,61)] text-slate-200"
+className="text-sm rounded-xl border border-slate-700/40 bg-[rgb(42,43,44)] backdrop-blur-[0px] px-3 py-2 hover:bg-[rgb(61,61,61)] text-slate-200"
           type="button"
         >
           Reset
@@ -824,6 +1166,86 @@ if (!activeBuy) { setErr('Cannot save trade: no active plan available for this c
       </div>
 
   
-    </div>
+      </div>
+      <style jsx>{`
+  /* Matches Planner page "Save New" hover behavior (gradient reveal on hover) */
+  .lg1-confirm-primary {
+    position: relative;
+    overflow: hidden;
+    height: 2.5rem;
+    padding: 0 1.25rem;
+    border-radius: 0.75rem;
+    background: #39364fff;
+    background-size: 400%;
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.25rem;
+    font-weight: 600;
+    border: 1px solid rgb(58, 59, 63);
+    cursor: pointer;
+  }
+
+  .lg1-confirm-primary__content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .lg1-confirm-primary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+      82.3deg,
+      rgba(109, 93, 186) 10.8%,
+      rgba(109, 93, 186) 94.3%
+    );
+    transition: all 0.4s;
+  }
+
+  .lg1-confirm-primary:hover::before,
+  .lg1-confirm-primary:focus-visible::before {
+    transform: scaleX(1);
+  }
+  /* Modern modal: blur + soft fade + panel pop */
+  .lg1-modal-backdrop {
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(2px);
+    animation: lg1BackdropIn 160ms ease-out both;
+  }
+
+  .lg1-modal-panel {
+    animation: lg1PanelIn 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes lg1BackdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes lg1PanelIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lg1-modal-backdrop,
+    .lg1-modal-panel {
+      animation: none;
+    }
+  }
+  `}</style>
+    </>
   )
 }
