@@ -532,8 +532,8 @@ useEffect(() => {
     return Math.max(0, buys - sells)
   }
 
-  async function refreshHoldingsTokens() {
-    if (!user) { setHoldingsTokens(0); return }
+async function refreshHoldingsTokens(_opts?: { sellPlannerId?: string }) {
+      if (!user) { setHoldingsTokens(0); return }
     try {
       setHoldingsLoading(true)
       const v = await fetchHoldingsTokensNow()
@@ -665,9 +665,8 @@ useEffect(() => {
     const activeS = allSP.find(p => p.is_active) ?? null
     setActiveSell(activeS)
 
-void refreshHoldingsTokens({ sellPlannerId: activeS?.id ?? '' })
-    setLoading(false)
-  }
+void refreshHoldingsTokens()
+setLoading(false)  }
 
   useEffect(() => {
     loadPlanners()
