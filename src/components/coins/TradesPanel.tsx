@@ -163,6 +163,195 @@ function makeLiveNumericChangeHandler(
   }
 }
 
+type PlannerOpt = { id: PlannerId; label: string }
+
+function SellPlannerSelector({
+  value,
+  plannerOptions,
+  sellPlanners,
+  onChange,
+}: {
+  value: PlannerId
+  plannerOptions: PlannerOpt[]
+  sellPlanners: SellPlanner[]
+  onChange: (id: PlannerId) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+
+  const MENU_ANIM_MS = 140
+
+  const baseBg = 'bg-[rgb(41,42,43)]'
+  const baseText = 'text-slate-200'
+  const noBorder = 'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
+const heightPad = 'px-3 py-2.5'
+  const radiusClosed = 'rounded-lg'
+  const muted = 'text-slate-400'
+
+  const hasOptions = plannerOptions.length > 0
+
+  // Build ordering: Active first, then Frozen (newest -> oldest) using sellPlanners source-of-truth.
+  const orderedOptions: PlannerOpt[] = (() => {
+    const activeIds = new Set(sellPlanners.filter(p => p.is_active).map(p => p.id))
+    const active = plannerOptions.filter(o => activeIds.has(o.id))
+    const frozen = plannerOptions.filter(o => !activeIds.has(o.id))
+    return [...active, ...frozen]
+  })()
+
+  const getStatus = (id: PlannerId) => {
+    const p = sellPlanners.find(x => x.id === id)
+    return p?.is_active ? 'Live' : 'Frozen'
+  }
+
+  const getDesc = (id: PlannerId) => {
+    const p = sellPlanners.find(x => x.id === id)
+    return p?.is_active ? 'Current active Sell Planner' : 'Frozen Sell Planner'
+  }
+
+  const currentLabel =
+    (value && plannerOptions.find(o => o.id === value)?.label) ||
+    (hasOptions ? 'Select Sell Planner' : 'No Sell Planners yet')
+
+  const currentChip = value ? getStatus(value) : ''
+
+  // Close on outside click (only while open)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (wrapRef.current && wrapRef.current.contains(t)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  // Mount/unmount with delay to animate close
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      return
+    }
+    if (!mounted) return
+    const t = window.setTimeout(() => setMounted(false), MENU_ANIM_MS)
+    return () => window.clearTimeout(t)
+  }, [open, mounted])
+
+  return (
+    <div ref={wrapRef} className="relative mt-1">
+      {/* Control (matches SellPlannerInputs dropdown card look) */}
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label="Select sell planner"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={!hasOptions}
+        onClick={() => {
+          if (!hasOptions) return
+          setOpen(o => !o)
+        }}
+        onKeyDown={(e) => {
+          if (!hasOptions) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen(o => !o)
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setOpen(false)
+          }
+        }}
+        className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none ${radiusClosed} ${
+          hasOptions ? '' : 'opacity-60 cursor-not-allowed'
+        }`}
+      >
+        <div className="inline-flex w-full items-center gap-1">
+          <span className="text-sm">{currentLabel}</span>
+
+          {currentChip ? (
+            <span
+              className="ml-1 text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
+              style={{ flexShrink: 0 }}
+            >
+              {currentChip}
+            </span>
+          ) : null}
+
+          <span
+            className="inline-flex items-center justify-center rounded-full bg-[rgb(54,55,56)] ml-auto"
+            aria-hidden="true"
+            style={{ width: 20, height: 20, flexShrink: 0 }}
+          >
+            <svg
+              className={`h-3 w-3 text-slate-200 transition-transform ${open ? 'rotate-180' : 'rotate-0'}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.19l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.25 4.53a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        </div>
+      </button>
+
+      {/* Dropdown menu (animated, same structure as SellPlannerInputs) */}
+      {mounted && (
+        <div
+          role="listbox"
+          aria-label="Sell planner options"
+          aria-hidden={!open}
+          data-state={open ? 'open' : 'closed'}
+          className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50 origin-top transition duration-150 ease-out will-change-transform will-change-opacity
+            ${open ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
+        >
+          <div className="py-1">
+            {orderedOptions.map(opt => {
+              const selected = opt.id === value
+              const chip = getStatus(opt.id)
+              const desc = getDesc(opt.id)
+
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(opt.id)
+                    setOpen(false)
+                    buttonRef.current?.focus()
+                  }}
+                  className={`w-full text-left px-3 py-2 transition ${
+                    selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'
+                  }`}
+                >
+                  <div className="inline-flex w-full items-center">
+                    <span className="text-sm">{opt.label}</span>
+                    <span
+                      className="ml-auto text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
+                      style={{ flexShrink: 0 }}
+                    >
+                      {chip}
+                    </span>
+                  </div>
+
+                  <div className={`mt-1 text-[12px] ${muted}`}>{desc}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 type Props = { id: string }
 
 export default function TradesPanel({ id }: Props) {
@@ -202,7 +391,11 @@ const onFeeChange = makeLiveNumericChangeHandler(
   const [activeSell, setActiveSell] = useState<SellPlanner | null>(null)
   const [sellPlanners, setSellPlanners] = useState<SellPlanner[]>([])
   const [selectedSellPlannerId, setSelectedSellPlannerId] = useState<PlannerId>('')
-
+  // Keep latest selection accessible to event handlers (prevents stale-closure bugs)
+  const selectedSellPlannerIdRef = useRef<PlannerId>('')
+  useEffect(() => {
+    selectedSellPlannerIdRef.current = selectedSellPlannerId
+  }, [selectedSellPlannerId])
   // Build planner labels aligned with the Sell Planner card version selector:
   // - "Active" for active planner
   // - "Planner N" (newest has the largest N) for frozen planners
@@ -226,7 +419,10 @@ const onFeeChange = makeLiveNumericChangeHandler(
   // NEW: per-coin holdings safeguard (tokens)
   const [holdingsTokens, setHoldingsTokens] = useState<number>(0)
   const [holdingsLoading, setHoldingsLoading] = useState<boolean>(false)
-  // NEW: live price via NEW data core (used only to evaluate “yellow/alert” sell rows)
+
+  // NEW: selected Sell Planner planned remaining tokens (drives "Available to sell" on TradesPanel)
+  const [plannerRemainingTokens, setPlannerRemainingTokens] = useState<number>(0)
+  const [plannerRemainingLoading, setPlannerRemainingLoading] = useState<boolean>(false)  // NEW: live price via NEW data core (used only to evaluate “yellow/alert” sell rows)
   const { row: priceRow } = usePrice(id, 'USD', {
     revalidateOnFocus: false,
     dedupingInterval: 15000,
@@ -311,21 +507,27 @@ useEffect(() => {
     return s.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')
   }
 
-  async function fetchHoldingsTokensNow(): Promise<number> {
+  async function fetchHoldingsTokensNow(opts?: { sellPlannerId?: PlannerId | null }): Promise<number> {
     if (!user) return 0
-    const { data, error } = await supabaseBrowser
+
+    let q = supabaseBrowser
       .from('trades')
       .select('side,quantity')
       .eq('user_id', user.id)
       .eq('coingecko_id', id)
+
+    const spid = opts?.sellPlannerId ?? null
+    if (spid) q = q.eq('sell_planner_id', spid)
+
+    const { data, error } = await q
     if (error) throw error
 
     let buys = 0
     let sells = 0
     for (const r of (data ?? []) as any[]) {
-      const q = Number(r.quantity || 0)
-      if (r.side === 'buy') buys += q
-      else if (r.side === 'sell') sells += q
+      const qty = Number(r.quantity || 0)
+      if (r.side === 'buy') buys += qty
+      else if (r.side === 'sell') sells += qty
     }
     return Math.max(0, buys - sells)
   }
@@ -343,7 +545,53 @@ useEffect(() => {
     }
   }
 
+  // Planned remaining tokens on a Sell Planner:
+  // SUM(sell_levels.sell_tokens) - SUM(trades.sell quantity for that sell_planner_id)
+  async function fetchSellPlannerRemainingTokensNow(sellPlannerId: PlannerId): Promise<number> {
+    if (!user || !sellPlannerId) return 0
 
+    const [{ data: lvlRaw, error: e1 }, { data: sellsRaw, error: e2 }] = await Promise.all([
+      supabaseBrowser
+        .from('sell_levels')
+        .select('sell_tokens')
+        .eq('user_id', user.id)
+        .eq('coingecko_id', id)
+        .eq('sell_planner_id', sellPlannerId),
+      supabaseBrowser
+        .from('trades')
+        .select('quantity')
+        .eq('user_id', user.id)
+        .eq('coingecko_id', id)
+        .eq('side', 'sell')
+        .eq('sell_planner_id', sellPlannerId),
+    ])
+
+    if (e1) throw e1
+    if (e2) throw e2
+
+    const planned = (lvlRaw ?? []).reduce((s: number, r: any) => s + Number(r.sell_tokens || 0), 0)
+    const sold = (sellsRaw ?? []).reduce((s: number, r: any) => s + Number(r.quantity || 0), 0)
+
+    return Math.max(0, planned - sold)
+  }
+
+  async function refreshPlannerRemainingTokens(forcePlannerId?: PlannerId | null) {
+    if (!user) { setPlannerRemainingTokens(0); return }
+    if (side !== 'sell') { setPlannerRemainingTokens(0); return }
+
+    const spid = (forcePlannerId ?? selectedSellPlannerId ?? activeSell?.id ?? '') as PlannerId
+    if (!spid) { setPlannerRemainingTokens(0); return }
+
+    try {
+      setPlannerRemainingLoading(true)
+      const v = await fetchSellPlannerRemainingTokensNow(spid)
+      setPlannerRemainingTokens(v)
+    } catch {
+      // UX hint only; never block trading UI
+    } finally {
+      setPlannerRemainingLoading(false)
+    }
+  }
 
   function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
     if (!user) return
@@ -417,19 +665,21 @@ useEffect(() => {
     const activeS = allSP.find(p => p.is_active) ?? null
     setActiveSell(activeS)
 
-    setSelectedSellPlannerId(activeS?.id ?? '')
+void refreshHoldingsTokens({ sellPlannerId: activeS?.id ?? '' })
     setLoading(false)
   }
 
-    useEffect(() => {
+  useEffect(() => {
     loadPlanners()
     refreshHoldingsTokens()
+    refreshPlannerRemainingTokens()
 
     if (typeof window === 'undefined') return
     const bump = (e: any) => {
       const detailCoin = e?.detail?.coinId
       if (detailCoin && detailCoin !== id) return
       refreshHoldingsTokens()
+      refreshPlannerRemainingTokens()
     }
     window.addEventListener('buyPlannerUpdated', bump)
     window.addEventListener('sellPlannerUpdated', bump)
@@ -439,6 +689,21 @@ useEffect(() => {
     }
   }, [user, id])
 
+  // When user changes side or changes selected Sell Planner, recompute planned remaining
+  useEffect(() => {
+    if (!user) { setPlannerRemainingTokens(0); return }
+    if (side !== 'sell') { setPlannerRemainingTokens(0); return }
+    const spid = selectedSellPlannerId || activeSell?.id || ''
+    if (!spid) { setPlannerRemainingTokens(0); return }
+    void refreshPlannerRemainingTokens(spid)
+  }, [user, id, side, selectedSellPlannerId, activeSell?.id])
+
+
+  // Keep "Available to sell" synced to the current Sell Planner selection
+  useEffect(() => {
+    if (side !== 'sell') { setHoldingsTokens(0); return }
+    void refreshHoldingsTokens({ sellPlannerId: selectedSellPlannerId })
+  }, [side, selectedSellPlannerId])
 
   // NEW: whenever side changes, force canonical mode + re-lock
   useEffect(() => {
@@ -884,7 +1149,7 @@ if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            s
 
       // NEW: client-side precheck (DB trigger is the hard enforcement)
       try {
-        const available = await fetchHoldingsTokensNow()
+const available = await fetchHoldingsTokensNow({ sellPlannerId: chosen })
         if (quantityTokens > available + 1e-12) {
           setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
           setSaving(false)
@@ -954,20 +1219,16 @@ if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            s
   const noActiveBuy = !activeBuy
   const noActiveSell = !activeSell
 
-  // Side-colored focus helpers (thin ring + glow)
-  const focusBorder = side === 'buy' ? 'focus:border-emerald-400/30' : 'focus:border-rose-400/30'
-  const focusRing   = side === 'buy' ? 'focus:ring-emerald-400/40'   : 'focus:ring-rose-400/35'
-  const focusGlow   = side === 'buy'
-    ? 'focus:shadow-[0_0_12px_2px_rgba(16,185,129,0.25)]'
-    : 'focus:shadow-[0_0_12px_2px_rgba(244,63,94,0.22)]'
+  // Input styling to match Planner page input cards (no rings / no blue focus)
+  const tradeInput =
+    'w-full h-[48px] min-w-0 rounded-lg bg-[rgb(41,42,43)] px-3.5 py-2.5 text-[15px] md:text-[16px] text-slate-100 placeholder:text-[rgb(120,121,125)] border border-[rgb(58,59,63)] focus:outline-none focus:ring-0 focus:border-transparent appearance-none'
 
-  const fwBorder    = side === 'buy' ? 'focus-within:border-emerald-400/30' : 'focus-within:border-rose-400/30'
-  const fwRing      = side === 'buy' ? 'focus-within:ring-emerald-400/40'   : 'focus-within:ring-rose-400/35'
-  const fwGlow      = side === 'buy'
-    ? 'focus-within:shadow-[0_0_12px_2px_rgba(16,185,129,0.25)]'
-    : 'focus-within:shadow-[0_0_12px_2px_rgba(244,63,94,0.22)]'
+  // Backward/forward compatibility (some fields may still use tradeField)
+  const tradeField = tradeInput
 
-  // Dynamic placeholder for Quantity
+  const tradeShell =
+    'rounded-lg border border-[rgb(58,59,63)] bg-[rgb(41,42,43)] transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-0 focus-within:border-transparent'
+        // Dynamic placeholder for Quantity
   const qtyPlaceholder = qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'
   const confirmVerb = confirmOffPlanCtx?.tradeSide === 'buy' ? 'buy' : 'sell'
   return (
@@ -1103,8 +1364,8 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
       <div className="grid gap-2 grid-cols-1 md:grid-cols-[10rem_1fr_1fr_10rem_1fr] min-w-0">
 
         {/* SIDE — thin ring + glow via :focus-within */}
-<div className={`side-equal rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3 h-[48px] min-w-0 flex items-center justify-between gap-2 transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
-          <span className="text-[11px] text-slate-400 shrink-0">Side</span>
+<div className={`side-equal ${tradeShell} px-3 h-[48px] min-w-0 flex items-center justify-between gap-2`}>
+            <span className="text-[11px] text-slate-400 shrink-0">Side</span>
           <div className="radio-buttons-container shrink-0" role="radiogroup" aria-label="Trade side">
             <label className="radio-button">
               <input
@@ -1139,7 +1400,7 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
         <div className="min-w-0">
           <input
             ref={priceRef}
-className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
+className={`no-spinner ${tradeField}`}
             placeholder="Price"
             inputMode="decimal"
             type="text"
@@ -1150,10 +1411,10 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
 
         {/* QUANTITY — wrapper gets thin ring + glow via :focus-within */}
         <div className="min-w-0">
-<div className={`relative h-[48px] rounded-2xl border border-slate-700/40 bg-slate-800/40 overflow-hidden transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-1 ${fwBorder} ${fwRing} ${fwGlow}`}>
-            <input
+<div className={`relative h-[48px] min-w-0 overflow-hidden ${tradeShell}`}>
+              <input
               ref={qtyRef}
-              className="no-spinner w-full h-full min-w-0 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] pr-24 focus:outline-none"
+className="no-spinner w-full h-full min-w-0 bg-transparent px-3.5 py-2.5 text-[15px] md:text-[16px] text-slate-100 placeholder:text-[120,121,125] pr-24 focus:outline-none focus:ring-0"
               placeholder={qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'}
               inputMode="decimal"
               type="text"
@@ -1164,7 +1425,7 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
 <button
   type="button"
   onClick={() => setQtyLocked(l => !l)}
-  className="absolute inset-y-0 right-16 w-8 grid place-items-center text-[rgb(154,159,169)] hover:opacity-90"
+className="absolute inset-y-0 right-16 w-8 grid place-items-center text-[rgb(154,159,169)] hover:opacity-90 focus:outline-none"
   title={qtyLocked ? 'Quantity mode locked (click to unlock)' : 'Quantity mode unlocked (click to lock)'}
   aria-pressed={!qtyLocked}
   aria-label={qtyLocked ? 'Locked' : 'Unlocked'}
@@ -1176,7 +1437,7 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
 
             {/* Right-side selector */}
             <div
-              className="absolute inset-y-0 right-0 w-16 border-l border-slate-700/40 rounded-r-[4px] overflow-hidden"
+className="absolute inset-y-0 right-0 w-16 border-l border-[rgb(58,59,63)] overflow-hidden"
               role="group"
               aria-label="Quantity mode"
             >
@@ -1194,10 +1455,10 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
                   type="button"
                   onClick={() => setQtyMode('tokens')}
                   disabled={qtyLocked}
-                  className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none
-                              ${qtyMode === 'tokens' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
-                              ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  aria-pressed={qtyMode === 'tokens'}
+className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none focus:outline-none
+            ${qtyMode === 'tokens' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
+            ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              aria-pressed={qtyMode === 'tokens'}
                 >
                   Tokens
                 </button>
@@ -1205,10 +1466,10 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
                   type="button"
                   onClick={() => setQtyMode('usd')}
                   disabled={qtyLocked}
-                  className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none
-                              ${qtyMode === 'usd' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
-                              ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  aria-pressed={qtyMode === 'usd'}
+className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none focus:outline-none
+            ${qtyMode === 'usd' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
+            ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              aria-pressed={qtyMode === 'usd'}
                 >
                   USD $
                 </button>
@@ -1221,7 +1482,7 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
         <div className="min-w-0">
           <input
             ref={feeRef}
-className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
+className={`no-spinner ${tradeField}`}
             placeholder="Fee (optional)"
             inputMode="decimal"
             type="text"
@@ -1233,7 +1494,7 @@ className={`no-spinner w-full h-[48px] min-w-0 rounded-2xl border border-slate-7
         {/* DATE/TIME — thin ring + glow */}
         <div className="min-w-0">
           <input
-className={`w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] px-3.5 py-2.5 md:text-[16px] transition-[box-shadow,colors] duration-150 focus:outline-none text-[rgb(157,163,175)]`}
+className={`${tradeInput} text-[rgb(157,163,175)]`}
             placeholder="Trade time"
             type="datetime-local"
             value={time}
@@ -1242,77 +1503,65 @@ className={`w-full h-[48px] min-w-0 rounded-2xl border border-slate-700/40 bg-[r
         </div>
       </div>
 
-      {/* SELL override (unchanged focus coloring based on side) */}
-      {side === 'sell' && (
-        <div className="grid gap-2 md:grid-cols-8">
-                 <div className="md:col-span-5 text-[11px] text-slate-400 leading-snug">
-            <div>
-              Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
-            </div>
+{/* Actions row: (Sell) planner selector LEFT, helper text RIGHT of it, buttons FAR RIGHT */}
+<div className="flex flex-col gap-2 md:flex-row md:items-center min-w-0">
+  {/* Left: sell planner selector */}
+  {side === 'sell' ? (
+    <div className="w-full md:w-[240px] md:shrink-0">
+      <SellPlannerSelector
+        value={selectedSellPlannerId}
+        plannerOptions={plannerOptions}
+        sellPlanners={sellPlanners}
+        onChange={setSelectedSellPlannerId}
+      />
+    </div>
+  ) : null}
 
-            {user && (
-              <div>
-                Available to sell:{' '}
-                <span className="text-slate-200">
-                  {holdingsLoading ? '…' : fmtTokens(holdingsTokens)}
-                </span>{' '}
-                tokens
-              </div>
-            )}
-          </div>
-
-          {/* Single dropdown with version-aligned labels */}
-          <select
-            value={selectedSellPlannerId}
-            onChange={(e) => setSelectedSellPlannerId(e.target.value)}
-className={`md:col-span-3 text-[15px] rounded-2xl border border-slate-700/40 bg-[rgb(42,43,44)] text-[rgb(227,232,240)] px-3.5 py-2.5 transition-[box-shadow,colors] duration-150 focus:outline-none ${focusBorder} ${focusRing} ${focusGlow}`}
-            title="Choose which Sell Planner this trade should belong to"
-          >
-            <option value="" disabled>
-              {sellPlanners.length ? 'Select Sell Planner' : 'No Sell Planners yet'}
-            </option>
-
-            {/* Active first (if present) */}
-            {plannerOptions.filter(p => {
-              const src = sellPlanners.find(s => s.id === p.id)
-              return !!src?.is_active
-            }).map(p => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-
-            {/* Frozen newest → oldest as Planner N..1 */}
-            {plannerOptions.filter(p => {
-              const src = sellPlanners.find(s => s.id === p.id)
-              return src && !src.is_active
-            }).map(p => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-
-      <div className="flex gap-2">
-        <button
-          onClick={submitTrade}
-          disabled={!canSubmit || saving}
-className={`text-sm rounded-xl border border-slate-700/40 px-3 py-2 ${
-              !canSubmit || saving
-              ? 'bg-[rgb(31,32,33)] backdrop-blur-[0px] text-slate-500 cursor-not-allowed'
-              : 'bg-[rgb(42,43,44)] backdrop-blur-[0px] hover:bg-[rgb(61,61,61)] text-slate-200'
-          }`}
-        >
-          {saving ? 'Saving…' : 'Add Trade'}
-        </button>
-        <button
-          onClick={resetAfterSubmit}
-className="text-sm rounded-xl border border-slate-700/40 bg-[rgb(42,43,44)] backdrop-blur-[0px] px-3 py-2 hover:bg-[rgb(61,61,61)] text-slate-200"
-          type="button"
-        >
-          Reset
-        </button>
+  {/* Middle: helper text */}
+  {side === 'sell' ? (
+    <div className="text-[11px] text-slate-400 leading-snug min-w-0 md:flex-1">
+      <div>
+        Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
       </div>
 
+      {user && (
+        <div>
+          Available to sell:{' '}
+          <span className="text-slate-200">
+{plannerRemainingLoading ? '…' : fmtTokens(plannerRemainingTokens)}
+          </span>{' '}
+          tokens
+        </div>
+      )}
+    </div>
+  ) : (
+    // Spacer keeps buttons right-aligned on desktop when not selling
+    <div className="hidden md:block md:flex-1" />
+  )}
+
+  {/* Right: buttons */}
+  <div className="flex gap-2 md:shrink-0 md:justify-end">
+    <button
+      onClick={submitTrade}
+      disabled={!canSubmit || saving}
+      className={`text-sm rounded-xl border border-slate-700/40 px-3 py-2 ${
+        !canSubmit || saving
+          ? 'bg-[rgb(31,32,33)] backdrop-blur-[0px] text-slate-500 cursor-not-allowed'
+          : 'bg-[rgb(42,43,44)] backdrop-blur-[0px] hover:bg-[rgb(61,61,61)] text-slate-200'
+      }`}
+    >
+      {saving ? 'Saving…' : 'Add Trade'}
+    </button>
+
+    <button
+      onClick={resetAfterSubmit}
+      className="text-sm rounded-xl border border-slate-700/40 bg-[rgb(42,43,44)] backdrop-blur-[0px] px-3 py-2 hover:bg-[rgb(61,61,61)] text-slate-200"
+      type="button"
+    >
+      Reset
+    </button>
+  </div>
+</div>
   
       </div>
       <style jsx>{`

@@ -18,6 +18,7 @@ type MenuItem = {
 }
 
 const MENU_ITEMS: MenuItem[] = [
+  { label: 'Main Page', href: '/' },
   { label: 'Login and Security', href: '#' },
   { label: 'Upgrade Plan', href: '/pricing' },
   { label: 'Manage Communications', href: '#' },

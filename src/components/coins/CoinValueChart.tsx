@@ -611,11 +611,32 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
 
   const titleText = showTotalPL ? 'Total P&L' : 'Value'
 
+  // Header amount shown under title (matches dashboard layout pattern)
+  // Value mode => current coin value
+  // Total P&L mode => current total P&L (realized + unrealized)
+  // Fallback to last chart point if live price hasn't loaded yet
+  const headerAmount = useMemo<number | null>(() => {
+    const primary = showTotalPL ? liveTotalPL : liveValue
+    if (typeof primary === 'number' && Number.isFinite(primary)) return primary
+
+    const last = chartSeries.length ? Number(chartSeries[chartSeries.length - 1]?.value) : NaN
+    return Number.isFinite(last) ? last : null
+  }, [showTotalPL, liveTotalPL, liveValue, chartSeries])
+
+  const headerAmountText = headerAmount == null ? '--' : fmtCurrency(headerAmount)
   return (
     <div className="rounded-2xl border border-[rgb(28,29,31)] bg-[rgb(28,29,31)] px-3 py-4 md:px-4 md:py-5">
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col items-start gap-0.5">
           <div className="text-xl md:text-2xl font-semibold leading-tight text-slate-200">{titleText}</div>
+
+          {/* Current amount (under title, above %/$ change row) */}
+          <div
+            className="text-2xl md:text-3xl font-bold leading-tight text-slate-100 tabular-nums"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {headerAmountText}
+          </div>
 
           {typeof perfPct === 'number' && typeof perfDelta === 'number' && (
             <span

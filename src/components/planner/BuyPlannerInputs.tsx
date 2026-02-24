@@ -84,6 +84,7 @@ function LadderDepthDropdown({
   onChange: (v: RiskDepth) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -93,9 +94,10 @@ function LadderDepthDropdown({
     null
   )
 
+  const MENU_ANIM_MS = 140
+
   // Order in UI: Conservative (90), Moderate (70), Aggressive (75)
   const OPTIONS: RiskDepth[] = ['90', '70', '75']
-
 
   // Close when clicking outside
   useEffect(() => {
@@ -135,12 +137,10 @@ function LadderDepthDropdown({
     btn.addEventListener('keydown', onKey)
     return () => btn.removeEventListener('keydown', onKey)
   }, [open])
+
   // Position portal menu under the button (updates on scroll/resize)
   useEffect(() => {
-    if (!open) {
-      setMenuPos(null)
-      return
-    }
+    if (!open) return
 
     const update = () => {
       const btn = buttonRef.current
@@ -159,13 +159,23 @@ function LadderDepthDropdown({
     }
   }, [open])
 
+  // Mount/unmount with a short delay so we can animate close.
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      return
+    }
+    if (!mounted) return
+    const t = window.setTimeout(() => setMounted(false), MENU_ANIM_MS)
+    return () => window.clearTimeout(t)
+  }, [open, mounted])
+
   const baseBg = 'bg-[rgb(41,42,43)]'
   const baseText = 'text-slate-200'
   const noBorder =
     'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
   const heightPad = 'px-3 py-2.5'
   const radiusClosed = 'rounded-lg'
-  const muted = 'text-slate-400'
 
   const currentMeta = DepthMeta(value)
 
@@ -184,11 +194,11 @@ function LadderDepthDropdown({
       >
         <span className="text-sm flex items-center gap-2">
           {currentMeta.shortLabel}
-<span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-  {currentMeta.levels} levels
-</span>
-
+          <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
+            {currentMeta.levels} levels
+          </span>
         </span>
+
         <span
           className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgb(54,55,56)]"
           aria-hidden="true"
@@ -210,20 +220,23 @@ function LadderDepthDropdown({
       </button>
 
       {/* Portal dropdown menu (prevents clipping by overflow-hidden ancestors) */}
-      {open && menuPos
+      {mounted && menuPos
         ? createPortal(
             <div
               ref={menuRef}
               id="ladder-depth-listbox"
               role="listbox"
               aria-label="Select risk profile"
+              aria-hidden={!open}
               style={{
                 position: 'fixed',
                 left: menuPos.left,
-                top: menuPos.top + 8, // spacing under the button
+                top: menuPos.top + 8,
                 width: menuPos.width,
               }}
-              className={`${baseBg} ${baseText} ${noBorder} rounded-lg border border-[rgb(32,33,34)] shadow-lg z-[9999]`}
+              data-state={open ? 'open' : 'closed'}
+              className={`${baseBg} ${baseText} ${noBorder} rounded-lg border border-[rgb(32,33,34)] shadow-lg z-[9999] origin-top transition duration-150 ease-out will-change-transform will-change-opacity
+                ${open ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
             >
               <div className="py-1">
                 {OPTIONS.map(opt => {
@@ -271,12 +284,9 @@ function LadderDepthDropdown({
             document.body
           )
         : null}
-
     </div>
   )
 }
-
-// Anchor type for admin-defined tops
 type CoinAnchor = {
   coingecko_id: string
   anchor_top_price: number | null

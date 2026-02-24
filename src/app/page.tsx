@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { DrawLine, Parallax, Reveal, ScrollProgress, SplitRow } from '@/components/landing/ScrollEffects'
 import { CoinLogoMini } from '@/components/landing/CoinLogoMini'
+import { AboutGlow } from '@/components/landing/AboutGlow'
 
 type CoinRow = {
   symbol: string
@@ -345,14 +346,14 @@ export default function LandingPage() {
                   LEDGERONE · OVERVIEW
                 </p>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-50">
-                  Bring structure to your crypto portfolio.
+                  Institutional discipline for personal crypto investing.
                 </h1>
                 <DrawLine className="mt-4 opacity-60" />
               </div>
 
               <p className="text-sm sm:text-base text-slate-400 leading-relaxed">
-                Define allocations, set clear rules, and track progress against your plan—so decisions stay consistent
-                across volatility.
+              Build structured allocations, define clear rules, and track execution against your plan—so decisions stay consistent through volatility.
+      
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -383,8 +384,8 @@ export default function LandingPage() {
 
             {/* PREVIEW (institutional panel) */}
             <Reveal className="relative" delayMs={120}>
-              <Parallax
-                className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/12 via-emerald-500/8 to-sky-500/10 blur-2xl"
+                        <Parallax
+                className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
                 strengthY={18}
                 strengthX={-10}
                 startAt={1.0}
@@ -492,9 +493,8 @@ export default function LandingPage() {
           <section id="methodology" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-300 leading-relaxed">
-                Institutional-style workflow for long-horizon investors—adapted for individual investors and built for
-                process, risk controls, and clean reporting.
-              </p>
+Institutional-style workflows for long-horizon crypto investors—built around process, discipline, risk controls, and clean reporting.
+</p>
 
               <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
                 <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">Any portfolio size</span>
@@ -577,45 +577,38 @@ export default function LandingPage() {
         </section>
         
         {/* ABOUT */}
-        <section id="about" className="relative">
-          <Parallax
-            className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-[42rem] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-500/12 via-emerald-500/8 to-sky-500/10 blur-3xl"
-            strengthY={24}
-            strengthX={-12}
-            startAt={1.0}
-            endAt={0.0}
-          />
-          <Reveal className="relative mx-auto max-w-3xl text-center space-y-4 px-2">
+        <section id="about" className="relative overflow-visible">
+          <Reveal className="relative mx-auto max-w-3xl text-center space-y-4 px-2 overflow-visible">
             <div className="flex justify-center">
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 LEDGERONE · ABOUT
               </span>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
-              A calmer way to manage a crypto portfolio.
-            </h2>
+            {/* Visible centered glow behind headline + body text */}
+            <div className="relative isolate mx-auto max-w-3xl">
+                 {/* HD/smoother centered glow (bigger footprint, softer center) */}
+                      <AboutGlow />
 
-            <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
+              <div className="relative z-10 space-y-4">
+                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
+                  A calmer way to manage a crypto portfolio.
+                </h2>
 
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-              LedgerOne started as a simple need: manage crypto positions with the same structure used in disciplined
-              portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools were built for
-              watching—not planning. LedgerOne focuses on your ledger, your rules, and clean reporting so decisions stay
-              consistent across volatility.
-            </p>
+                <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
 
-            <Parallax
-              className="pointer-events-none absolute left-1/2 bottom-0 h-28 w-[46rem] max-w-[92vw] -translate-x-1/2 translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/7 to-sky-500/10 blur-3xl"
-              strengthY={18}
-              strengthX={10}
-              startAt={1.0}
-              endAt={0.0}
-            />
+                <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                  LedgerOne started as a simple need: manage crypto positions with the same structure used in institutional
+                  portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools were built for
+                  watching—not planning. LedgerOne focuses on your ledger, your rules, and clean reporting so decisions stay
+                  consistent across volatility.
+                </p>
+              </div>
+            </div>
           </Reveal>
         </section>
-
-
+        
+                
         {/* WHO IT'S FOR */}
         <section id="teams" className="space-y-8">
           <Reveal>

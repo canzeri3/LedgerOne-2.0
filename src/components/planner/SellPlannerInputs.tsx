@@ -189,8 +189,11 @@ function SellDropdown({
   getMeta,
 }: SellDropdownProps) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
+
+  const MENU_ANIM_MS = 140
 
   // Close on click outside
   useEffect(() => {
@@ -207,6 +210,17 @@ function SellDropdown({
       document.removeEventListener('mousedown', onDoc)
     }
   }, [open])
+
+  // Mount/unmount with a short delay so we can animate close.
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      return
+    }
+    if (!mounted) return
+    const t = window.setTimeout(() => setMounted(false), MENU_ANIM_MS)
+    return () => window.clearTimeout(t)
+  }, [open, mounted])
 
   const currentMeta = getMeta(value)
 
@@ -241,7 +255,7 @@ function SellDropdown({
         className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none ${radiusClosed}`}
       >
         <div className="inline-flex w-full items-center gap-1">
-          {/* Left: option name (Low / Medium / High, Light Trim, etc.) */}
+          {/* Left: option name */}
           <span className="text-sm" style={{ width: 'auto' }}>
             {currentMeta.title}
           </span>
@@ -254,7 +268,7 @@ function SellDropdown({
             {currentMeta.chip}
           </span>
 
-          {/* Arrow pushed to far right, fixed-size circle */}
+          {/* Arrow pushed to far right */}
           <span
             className="inline-flex items-center justify-center rounded-full bg-[rgb(54,55,56)] ml-auto"
             aria-hidden="true"
@@ -277,25 +291,22 @@ function SellDropdown({
         </div>
       </button>
 
-                 {/* Dropdown menu – 2-line structure, no mini bars */}
-      {open && (
+      {/* Dropdown menu – 2-line structure, no mini bars */}
+      {mounted && (
         <div
           role="listbox"
           aria-label={ariaLabel}
-className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50`}
+          aria-hidden={!open}
+          data-state={open ? 'open' : 'closed'}
+          className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50 origin-top transition duration-150 ease-out will-change-transform will-change-opacity
+            ${open ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
         >
           <div className="py-1">
             {options.map((opt) => {
               const meta = getMeta(opt)
               const selected = opt === value
 
-              // For Sell Intensity we want [10%], [15%], etc
-              // For Coin Volatility we use meta.chip -> [50% step], etc
               const bracketChip = meta.chip
-
-              // Dropdown label:
-              // - Coin Volatility: "Low Volatility", "Medium Volatility", "High Volatility"
-              // - Sell Intensity: keep "Light Trim", "Balanced Trim", etc.
               const label =
                 ariaLabel === 'Select coin volatility'
                   ? `${meta.title} Volatility`
@@ -316,7 +327,6 @@ className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full m
                     selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'
                   }`}
                 >
-                  {/* First line: Name ............ [chip] (right-aligned) */}
                   <div className="inline-flex w-full items-center">
                     <span className="text-sm" style={{ width: 'auto' }}>
                       {label}
@@ -329,7 +339,6 @@ className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full m
                     </span>
                   </div>
 
-                  {/* Second line: description */}
                   <div className={`mt-1 text-[12px] ${muted}`}>{meta.desc}</div>
                 </button>
               )
@@ -337,13 +346,9 @@ className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full m
           </div>
         </div>
       )}
-
-
     </div>
   )
-}
-
-// Main Sell planner inputs
+}// Main Sell planner inputs
 export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
 
   const { user } = useUser()
