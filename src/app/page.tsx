@@ -630,10 +630,10 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 
 <div className="flex flex-col gap-16">
   <div className="relative isolate">
-    <div className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] z-0">
-      <ParticleNetworkBackground className="absolute inset-0 h-full w-full opacity-[0.82]" />
-      <div className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-b from-transparent via-[#131415]/84 to-[#131415]" />
-    </div>
+<div className="pointer-events-none absolute -top-20 -bottom-40 left-[calc(50%-50vw)] right-[calc(50%-50vw)] z-0">
+  <ParticleNetworkBackground className="absolute inset-0 h-full w-full opacity-[0.86]" />
+  <div className="absolute inset-x-0 -bottom-16 h-[28rem] bg-gradient-to-b from-transparent via-[#131415]/84 to-[#131415]" />
+</div>
 
 
     {/* HERO + PREVIEW */}
