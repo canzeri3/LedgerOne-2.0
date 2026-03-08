@@ -1,9 +1,12 @@
-import Link from 'next/link'
-import type { ReactNode } from 'react'
+'use client'
 
+import Link from 'next/link'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DrawLine, Parallax, Reveal, ScrollProgress, SplitRow } from '@/components/landing/ScrollEffects'
 import { CoinLogoMini } from '@/components/landing/CoinLogoMini'
 import { AboutGlow } from '@/components/landing/AboutGlow'
+import { ParticleNetworkBackground } from '@/components/landing/ParticleNetworkBackground'
+import Image from 'next/image'
 
 type CoinRow = {
   symbol: string
@@ -28,6 +31,19 @@ const DEMO_COIN_ROWS: CoinRow[] = [
   { symbol: 'LINK', name: 'Chainlink', plannedPct: 0.176, baselinePct: 0.149 },
 ]
 
+const PANEL_BUY_IMAGE = '/images/portfolio-plan-overview-back.png'
+const PANEL_SELL_IMAGE = '/images/sell-planner-preview.png'
+const PANEL_BALANCE_IMAGE = '/images/portfolio-balance-preview.png'
+
+const PANEL_IMAGE_ASPECT = '1200 / 1000'
+
+const PREVIEW_OPEN_MS = 560
+const PREVIEW_CLOSE_MS = 820
+const PREVIEW_IMAGE_SWAP_MS = 1000
+const PREVIEW_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
+
+type PreviewKey = 'buy' | 'sell' | 'balance'
+
 function fmtSignedPct(x: number) {
   const sign = x > 0 ? '+' : x < 0 ? '−' : ''
   const v = Math.abs(x) * 100
@@ -37,23 +53,27 @@ function fmtSignedPct(x: number) {
 function Pill({
   tone = 'slate',
   children,
+  className = '',
 }: {
-  tone?: 'slate' | 'green' | 'amber' | 'indigo'
+  tone?: 'slate' | 'green' | 'amber' | 'red' | 'indigo'
   children: ReactNode
+  className?: string
 }) {
   const base =
     'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium leading-none tracking-tight'
+
   const tones: Record<string, string> = {
     slate: 'border-slate-700/70 bg-slate-900/25 text-slate-300',
     green: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200',
     amber: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
+    red: 'border-red-500/25 bg-red-500/10 text-red-200',
     indigo: 'border-indigo-500/25 bg-indigo-500/10 text-indigo-200',
   }
-  return <span className={`${base} ${tones[tone] || tones.slate}`}>{children}</span>
+
+  return <span className={`${base} ${tones[tone] || tones.slate} ${className}`}>{children}</span>
 }
 
 function toneForDriftValue(driftPct: number): 'slate' | 'green' | 'amber' | 'indigo' {
-  // keep it institutional: green for positive, amber for negative, slate near flat
   if (driftPct >= 0.01) return 'green'
   if (driftPct <= -0.01) return 'amber'
   return 'slate'
@@ -69,15 +89,15 @@ function Kicker({
   subtitle: string
 }) {
   return (
-    <div className="mx-auto max-w-3xl text-center space-y-3">
+    <div className="mx-auto max-w-3xl space-y-3 text-center">
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
 
       <div className="mx-auto max-w-[38rem]">
-        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">{title}</h2>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">{title}</h2>
         <DrawLine className="mt-3 opacity-70" />
       </div>
 
-      <p className="text-sm sm:text-base text-slate-300 leading-relaxed">{subtitle}</p>
+      <p className="text-sm leading-relaxed text-slate-300 sm:text-base">{subtitle}</p>
     </div>
   )
 }
@@ -96,11 +116,9 @@ function InfoCard({
   body: string
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#1f2021] p-6 transition-colors hover:border-slate-700/70">
-      {/* darker + calmer surface */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
+    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-6 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)]" />
       <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65 group-hover:opacity-80" />
 
       <div className="relative">
         {eyebrow ? (
@@ -108,7 +126,7 @@ function InfoCard({
         ) : null}
 
         <p className={`${eyebrow ? 'mt-2' : ''} text-sm font-semibold tracking-tight text-slate-100`}>{title}</p>
-        <p className="mt-2 text-sm text-slate-400 leading-relaxed">{body}</p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">{body}</p>
       </div>
     </div>
   )
@@ -116,31 +134,222 @@ function InfoCard({
 
 function InfoCardTight({ title, body }: { title: string; body: string }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#1f2021] p-5 transition-colors hover:border-slate-700/70">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
+    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)]" />
       <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65 group-hover:opacity-80" />
 
       <div className="relative">
         <p className="text-sm font-semibold tracking-tight text-slate-100">{title}</p>
-        <p className="mt-2 text-sm text-slate-400 leading-relaxed">{body}</p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">{body}</p>
       </div>
     </div>
   )
 }
 
 /* ------------------------------------------
-   Preview panel system (same language as cards)
+   Preview panel system
 ------------------------------------------- */
 
-function Panel({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-800/60 bg-[#1f2021] shadow-[0_22px_70px_rgba(0,0,0,0.55)]">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.18] via-transparent to-transparent" />
-      <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/14 to-transparent opacity-70" />
+function Panel({
+  children,
+  activePreview,
+  expanded,
+  renderExpandedControls,
+}: {
+  children: ReactNode
+  activePreview?: PreviewKey | null
+  expanded?: boolean
+  renderExpandedControls?: (preview: PreviewKey) => ReactNode
+}) {
+  const open = !!expanded
+const showExpandedShell = open || !!activePreview
 
-      <div className="relative">{children}</div>
+const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
+  preview === 'buy' ? '-mt-44' : preview === 'sell' ? '-mt-40' : '-mt-36'
+  return (
+    <div className="relative isolate overflow-visible">
+      {/* Base card */}
+      <div
+        className={`relative z-10 overflow-hidden rounded-3xl transition-[background-color,box-shadow,opacity] ${
+          open
+            ? 'bg-transparent shadow-none opacity-0'
+            : 'bg-[#1d1e21] shadow-[0_14px_40px_rgba(0,0,0,0.34)] opacity-100'
+        }`}
+        style={{
+          transitionDuration: `${open ? 420 : 680}ms`,
+          transitionTimingFunction: PREVIEW_EASE,
+        }}
+      >
+        <div
+          className={`pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)] transition-opacity ${
+            open ? 'opacity-0' : 'opacity-100'
+          }`}
+          style={{
+            transitionDuration: `${open ? 420 : 620}ms`,
+            transitionTimingFunction: PREVIEW_EASE,
+          }}
+        />
+
+        <div
+          className={`pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-opacity ${
+            open ? 'opacity-0' : 'opacity-100'
+          }`}
+          style={{
+            transitionDuration: `${open ? 420 : 620}ms`,
+            transitionTimingFunction: PREVIEW_EASE,
+          }}
+        />
+
+        <div
+          className={`relative transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+            open
+              ? 'translate-y-2 scale-[0.985] opacity-0 blur-[1px]'
+              : 'translate-y-0 scale-100 opacity-100 blur-0'
+          }`}
+          style={{
+            transitionDuration: `${open ? 420 : 680}ms`,
+            transitionTimingFunction: PREVIEW_EASE,
+          }}
+        >
+          {children}
+        </div>
+      </div>
+
+      {/* Expanded image shell */}
+      <div
+        className={`absolute inset-0 z-20 ${showExpandedShell ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        aria-hidden={!showExpandedShell}
+      >
+        <div
+          className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+            open
+              ? 'opacity-100 scale-[1.02] -translate-y-1'
+              : 'opacity-0 scale-[0.992] translate-y-2'
+          }`}
+          style={{
+            transitionDuration: `${open ? PREVIEW_OPEN_MS : PREVIEW_CLOSE_MS}ms`,
+            transitionTimingFunction: PREVIEW_EASE,
+          }}
+        >
+{/* Image stack + attached pills */}
+<div
+  className="absolute left-[39%] top-[44%] w-[122%] -translate-x-1/2 -translate-y-1/2"
+  style={{ aspectRatio: PANEL_IMAGE_ASPECT }}
+>
+  <div className="relative h-full w-full">
+    <div
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        activePreview === 'buy'
+          ? 'opacity-100 scale-100 blur-0'
+          : 'opacity-0 scale-[1.01] blur-[10px]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      <Image
+        src={PANEL_BUY_IMAGE}
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 1024px) 52vw, 100vw"
+        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+      />
+    </div>
+
+    <div
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        activePreview === 'sell'
+          ? 'opacity-100 scale-100 blur-0'
+          : 'opacity-0 scale-[1.01] blur-[10px]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      <Image
+        src={PANEL_SELL_IMAGE}
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 1024px) 52vw, 100vw"
+        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+      />
+    </div>
+
+    <div
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        activePreview === 'balance'
+          ? 'opacity-100 scale-100 blur-0'
+          : 'opacity-0 scale-[1.01] blur-[10px]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      <Image
+        src={PANEL_BALANCE_IMAGE}
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 1024px) 52vw, 100vw"
+        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+      />
+    </div>
+
+{renderExpandedControls ? (
+  <>
+    <div
+      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('buy')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        open && activePreview === 'buy'
+          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
+          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      {renderExpandedControls('buy')}
+    </div>
+
+    <div
+      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('sell')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        open && activePreview === 'sell'
+          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
+          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      {renderExpandedControls('sell')}
+    </div>
+
+    <div
+      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('balance')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
+        open && activePreview === 'balance'
+          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
+          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
+      }`}
+      style={{
+        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      {renderExpandedControls('balance')}
+    </div>
+  </>
+) : null}
+
+  </div>
+</div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -165,7 +374,7 @@ function MetricTile({
       <div className="relative">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] font-medium text-slate-400">{label}</p>
-          <span className="h-1 w-1 rounded-full bg-slate-600/70" />
+          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.9)]" />
         </div>
 
         <p className={`mt-1 text-lg font-semibold tracking-tight ${accent}`}>{value}</p>
@@ -177,13 +386,15 @@ function MetricTile({
 
 function PanelHeader() {
   return (
-    <header className="flex items-start justify-between gap-4 border-b border-slate-800/70 px-5 py-4">
+<header className="relative z-10 flex items-start justify-between gap-4 px-5 py-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-700/50 to-transparent" />
+
       <div className="flex items-start gap-3">
-        <div className="mt-1 h-2.5 w-2.5 rounded-full border border-slate-700/70 bg-slate-900/30" />
+        <div className="mt-1 h-2.5 w-2.5 rounded-full border border-indigo-400/30 bg-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.9)]" />
         <div className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">LedgerOne · Overview</p>
-          <p className="text-sm font-semibold tracking-tight text-slate-100">Portfolio plan overview (illustrative)</p>
-          <p className="text-[11px] text-slate-500">Strategy P/L vs Buy &amp; Hold · Drift = Planned − Baseline</p>
+          <p className="text-md font-semibold tracking-tight text-slate-100">Portfolio plan overview</p>
+          <p className="text-[11px] text-slate-500">Strategy P/L vs Buy &amp; Hold</p>
         </div>
       </div>
 
@@ -195,22 +406,22 @@ function PanelHeader() {
 }
 
 /* -----------------------------
-   Institutional blocks (inlined)
+   Institutional blocks
 --------------------------------*/
 
 function SecurityDataSection() {
   return (
     <section id="security" className="space-y-6">
-      <div className="mx-auto max-w-3xl text-center space-y-2">
+      <div className="mx-auto max-w-3xl space-y-2 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
           TRUST · SECURITY & DATA
         </p>
-        <h3 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
+        <h3 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
           Built for planning and tracking — not custody.
         </h3>
         <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
 
-        <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+        <p className="text-sm leading-relaxed text-slate-300 sm:text-base">
           LedgerOne is designed as a portfolio workflow tool. It helps you define rules, track progress, and stay
           consistent — without acting as a custodian or broker.
         </p>
@@ -259,12 +470,12 @@ const FAQ: FaqItem[] = [
 function FAQSection() {
   return (
     <section id="faq" className="space-y-6">
-      <div className="mx-auto max-w-3xl text-center space-y-2">
+      <div className="mx-auto max-w-3xl space-y-2 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">FAQ · QUICK CLARITY</p>
-        <h3 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
+        <h3 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
           Common questions, answered directly.
         </h3>
-        <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+        <p className="text-sm leading-relaxed text-slate-300 sm:text-base">
           Keep the workflow simple. Keep expectations precise.
         </p>
       </div>
@@ -279,12 +490,12 @@ function FAQSection() {
             <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65 group-hover:opacity-80" />
 
-            <summary className="cursor-pointer list-none text-sm font-semibold text-slate-100 flex items-center justify-between gap-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-100">
               <span>{item.q}</span>
               <span className="text-slate-400 transition group-open:rotate-45">+</span>
             </summary>
 
-            <p className="mt-2 text-sm text-slate-400 leading-relaxed">{item.a}</p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.a}</p>
           </details>
         ))}
       </div>
@@ -296,7 +507,7 @@ function LandingFooter() {
   const year = new Date().getFullYear()
 
   return (
-    <footer className="pt-5 pb-5">
+    <footer className="pb-5 pt-5">
       <div className="w-full border-t border-slate-800/60 pt-6">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -319,47 +530,147 @@ function LandingFooter() {
 }
 
 export default function LandingPage() {
+  const [selectedPreview, setSelectedPreview] = useState<PreviewKey | null>(null)
+  const [displayedPreview, setDisplayedPreview] = useState<PreviewKey | null>(null)
+  const [previewVisible, setPreviewVisible] = useState(false)
+
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+    }
+  }, [])
+
+  const runNextFrame = (fn: () => void) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(fn)
+    })
+  }
+
+  const closePreview = () => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+
+    setSelectedPreview(null)
+    setPreviewVisible(false)
+
+    previewTimerRef.current = setTimeout(() => {
+      setDisplayedPreview(null)
+    }, PREVIEW_CLOSE_MS)
+  }
+
+const handlePreviewClick = (next: PreviewKey) => {
+  if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+
+  if (selectedPreview === next && previewVisible) {
+    closePreview()
+    return
+  }
+
+  setSelectedPreview(next)
+
+  if (!displayedPreview) {
+    setDisplayedPreview(next)
+    runNextFrame(() => setPreviewVisible(true))
+    return
+  }
+
+  if (!previewVisible) {
+    setDisplayedPreview(next)
+    runNextFrame(() => setPreviewVisible(true))
+    return
+  }
+
+  // Keep the expanded shell open and only crossfade the image.
+  setDisplayedPreview(next)
+}
+
+
+const renderExpandedPreviewPills = (current: PreviewKey | null) => {
+  if (!current) return null
+
+  return (
+    <div className="inline-flex w-max flex-nowrap items-center justify-center gap-3 whitespace-nowrap">
+      <button
+        type="button"
+        onClick={current === 'buy' ? closePreview : () => handlePreviewClick('buy')}
+        className="inline-flex shrink-0 justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05]"
+      >
+        <Pill tone={current === 'buy' ? 'slate' : 'green'} className="w-[176px] shrink-0 justify-center whitespace-nowrap">
+          {current === 'buy' ? 'Overview' : 'Buy Planner'}
+        </Pill>
+      </button>
+
+      <button
+        type="button"
+        onClick={current === 'sell' ? closePreview : () => handlePreviewClick('sell')}
+        className="inline-flex shrink-0 justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05]"
+      >
+        <Pill tone={current === 'sell' ? 'slate' : 'red'} className="w-[176px] shrink-0 justify-center whitespace-nowrap">
+          {current === 'sell' ? 'Overview' : 'Sell Planner'}
+        </Pill>
+      </button>
+
+      <button
+        type="button"
+        onClick={current === 'balance' ? closePreview : () => handlePreviewClick('balance')}
+        className="inline-flex shrink-0 justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05]"
+      >
+        <Pill tone={current === 'balance' ? 'slate' : 'indigo'} className="w-[176px] shrink-0 justify-center whitespace-nowrap">
+          {current === 'balance' ? 'Overview' : 'Portfolio Balance'}
+        </Pill>
+      </button>
+    </div>
+  )
+}
+
   return (
     <>
       <ScrollProgress />
 
-      <div className="flex flex-col gap-16">
-        {/* HERO + PREVIEW */}
-        <section id="overview" className="relative">
-          <Parallax
-            className="pointer-events-none absolute left-1/2 top-8 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl"
-            strengthY={28}
-            strengthX={10}
-            startAt={1.0}
-            endAt={0.2}
-          />
+<div className="flex flex-col gap-16">
+  <div className="relative isolate">
+    <div className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] z-0">
+      <ParticleNetworkBackground className="absolute inset-0 h-full w-full opacity-[0.82]" />
+      <div className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-b from-transparent via-[#131415]/84 to-[#131415]" />
+    </div>
 
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-start">
-            <Reveal className="max-w-xl space-y-8">
+
+    {/* HERO + PREVIEW */}
+    <section id="overview" className="relative z-10">
+      <Parallax
+        className="pointer-events-none absolute left-1/2 top-8 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl"
+        strengthY={28}
+        strengthX={10}
+        startAt={1.0}
+        endAt={0.2}
+      />
+
+      <div className="relative z-10 grid items-start gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        
+                      <Reveal className="max-w-xl space-y-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-medium text-emerald-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 <span>Portfolio planning workspace</span>
               </div>
 
               <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  LEDGERONE · OVERVIEW
-                </p>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-50">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"></p>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl lg:text-5xl">
                   Institutional discipline for personal crypto investing.
                 </h1>
-                <DrawLine className="mt-4 opacity-60" />
+                <div className="mt-5 h-[2px] w-full max-w-[38rem] bg-gradient-to-r from-indigo-400/60 via-sky-400/20 to-transparent" />
               </div>
 
-              <p className="text-sm sm:text-base text-slate-400 leading-relaxed">
-              Build structured allocations, define clear rules, and track execution against your plan—so decisions stay consistent through volatility.
-      
+              <p className="text-sm leading-relaxed text-slate-400 sm:text-base">
+                Build structured allocations, define clear rules, and track execution against your plan—so decisions stay
+                consistent through volatility.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
                 <Link
                   href="/login"
-                  className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
+                  className="inline-flex items-center justify-center rounded-full bg-indigo-600/85 px-5 py-2.5 text-sm font-medium text-slate-100 shadow-md shadow-indigo-950/20 transition hover:bg-indigo-500/85"
                 >
                   Sign in
                 </Link>
@@ -382,25 +693,29 @@ export default function LandingPage() {
               </p>
             </Reveal>
 
-            {/* PREVIEW (institutional panel) */}
-            <Reveal className="relative" delayMs={120}>
-                        <Parallax
-                className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
-                strengthY={18}
-                strengthX={-10}
-                startAt={1.0}
-                endAt={0.2}
-              />
+            {/* PREVIEW */}
+<Reveal className="relative -mx-10 -my-8 px-10 py-8" delayMs={120}>
+  <Parallax
+    className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
+    strengthY={18}
+    strengthX={-10}
+    startAt={1.0}
+    endAt={0.2}
+  />
 
-              <Panel>
-                <PanelHeader />
 
-                <div className="px-5 pb-5">
-                  {/* KPI row */}
+  <div className="relative z-10">
+    <Panel
+      activePreview={displayedPreview}
+      expanded={previewVisible}
+      renderExpandedControls={renderExpandedPreviewPills}
+    >
+      <PanelHeader />
+
+      <div className="px-5 pb-5">                  {/* KPI row */}
                   <div className="mt-4 flex items-center justify-between gap-3">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Key metrics</p>
-                    <div className="h-px flex-1 bg-gradient-to-r from-slate-800/0 via-slate-800/70 to-slate-800/0" />
-                    <Pill tone="slate">Demo</Pill>
+                    <div className="h-[3px] flex-1 bg-gradient-to-r from-slate-800/0 via-slate-800/70 to-slate-800/0" />
                   </div>
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -411,11 +726,53 @@ export default function LandingPage() {
                       note="Next band within 3.2%"
                       accent="text-slate-50"
                     />
-                    <MetricTile label="Risk metric" value="0.63" note="Risk posture: Balanced" accent="text-slate-50" />
+                    <MetricTile
+                      label="Risk metric"
+                      value="0.63"
+                      note="Risk posture: Balanced"
+                      accent="text-slate-50"
+                    />
                   </div>
 
+<div className="mt-3 grid grid-cols-3 gap-3">
+  <div className="flex justify-center">
+    <button
+      type="button"
+      onClick={() => handlePreviewClick('buy')}
+      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+        selectedPreview === 'buy' ? 'scale-[1.03]' : ''
+      }`}
+    >
+      <Pill tone="green" className="w-[176px] justify-center">Buy Planner</Pill>
+    </button>
+  </div>
+
+  <div className="flex justify-center">
+    <button
+      type="button"
+      onClick={() => handlePreviewClick('sell')}
+      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+        selectedPreview === 'sell' ? 'scale-[1.03]' : ''
+      }`}
+    >
+      <Pill tone="red" className="w-[176px] justify-center">Sell Planner</Pill>
+    </button>
+  </div>
+
+  <div className="flex justify-center">
+    <button
+      type="button"
+      onClick={() => handlePreviewClick('balance')}
+      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+        selectedPreview === 'balance' ? 'scale-[1.03]' : ''
+      }`}
+    >
+      <Pill tone="indigo" className="w-[176px] justify-center">Portfolio Chart</Pill>
+    </button>
+  </div>
+</div>
                   {/* Table */}
-                  <div className="mt-4 relative overflow-hidden rounded-2xl border border-slate-800/60 bg-slate-950/12">
+                  <div className="relative mt-4 overflow-hidden rounded-2xl bg-[#17191c] shadow-[0_18px_40px_rgba(0,0,0,0.20)]">
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
                     <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65" />
@@ -423,37 +780,31 @@ export default function LandingPage() {
                     <div className="relative p-3">
                       <div className="flex items-baseline justify-between gap-3">
                         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                          Top holdings · plan tracking (illustrative)
+                          Top holdings · plan tracking
                         </p>
-                        <p className="text-[11px] text-slate-500">Drift = Planned − Baseline</p>
                       </div>
 
                       <div className="mt-2 overflow-hidden rounded-xl border border-slate-800/60 bg-slate-950/20">
                         <div className="sticky top-0 z-10 bg-slate-950/35 backdrop-blur-sm">
                           <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] font-medium text-slate-400">
                             <span>Coin</span>
-                            <span className="text-right">Planned path</span>
+                            <span className="text-right">LG1 Planner</span>
                             <span className="text-right">Baseline</span>
                             <span className="text-right">Drift</span>
                           </div>
                           <div className="h-px bg-slate-800/70" />
                         </div>
 
-                        <div className="max-h-28 overflow-y-auto">
+                        <div className="h-[125px] overflow-y-auto">
                           {DEMO_COIN_ROWS.map((row) => {
                             const drift = row.plannedPct - row.baselinePct
                             return (
                               <div
                                 key={row.symbol}
-                                className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] text-slate-200 border-b border-slate-800/40 last:border-b-0 hover:bg-slate-900/25"
+                                className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[10px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
                               >
                                 <div className="flex items-center gap-2">
-                                <CoinLogoMini
-  symbol={row.symbol}
-  name={row.name}
-  sizePx={20}
-  className="h-5 w-5"
-/>
+                                  <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
 
                                   <div className="flex flex-col leading-tight">
                                     <span className="text-[10px] font-semibold text-slate-100">{row.symbol}</span>
@@ -461,9 +812,7 @@ export default function LandingPage() {
                                   </div>
                                 </div>
 
-                                <div className="text-right tabular-nums text-slate-200">
-                                  {fmtSignedPct(row.plannedPct)}
-                                </div>
+                                <div className="text-right tabular-nums text-slate-200">{fmtSignedPct(row.plannedPct)}</div>
                                 <div className="text-right tabular-nums text-slate-400">
                                   {fmtSignedPct(row.baselinePct)}
                                 </div>
@@ -476,38 +825,49 @@ export default function LandingPage() {
                         </div>
                       </div>
 
-                      <p className="mt-2 text-[10px] text-slate-500">
-                        Illustrative only. Example values are for product demonstration and do not represent expected
-                        outcomes.
-                      </p>
+                      <p className="mt-2 text-[10px] text-slate-500"></p>
                     </div>
                   </div>
-                </div>
+                        </div>
               </Panel>
-            </Reveal>
+            </div>
+          </Reveal>
           </div>
         </section>
 
-        {/* TRUST STRIP */}
-        <Reveal>
-          <section id="methodology" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-5 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-300 leading-relaxed">
-Institutional-style workflows for long-horizon crypto investors—built around process, discipline, risk controls, and clean reporting.
-</p>
+{/* TRUST STRIP */}
+<div className="relative z-10 mt-6 lg:mt-8">
+  <Reveal>
+    <section id="methodology" className="rounded-2xl border border-slate-800/60 bg-[#151618] px-5 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm leading-relaxed text-slate-300">
+          Institutional-style workflows for long-horizon crypto investors—built around process, discipline, risk
+          controls, and clean reporting.
+        </p>
 
-              <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
-                <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">Any portfolio size</span>
-                <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">Long-horizon focus</span>
-                <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">Rules-based workflow</span>
-              </div>
-            </div>
-          </section>
-        </Reveal>
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+          <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+            Any portfolio size
+          </span>
+          <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+            Long-horizon focus
+          </span>
+          <span className="rounded-full border border-slate-700/70 bg-slate-900/35 px-3 py-1">
+            Rules-based workflow
+          </span>
+        </div>
+      </div>
+    </section>
+  </Reveal>
+</div>
 
-        {/* VALUE PILLARS */}
-        <section id="pillars" className="space-y-8">
-          <Reveal>
+</div>
+
+{/* VALUE PILLARS */}
+<section id="pillars" className="space-y-8">
+
+
+            <Reveal>
             <Kicker
               label="LEDGERONE · PRINCIPLES"
               title="Built around clarity, discipline, and reporting."
@@ -575,40 +935,37 @@ Institutional-style workflows for long-horizon crypto investors—built around p
             </Reveal>
           </SplitRow>
         </section>
-        
+
         {/* ABOUT */}
         <section id="about" className="relative overflow-visible">
-          <Reveal className="relative mx-auto max-w-3xl text-center space-y-4 px-2 overflow-visible">
+          <Reveal className="relative mx-auto max-w-3xl space-y-4 overflow-visible px-2 text-center">
             <div className="flex justify-center">
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 LEDGERONE · ABOUT
               </span>
             </div>
 
-            {/* Visible centered glow behind headline + body text */}
             <div className="relative isolate mx-auto max-w-3xl">
-                 {/* HD/smoother centered glow (bigger footprint, softer center) */}
-                      <AboutGlow />
+              <AboutGlow />
 
               <div className="relative z-10 space-y-4">
-                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
+                <h2 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
                   A calmer way to manage a crypto portfolio.
                 </h2>
 
                 <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
 
-                <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-                  LedgerOne started as a simple need: manage crypto positions with the same structure used in institutional
-                  portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools were built for
-                  watching—not planning. LedgerOne focuses on your ledger, your rules, and clean reporting so decisions stay
-                  consistent across volatility.
+                <p className="text-sm leading-relaxed text-slate-300 sm:text-base">
+                  LedgerOne started as a simple need: manage crypto positions with the same structure used in
+                  institutional portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools
+                  were built for watching—not planning. LedgerOne focuses on your ledger, your rules, and clean
+                  reporting so decisions stay consistent across volatility.
                 </p>
               </div>
             </div>
           </Reveal>
         </section>
-        
-                
+
         {/* WHO IT'S FOR */}
         <section id="teams" className="space-y-8">
           <Reveal>
@@ -652,7 +1009,7 @@ Institutional-style workflows for long-horizon crypto investors—built around p
         <Reveal>
           <section
             id="pricing"
-            className="relative rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6 overflow-hidden"
+            className="relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6"
           >
             <Parallax
               className="pointer-events-none absolute -left-24 -top-20 h-40 w-64 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/6 to-sky-500/10 blur-3xl"
@@ -662,21 +1019,21 @@ Institutional-style workflows for long-horizon crypto investors—built around p
               endAt={0.0}
             />
             <Parallax
-              className="pointer-events-none absolute -right-24 -bottom-24 h-44 w-72 rounded-full bg-gradient-to-r from-sky-500/10 via-emerald-500/6 to-indigo-500/10 blur-3xl"
+              className="pointer-events-none absolute -bottom-24 -right-24 h-44 w-72 rounded-full bg-gradient-to-r from-sky-500/10 via-emerald-500/6 to-indigo-500/10 blur-3xl"
               strengthY={18}
               strengthX={-16}
               startAt={1.0}
               endAt={0.0}
             />
 
-            <div className="relative flex flex-col items-center justify-between gap-4 text-center sm:text-left sm:flex-row">
+            <div className="relative flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-slate-100">Ready to bring structure to your portfolio?</p>
                 <p className="text-sm text-slate-400">Sign in or request access to start using LedgerOne.</p>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                <Link
+<div className="flex flex-nowrap items-center justify-center gap-3">
+                  <Link
                   href="/login"
                   className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
                 >
@@ -691,9 +1048,7 @@ Institutional-style workflows for long-horizon crypto investors—built around p
               </div>
             </div>
 
-            <p className="relative mt-4 text-[11px] text-slate-500 text-center">
-              LedgerOne is a planning and tracking tool. It does not provide investment advice.
-            </p>
+            <p className="relative mt-4 text-center text-[11px] text-slate-500"></p>
           </section>
         </Reveal>
 
