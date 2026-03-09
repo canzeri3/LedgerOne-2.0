@@ -168,7 +168,7 @@ function makeNode(spec: ClusterSpec, width: number, height: number, reducedMotio
   const sampled = samplePointInEllipse(spec, width, height)
   const minEdge = Math.min(width, height)
 
-  const driftSpeed = reducedMotion ? 0.012 : 0.045
+const driftSpeed = reducedMotion ? 0.02 : 0.11
   const angle = Math.random() * Math.PI * 2
 
   const isBig = spec.kind === 'big'
@@ -240,8 +240,8 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
         node.vx += (node.homeX - node.x) * node.pull
         node.vy += (node.homeY - node.y) * node.pull
 
-        node.vx *= 0.992
-        node.vy *= 0.992
+       node.vx *= 0.996
+node.vy *= 0.996
 
         node.x += node.vx
         node.y += node.vy
