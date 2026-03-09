@@ -54,7 +54,7 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
 // Small Right-Top
   {
   id: 'top-left',
-  kind: 'medium',
+  kind: 'small',
   centerX: 0.93,
   centerY: 0.175,
   radiusX: 0.025,
