@@ -6,6 +6,21 @@ type ParticleNetworkBackgroundProps = {
   className?: string
 }
 
+type ClusterKind = 'big' | 'small'
+
+type ClusterSpec = {
+  id: string
+  kind: ClusterKind
+  centerX: number
+  centerY: number
+  radiusX: number
+  radiusY: number
+  rotation?: number
+  minDots: number
+  maxDots: number
+  linkDistance: number
+}
+
 type NodePoint = {
   x: number
   y: number
@@ -14,75 +29,166 @@ type NodePoint = {
   radius: number
   glow: number
   alpha: number
+  homeX: number
+  homeY: number
+  pull: number
+  clusterId: string
+  linkDistance: number
+  lineAlphaScale: number
 }
 
 const MAX_DPR = 2
-const BASE_LINK_DISTANCE = 140
-const BASE_PADDING = 18
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function fieldStrengthAt(x: number, y: number, width: number, height: number) {
-  const safeWidth = Math.max(width, 1)
-  const safeHeight = Math.max(height, 1)
+/**
+ * Normalized layout taken from your markup screenshot.
+ * Values are based on the container size, so they scale responsively.
+ *
+ * RED = big cluster
+ * YELLOW = small clusters only
+ */
+const CLUSTER_LAYOUT: ClusterSpec[] = [
+// Small Right-Top
+  {
+  id: 'top-left',
+  kind: 'medium',
+  centerX: 0.93,
+  centerY: 0.175,
+  radiusX: 0.025,
+  radiusY: 0.065,
+  rotation: 0,
+  minDots: 5,
+  maxDots: 10,
+  linkDistance: 78,
+},
 
-  const nx = x / safeWidth
-  const ny = y / safeHeight
+  // Big Top hero/card cluster
+  {
+    id: 'hero-big',
+    kind: 'big',
+    centerX: 0.65,
+    centerY: 0.22,
+    radiusX: 0.235,
+    radiusY: 0.19,
+    rotation: -0.06,
+    minDots: 40,
+    maxDots: 60,
+    linkDistance: 150,
+  },
+  // Tiny right-side small oval
+  {
+    id: 'top-right-tiny',
+    kind: 'small',
+    centerX: 0.972,
+    centerY: 0.23,
+    radiusX: 0.014,
+    radiusY: 0.008,
+    rotation: 0,
+    minDots: 4,
+    maxDots: 6,
+    linkDistance: 20,
+  },
 
-  const rightBias = 0.58 + Math.pow(nx, 1.08) * 0.42
-  const centerBias = Math.exp(-Math.pow((nx - 0.58) / 0.28, 2))
-  const headerBand = Math.exp(-Math.pow((ny - 0.16) / 0.18, 2))
-  const heroBand = Math.exp(-Math.pow((ny - 0.48) / 0.26, 2))
-  const lowerBand = Math.exp(-Math.pow((ny - 0.78) / 0.28, 2))
+// Big Bottom hero/card cluster
+{
+  id: 'right-lower-card',
+  kind: 'small',
+  centerX: 0.68,
+  centerY: 0.6,
+  radiusX: 0.2,
+  radiusY: 0.17,
+  rotation: 0.22,
+  minDots: 45,
+  maxDots: 50,
+  linkDistance: 150,
+},
 
-  return clamp(
-    rightBias * 0.42 + centerBias * 0.22 + headerBand * 0.2 + heroBand * 0.12 + lowerBand * 0.04,
-    0,
-    1
-  )
+{
+  id: 'center-left-mid',
+  kind: 'small',
+  centerX: 0.41,
+  centerY: 0.68,
+  radiusX: 0.045,
+  radiusY: 0.09,
+  rotation: -0.35,
+  minDots: 6,
+  maxDots: 10,
+  linkDistance: 80,
+},
+  // Bottom-right oval
+  {
+    id: 'bottom-right',
+    kind: 'small',
+    centerX: 0.89,
+    centerY: 0.79,
+    radiusX: 0.055,
+    radiusY: 0.115,
+    rotation: 0.24,
+    minDots: 7,
+    maxDots: 13,
+    linkDistance: 84,
+  },
+]
+
+function pickDotCount(spec: ClusterSpec, width: number, height: number) {
+  const areaScale = clamp((width * height) / 1_600_000, 0.9, 1.15)
+  const raw =
+    spec.minDots +
+    Math.round((spec.maxDots - spec.minDots) * areaScale * (0.45 + Math.random() * 0.4))
+
+  return clamp(raw, spec.minDots, spec.maxDots)
 }
 
-function sampleNodePosition(width: number, height: number) {
-  const usableWidth = Math.max(1, width - BASE_PADDING * 2)
-  const usableHeight = Math.max(1, height - BASE_PADDING * 2)
+function samplePointInEllipse(spec: ClusterSpec, width: number, height: number) {
+  const cx = spec.centerX * width
+  const cy = spec.centerY * height
+  const rx = spec.radiusX * width
+  const ry = spec.radiusY * height
+  const rotation = spec.rotation ?? 0
 
-  let bestX = BASE_PADDING + usableWidth * 0.58
-  let bestY = BASE_PADDING + usableHeight * 0.28
-  let bestScore = -1
+  const angle = Math.random() * Math.PI * 2
+  const distance = Math.sqrt(Math.random())
 
-  for (let i = 0; i < 7; i += 1) {
-    const xSeed = Math.random()
-    const xBias = clamp(0.08 + (1 - Math.pow(xSeed, 2.1)) * 0.92, 0, 1)
+  const localX = Math.cos(angle) * rx * distance
+  const localY = Math.sin(angle) * ry * distance
 
-    let yBias = 0.18 + Math.random() * 0.64
-
-    const bandRoll = Math.random()
-    if (bandRoll < 0.34) {
-      yBias = 0.05 + Math.random() * 0.22
-    } else if (bandRoll < 0.74) {
-      yBias = 0.24 + Math.random() * 0.34
-    } else {
-      yBias = 0.5 + Math.random() * 0.42
-    }
-
-    const x = BASE_PADDING + xBias * usableWidth
-    const y = BASE_PADDING + yBias * usableHeight
-    const strength = fieldStrengthAt(x, y, width, height)
-    const score = strength + Math.random() * 0.14
-
-    if (score > bestScore) {
-      bestScore = score
-      bestX = x
-      bestY = y
-    }
-  }
+  const cos = Math.cos(rotation)
+  const sin = Math.sin(rotation)
 
   return {
-    x: bestX,
-    y: bestY,
-    strength: fieldStrengthAt(bestX, bestY, width, height),
+    x: cx + localX * cos - localY * sin,
+    y: cy + localX * sin + localY * cos,
+  }
+}
+
+function makeNode(spec: ClusterSpec, width: number, height: number, reducedMotion: boolean): NodePoint {
+  const sampled = samplePointInEllipse(spec, width, height)
+  const minEdge = Math.min(width, height)
+
+  const driftSpeed = reducedMotion ? 0.012 : 0.045
+  const angle = Math.random() * Math.PI * 2
+
+  const isBig = spec.kind === 'big'
+
+  return {
+    x: sampled.x + (Math.random() - 0.5) * (isBig ? 10 : 6),
+    y: sampled.y + (Math.random() - 0.5) * (isBig ? 10 : 6),
+    homeX: sampled.x,
+    homeY: sampled.y,
+    vx: Math.cos(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
+    vy: Math.sin(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
+    pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
+    radius: isBig
+      ? (minEdge < 420 ? 1.25 : 1.45) + Math.random() * 2.3
+      : (minEdge < 420 ? 1.0 : 1.15) + Math.random() * 1.6,
+    glow: isBig ? 8 + Math.random() * 12 : 5 + Math.random() * 8,
+    alpha: isBig ? 0.16 + Math.random() * 0.16 : 0.14 + Math.random() * 0.14,
+    clusterId: spec.id,
+    linkDistance: spec.linkDistance,
+    lineAlphaScale: isBig ? 1 : 0.82,
   }
 }
 
@@ -116,110 +222,101 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     }
 
     const createNodes = () => {
-      const area = width * height
-      const targetCount = clamp(Math.round(area / 14200), 34, 62)
-      const minEdge = Math.min(width, height)
-      const baseSpeed = reducedMotion ? 0.018 : 0.055
+      const nextNodes: NodePoint[] = []
 
-      nodes = Array.from({ length: targetCount }, () => {
-        const angle = Math.random() * Math.PI * 2
-        const speed = baseSpeed * (0.45 + Math.random() * 0.9)
-        const sampled = sampleNodePosition(width, height)
-        const strength = sampled.strength
+      for (const spec of CLUSTER_LAYOUT) {
+        const count = pickDotCount(spec, width, height)
 
-        return {
-          x: sampled.x,
-          y: sampled.y,
-          vx: Math.cos(angle) * speed + (0.004 + Math.random() * 0.008) * (0.35 + strength * 0.65),
-          vy: Math.sin(angle) * speed + (Math.random() - 0.5) * 0.01,
-          radius:
-            minEdge < 420
-              ? 1.2 + Math.random() * 1.9 + strength * 0.45
-              : 1.45 + Math.random() * 3.0 + strength * 0.72,
-          glow: 6 + Math.random() * 13 + strength * 5.5,
-          alpha: 0.16 + Math.random() * 0.2 + strength * 0.28,
+        for (let i = 0; i < count; i += 1) {
+          nextNodes.push(makeNode(spec, width, height, reducedMotion))
         }
-      })
+      }
+
+      nodes = nextNodes
     }
 
     const updateNodes = () => {
-      const padding = BASE_PADDING
-
       for (const node of nodes) {
+        node.vx += (node.homeX - node.x) * node.pull
+        node.vy += (node.homeY - node.y) * node.pull
+
+        node.vx *= 0.992
+        node.vy *= 0.992
+
         node.x += node.vx
         node.y += node.vy
-
-        if (node.x <= padding || node.x >= width - padding) {
-          node.vx *= -1
-          node.x = clamp(node.x, padding, width - padding)
-        }
-
-        if (node.y <= padding || node.y >= height - padding) {
-          node.vy *= -1
-          node.y = clamp(node.y, padding, height - padding)
-        }
       }
     }
 
-const drawBackdrop = () => {
-  const topGlow = ctx.createRadialGradient(
-    width * 0.56,
-    height * 0.16,
-    0,
-    width * 0.56,
-    height * 0.16,
-    Math.max(width, height) * 0.62
-  )
-  topGlow.addColorStop(0, 'rgba(37, 99, 235, 0.08)')
-  topGlow.addColorStop(0.28, 'rgba(49, 46, 129, 0.08)')
-  topGlow.addColorStop(0.6, 'rgba(15, 23, 42, 0.05)')
-  topGlow.addColorStop(0.84, 'rgba(2, 6, 23, 0.00)')
+    const drawBackdrop = () => {
+      const topGlow = ctx.createRadialGradient(
+        width * 0.56,
+        height * 0.14,
+        0,
+        width * 0.56,
+        height * 0.14,
+        Math.max(width, height) * 0.58
+      )
+      topGlow.addColorStop(0, 'rgba(59, 130, 246, 0.035)')
+      topGlow.addColorStop(0.24, 'rgba(49, 46, 129, 0.04)')
+      topGlow.addColorStop(0.52, 'rgba(15, 23, 42, 0.04)')
+      topGlow.addColorStop(0.82, 'rgba(2, 6, 23, 0.00)')
 
-  ctx.fillStyle = topGlow
-  ctx.fillRect(0, 0, width, height)
+      ctx.fillStyle = topGlow
+      ctx.fillRect(0, 0, width, height)
 
-  const heroGlow = ctx.createRadialGradient(
-    width * 0.62,
-    height * 0.5,
-    0,
-    width * 0.62,
-    height * 0.5,
-    Math.max(width, height) * 0.64
-  )
-  heroGlow.addColorStop(0, 'rgba(30, 64, 175, 0.07)')
-  heroGlow.addColorStop(0.36, 'rgba(30, 41, 59, 0.06)')
-  heroGlow.addColorStop(0.76, 'rgba(2, 6, 23, 0.00)')
+      const heroGlow = ctx.createRadialGradient(
+        width * 0.6,
+        height * 0.48,
+        0,
+        width * 0.6,
+        height * 0.48,
+        Math.max(width, height) * 0.6
+      )
+      heroGlow.addColorStop(0, 'rgba(37, 99, 235, 0.03)')
+      heroGlow.addColorStop(0.32, 'rgba(30, 41, 59, 0.04)')
+      heroGlow.addColorStop(0.72, 'rgba(2, 6, 23, 0.00)')
 
-  ctx.fillStyle = heroGlow
-  ctx.fillRect(0, 0, width, height)
-}
+      ctx.fillStyle = heroGlow
+      ctx.fillRect(0, 0, width, height)
+
+      const nightWash = ctx.createLinearGradient(0, 0, 0, height)
+      nightWash.addColorStop(0, 'rgba(2, 6, 23, 0.18)')
+      nightWash.addColorStop(0.26, 'rgba(2, 6, 23, 0.08)')
+      nightWash.addColorStop(0.72, 'rgba(2, 6, 23, 0.14)')
+      nightWash.addColorStop(1, 'rgba(2, 6, 23, 0.3)')
+
+      ctx.fillStyle = nightWash
+      ctx.fillRect(0, 0, width, height)
+    }
 
     const drawConnections = () => {
-      const distanceLimit = Math.min(BASE_LINK_DISTANCE + 28, Math.max(118, width * 0.235))
-
       for (let i = 0; i < nodes.length; i += 1) {
         for (let j = i + 1; j < nodes.length; j += 1) {
           const a = nodes[i]
           const b = nodes[j]
+
+          // Only connect dots inside the same marked cluster.
+          if (a.clusterId !== b.clusterId) continue
+
           const dx = a.x - b.x
           const dy = a.y - b.y
           const distance = Math.hypot(dx, dy)
+          const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
 
           if (distance > distanceLimit) continue
 
           const linkStrength = 1 - distance / distanceLimit
-          const fieldStrength =
-            (fieldStrengthAt(a.x, a.y, width, height) + fieldStrengthAt(b.x, b.y, width, height)) / 2
-
-          const opacity = (0.02 + linkStrength ** 1.45 * 0.19) * (0.34 + fieldStrength * 0.78)
+          const opacity =
+            (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
 
           ctx.beginPath()
           ctx.moveTo(a.x, a.y)
           ctx.lineTo(b.x, b.y)
           ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
-          ctx.lineWidth = distance < distanceLimit * 0.38 ? 1.08 : 0.82
+          ctx.lineWidth = distance < distanceLimit * 0.42 ? 1.02 : 0.78
           ctx.shadowColor = 'rgba(96, 165, 250, 0.2)'
-          ctx.shadowBlur = 3 + fieldStrength * 2
+          ctx.shadowBlur = 3
           ctx.stroke()
           ctx.shadowBlur = 0
         }
@@ -228,21 +325,18 @@ const drawBackdrop = () => {
 
     const drawNodes = () => {
       for (const node of nodes) {
-        const strength = fieldStrengthAt(node.x, node.y, width, height)
-        const alpha = node.alpha * (0.38 + strength * 0.78)
-
-        if (alpha <= 0.02) continue
+        if (node.alpha <= 0.02) continue
 
         ctx.beginPath()
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(239, 246, 255, ${alpha.toFixed(4)})`
+        ctx.fillStyle = `rgba(239, 246, 255, ${node.alpha.toFixed(4)})`
         ctx.shadowColor = 'rgba(96, 165, 250, 0.95)'
-        ctx.shadowBlur = node.glow * (0.58 + strength * 0.52)
+        ctx.shadowBlur = node.glow
         ctx.fill()
 
         ctx.beginPath()
         ctx.arc(node.x, node.y, Math.max(1, node.radius * 0.42), 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255, 255, 255, ${(0.52 + strength * 0.34).toFixed(4)})`
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.82)'
         ctx.shadowBlur = 0
         ctx.fill()
       }
@@ -285,7 +379,7 @@ const drawBackdrop = () => {
   }, [])
 
   const maskImage =
-    'linear-gradient(to_bottom, rgba(0,0,0,0.78) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,1) 86%, rgba(0,0,0,0.88) 94%, rgba(0,0,0,0) 100%)'
+    'linear-gradient(to bottom, rgba(0,0,0,0.78) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,1) 86%, rgba(0,0,0,0.88) 94%, rgba(0,0,0,0) 100%)'
 
   return (
     <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`} aria-hidden="true">
@@ -297,9 +391,10 @@ const drawBackdrop = () => {
           WebkitMaskImage: maskImage,
         }}
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_56%_14%,rgba(49,46,129,0.10),transparent_34%)]" />
-<div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_48%,rgba(30,64,175,0.07),transparent_42%)]" />
-<div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.18)_0%,rgba(2,6,23,0.05)_18%,rgba(2,6,23,0.08)_72%,rgba(2,6,23,0.52)_100%)]" />
-<div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_50%,rgba(2,6,23,0.52)_100%)]" />    </div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_56%_14%,rgba(49,46,129,0.055),transparent_32%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_48%,rgba(30,64,175,0.04),transparent_40%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.24)_0%,rgba(2,6,23,0.1)_20%,rgba(2,6,23,0.16)_72%,rgba(2,6,23,0.62)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_50%,rgba(2,6,23,0.52)_100%)]" />
+    </div>
   )
 }

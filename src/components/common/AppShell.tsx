@@ -56,8 +56,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const pathname = usePathname()
+   const pathname = usePathname()
   const isLanding = pathname === '/' || pathname === '/pricing'
+  const isMergedLanding = pathname === '/'
   const toggleAmountsHidden = () => {
     const next = !amountsHidden
     setAmountsHidden(next)
@@ -72,11 +73,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Existing scroll shadow effect
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const onScroll = () => setScrolled(window.scrollY > 0)
+    const onScroll = () => setScrolled(window.scrollY > (isMergedLanding ? 24 : 0))
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [isMergedLanding])
 
 
   // Watch the header AlertsTooltip text and detect if there is any numeric count > 0
@@ -259,10 +260,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           }
         >
           {/* Semi-opaque header */}
-          <header
-            className="sticky top-0 z-40 backdrop-blur-md border-b transition-[border-color,box-shadow] duration-300 ease-out will-change-auto"
+             <header
+            className={[
+              'sticky top-0 z-40 border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out will-change-auto',
+              isMergedLanding ? '-mb-20 sm:-mb-[88px]' : 'backdrop-blur-md',
+              isMergedLanding && scrolled ? 'backdrop-blur-md' : '',
+            ].join(' ')}
             style={{
-              backgroundColor: HEADER_BG,
+              backgroundColor: isMergedLanding ? (scrolled ? 'rgba(19,20,21,0.78)' : 'transparent') : HEADER_BG,
               borderColor: scrolled ? BORDER_SCROLL : 'rgba(43,44,45,0)',
               // One touch longer (offset 9px, blur 14px), same darkness, stacked x4
               boxShadow: scrolled
@@ -458,10 +463,16 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
             )}
           </header>
 
-          {/* Scrollable page content */}
-           <main className="flex-1 mx-auto w-full px-4 md:px-6 py-4">
-        {children}
-      </main>
+                 {/* Scrollable page content */}
+          <main
+            className={
+              isMergedLanding
+                ? 'flex-1 mx-auto w-full px-4 md:px-6 pb-4 pt-0'
+                : 'flex-1 mx-auto w-full px-4 md:px-6 py-4'
+            }
+          >
+            {children}
+          </main>
     </div>
   </div>
 
