@@ -631,11 +631,7 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
       <button
         className={[
           "relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2",
-                  hasAlerts
-            ? "ring-[rgb(242,205,73)]/40"
-            : "ring-slate-600/40",
-
-
+          "ring-slate-600/40",
         ].join(" ")}
         type="button"
         aria-haspopup="true"

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 import { getHistory } from '@/lib/dataCore'
 import { mapToProvider, normalizeCoinId } from '@/server/db/coinRegistry'
+import { aliasCoinId, getCoinIdCandidates } from '@/lib/coinIdAliases'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,10 +47,12 @@ type DebugMeta = {
 type HistoryPoint = {
   t: number
   p: number
+  h: number
+  l: number
 }
 
-const DEFAULT_PUMP_MULTIPLE = 1.5
-const HISTORY_DAYS = 365
+const DEFAULT_PUMP_MULTIPLE = 1.8
+const HISTORY_DAYS = 730
 
 function uniqueLower(values: Array<string | null | undefined>): string[] {
   const out: string[] = []
@@ -65,16 +68,6 @@ function uniqueLower(values: Array<string | null | undefined>): string[] {
   return out
 }
 
-function addProtocolAlias(id: string | null | undefined): string[] {
-  const raw = String(id ?? '').trim().toLowerCase()
-  if (!raw) return []
-
-  if (raw.endsWith('-protocol')) {
-    return [raw, raw.replace(/-protocol$/, '')]
-  }
-
-  return [raw, `${raw}-protocol`]
-}
 
 function getSupabaseAdmin() {
   const url =
@@ -98,14 +91,21 @@ function getSupabaseAdmin() {
 
 async function resolveAliases(requestedId: string) {
   const raw = requestedId.trim().toLowerCase()
+  const aliasedRaw = aliasCoinId(raw)
 
   let canonicalId: string | null = null
   let providerId: string | null = null
 
   try {
-    canonicalId = await normalizeCoinId(raw)
+    canonicalId =
+      (await normalizeCoinId(raw)) ??
+      (aliasedRaw && aliasedRaw !== raw ? await normalizeCoinId(aliasedRaw) : null)
   } catch {
-    canonicalId = null
+    canonicalId = aliasedRaw && aliasedRaw !== raw ? aliasedRaw : null
+  }
+
+  if (!canonicalId && aliasedRaw && aliasedRaw !== raw) {
+    canonicalId = aliasedRaw
   }
 
   try {
@@ -114,13 +114,18 @@ async function resolveAliases(requestedId: string) {
     providerId = null
   }
 
+  if (!providerId && aliasedRaw) {
+    providerId = aliasedRaw
+  }
+
   const aliases = uniqueLower([
     raw,
+    aliasedRaw,
     canonicalId,
     providerId,
-    ...addProtocolAlias(raw),
-    ...addProtocolAlias(canonicalId),
-    ...addProtocolAlias(providerId),
+    ...getCoinIdCandidates(raw),
+    ...getCoinIdCandidates(canonicalId),
+    ...getCoinIdCandidates(providerId),
   ])
 
   return {
@@ -220,9 +225,21 @@ function normalizePoints(points: unknown): HistoryPoint[] {
     .map((point) => {
       const t = Number((point as any)?.t)
       const p = Number((point as any)?.p)
-      return { t, p }
+      const h = Number((point as any)?.h ?? (point as any)?.high ?? (point as any)?.p)
+      const l = Number((point as any)?.l ?? (point as any)?.low ?? (point as any)?.p)
+
+      return { t, p, h, l }
     })
-    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p) && point.p > 0)
+    .filter(
+      (point) =>
+        Number.isFinite(point.t) &&
+        Number.isFinite(point.p) &&
+        Number.isFinite(point.h) &&
+        Number.isFinite(point.l) &&
+        point.p > 0 &&
+        point.h > 0 &&
+        point.l > 0
+    )
     .sort((a, b) => a.t - b.t)
 }
 
@@ -250,9 +267,9 @@ function getLocalLowIndices(points: HistoryPoint[]) {
   const lows: number[] = []
 
   for (let i = 1; i < points.length - 1; i += 1) {
-    const prev = points[i - 1].p
-    const curr = points[i].p
-    const next = points[i + 1].p
+    const prev = points[i - 1].l
+    const curr = points[i].l
+    const next = points[i + 1].l
 
     if (curr <= prev && curr < next) {
       lows.push(i)
@@ -262,7 +279,11 @@ function getLocalLowIndices(points: HistoryPoint[]) {
   return lows
 }
 
-function findPumpCycle(points: HistoryPoint[], pumpMultiple: number, localLowIndices: number[]) {
+ function findPumpCycle(
+  points: HistoryPoint[],
+  pumpMultiple: number,
+  localLowIndices: number[]
+) {
   for (let i = localLowIndices.length - 1; i >= 0; i -= 1) {
     const lowIdx = localLowIndices[i]
     const low = points[lowIdx]
@@ -271,13 +292,13 @@ function findPumpCycle(points: HistoryPoint[], pumpMultiple: number, localLowInd
     let peakPrice = -Infinity
 
     for (let j = lowIdx + 1; j < points.length; j += 1) {
-      if (points[j].p > peakPrice) {
-        peakPrice = points[j].p
+      if (points[j].h > peakPrice) {
+        peakPrice = points[j].h
         peakIdx = j
       }
     }
 
-    if (peakIdx > lowIdx && peakPrice >= low.p * pumpMultiple) {
+    if (peakIdx > lowIdx && peakPrice >= low.l * pumpMultiple) {
       return { lowIdx, peakIdx }
     }
   }
@@ -290,7 +311,7 @@ function getFallbackHigh(points: HistoryPoint[]) {
 
   let best = points[0]
   for (let i = 1; i < points.length; i += 1) {
-    if (points[i].p > best.p) best = points[i]
+    if (points[i].h > best.h) best = points[i]
   }
 
   return best
@@ -358,20 +379,20 @@ export async function GET(request: NextRequest) {
       const cycleMatch = findPumpCycle(points, pumpMultiple, localLows)
       const fallbackHigh = getFallbackHigh(points)
 
-      fallbackMaxHigh = fallbackHigh?.p ?? null
+      fallbackMaxHigh = fallbackHigh?.h ?? null
       fallbackMaxHighTime = fallbackHigh ? new Date(fallbackHigh.t).toISOString() : null
 
       if (cycleMatch) {
         const low = points[cycleMatch.lowIdx]
         const high = points[cycleMatch.peakIdx]
 
-        autoTopPrice = high.p
-        topPrice = high.p
+        autoTopPrice = high.h
+        topPrice = high.h
         source = 'auto_pump'
         cycle = {
-          lowPrice: low.p,
+          lowPrice: low.l,
           lowTime: new Date(low.t).toISOString(),
-          highPrice: high.p,
+          highPrice: high.h,
           highTime: new Date(high.t).toISOString(),
         }
 
@@ -381,12 +402,12 @@ export async function GET(request: NextRequest) {
         topPrice = adminTopPrice
         source = 'admin_anchor'
         notes.push('topPrice.source=admin_anchor_fallback')
-      } else if (fallbackHigh && fallbackHigh.p > 0) {
-        topPrice = fallbackHigh.p
+      } else if (fallbackHigh && fallbackHigh.h > 0) {
+        topPrice = fallbackHigh.h
         source = 'fallback_high'
         notes.push('topPrice.source=fallback_high')
       }
-    }
+        }
   }
 
   if (!topPrice && adminTopPrice && adminTopPrice > 0) {

@@ -211,26 +211,91 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
           const live = hasLive ? (livePrice as number) : null
 
           const rows = v.rows ?? []
-const plannerHasAlert =
-  !!live &&
-  rows.some((r) => {
-    const lvl = r.targetPrice
-    if (!(lvl > 0)) return false
-    // “Alert” if live price is within ~1.5% of target and level not fully filled
-    const within = (live as number) >= lvl * 0.985
-    const notFilled = r.pct < 0.98
-    return within && notFilled
-  })
+
+          const actionableNow = rows.reduce(
+            (acc, r) => {
+              const green = r.pct >= 0.98
+              const yellow =
+                !!live &&
+                !green &&
+                r.targetPrice > 0 &&
+                (live as number) >= r.targetPrice * 0.985
+
+              const missingTokens =
+                r.targetPrice > 0
+                  ? Math.max(0, r.missingUsd / r.targetPrice)
+                  : 0
+
+              if (!yellow || missingTokens <= 0) return acc
+
+              acc.alertRows += 1
+              acc.remainingTokens += missingTokens
+              acc.remainingUsd += r.missingUsd
+
+              if (acc.lowestAlertPrice === null || r.targetPrice < acc.lowestAlertPrice) {
+                acc.lowestAlertPrice = r.targetPrice
+              }
+
+              return acc
+            },
+            {
+              alertRows: 0,
+              remainingTokens: 0,
+              remainingUsd: 0,
+              lowestAlertPrice: null as number | null,
+            }
+          )
+
+          const plannerHasAlert = actionableNow.alertRows > 0
 
           return (
             <div
               key={v.planner.id}
               data-history-id={v.planner.id}
               data-has-alert={plannerHasAlert ? '1' : '0'}
-              className="overflow-x-auto"
+              className="space-y-3"
             >
-              <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-                <thead className="text-[rgba(237, 237, 237, 1)]">
+              {actionableNow.alertRows > 0 && (
+                <div className="rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
+                    <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.2)]"
+                        aria-hidden="true"
+                      />
+                      Actionable now
+                    </span>
+
+                    <span className="text-yellow-200/80">•</span>
+
+                    <span className="text-slate-200">
+                      <span className="tabular-nums">{actionableNow.alertRows}</span>{' '}
+                      {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
+                    </span>
+
+                    <span className="text-slate-500">·</span>
+
+                    <span className="text-slate-200 tabular-nums">
+                      {actionableNow.remainingTokens.toFixed(6)} coins
+                    </span>
+
+
+                    {actionableNow.lowestAlertPrice !== null && (
+                      <>
+                        <span className="text-slate-500">·</span>
+                        <span className="text-slate-200">
+                          Target:{' '}
+                          <span className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full table-fixed text-left text-sm text-slate-300">
+                                  <thead className="text-[rgba(237, 237, 237, 1)]">
                   <tr>
                     <th className="w-1/6 px-3 py-2">Lvl</th>
                     <th className="w-1/6 px-3 py-2">Target Price</th>
@@ -338,7 +403,8 @@ const plannerHasAlert =
                     </td>
                   </tr>
                 </tfoot>
-              </table>
+                             </table>
+              </div>
             </div>
           )
         })}

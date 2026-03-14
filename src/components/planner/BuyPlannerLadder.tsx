@@ -160,11 +160,96 @@ const plan: BuyLevel[] = useMemo(() => {
 
   const EPS = 1e-8
 
+  const actionableNow = useMemo(() => {
+    if (!plan.length) {
+      return { alertRows: 0, remainingCoins: 0, remainingUsd: 0, lowestAlertPrice: null as number | null }
+    }
 
+    const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+    if (!hasLivePrice) {
+      return { alertRows: 0, remainingCoins: 0, remainingUsd: 0, lowestAlertPrice: null as number | null }
+    }
+
+    return plan.reduce(
+      (acc, lv, i) => {
+        const plannedUsd = Number(lv.allocation ?? 0)
+        const filledUsd = Number(fills.allocatedUsd[i] ?? 0)
+        const missingUsd = Math.max(0, plannedUsd - filledUsd)
+        const levelPrice = Number(lv.price ?? 0)
+
+        // Keep summary state aligned with the table's existing row logic.
+        const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
+        const yellow =
+          !full &&
+          levelPrice > 0 &&
+          (livePrice as number) <= levelPrice * 1.015
+
+        if (!yellow || missingUsd <= EPS) return acc
+
+        acc.alertRows += 1
+        acc.remainingUsd += missingUsd
+        acc.remainingCoins += levelPrice > 0 ? (missingUsd / levelPrice) : 0
+
+        if (acc.lowestAlertPrice === null || levelPrice < acc.lowestAlertPrice) {
+          acc.lowestAlertPrice = levelPrice
+        }
+
+        return acc
+      },
+      {
+        alertRows: 0,
+        remainingCoins: 0,
+        remainingUsd: 0,
+        lowestAlertPrice: null as number | null,
+      }
+    )
+  }, [plan, fills.allocatedUsd, livePrice])
 
   return (
     // Full-bleed inner card: fill parent width/height; keep requested bg color
-    <div className="w-full h-full bg-[rgb(28,29,31)]">
+     <div className="w-full h-full bg-[rgb(28,29,31)]">
+      {actionableNow.alertRows > 0 && (
+        <div className="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
+            <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.2)]"
+                aria-hidden="true"
+              />
+              Actionable now
+            </span>
+
+            <span className="text-yellow-200/80">•</span>
+
+            <span className="text-slate-200">
+              <span className="tabular-nums">{actionableNow.alertRows}</span>{' '}
+              {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
+            </span>
+
+          
+
+
+
+            <span className="text-slate-500">·</span>
+
+            <span className="text-slate-200">
+              <span className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</span>{' '}
+              <span className="text-slate-400">remaining</span>
+            </span>
+
+            {actionableNow.lowestAlertPrice !== null && (
+              <>
+                <span className="text-slate-500">·</span>
+                <span className="text-slate-200">
+                  Target: {' '}
+                  <span className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-buy-planner>
           <thead className="text-[rgba(237, 237, 237, 1)]">

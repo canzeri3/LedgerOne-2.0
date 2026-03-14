@@ -427,7 +427,30 @@ useEffect(() => {
     return raw
   }
 
-    // Edit current buy planner
+  const resolveTopPriceForPlanner = async () => {
+    const res = await fetch(
+      `/api/planner/user-top-price?id=${encodeURIComponent(coingeckoId)}&currency=USD`,
+      { method: 'GET' }
+    )
+
+    if (!res.ok) {
+      throw new Error(
+        `Unable to resolve price cycle (status ${res.status}). Please try again later.`
+      )
+    }
+
+    const data = await res.json()
+    const tp = typeof data?.topPrice === 'number' ? data.topPrice : NaN
+    if (!Number.isFinite(tp) || tp <= 0) {
+      throw new Error(
+        'Top price for this asset could not be determined yet. Please try again later.'
+      )
+    }
+
+    return tp
+  }
+
+  // Edit current buy planner
   const onEdit = async () => {
     setErr(null)
     setMsg(null)
@@ -450,22 +473,25 @@ useEffect(() => {
 
     setBusy(true)
     try {
+      const topForEdit = await resolveTopPriceForPlanner()
+
       const { error: e1 } = await supabaseBrowser
         .from('buy_planners')
         .update({
-          // top_price is intentionally NOT updated here; existing top stays as-is
+          top_price: topForEdit,
           budget_usd: numBudget,
           total_budget: numBudget,
           ladder_depth: Number(depth),
           growth_per_level: growthNum,
         })
+
         .eq('id', planner.id)
         .eq('user_id', user.id)
 
       if (e1) throw e1
 
-      setMsg('Updated current Buy planner settings.')
-      await mutate()
+      setMsg('Updated current Buy planner settings using the latest anchor-linked top price.')
+            await mutate()
 
       // Revalidate dependent SWR caches so the ladder/history updates immediately (no refresh needed)
       await Promise.all([
@@ -577,23 +603,7 @@ if (!opts?.confirmed) {
     let topForNew: number | null = null
 
     try {
-      const res = await fetch(
-        `/api/planner/user-top-price?id=${encodeURIComponent(coingeckoId)}&currency=USD`,
-        { method: 'GET' }
-      )
-      if (!res.ok) {
-        throw new Error(
-          `Unable to resolve price cycle (status ${res.status}). Please try again later.`
-        )
-      }
-      const data = await res.json()
-      const tp = typeof data?.topPrice === 'number' ? data.topPrice : NaN
-      if (!Number.isFinite(tp) || tp <= 0) {
-        throw new Error(
-          'Top price for this asset could not be determined yet. Please try again later.'
-        )
-      }
-      topForNew = tp
+      topForNew = await resolveTopPriceForPlanner()
     } catch (e: any) {
       setErr(
         e?.message ??
@@ -601,7 +611,6 @@ if (!opts?.confirmed) {
       )
       return
     }
-
     setBusy(true)
     try {
       const { error } = await supabaseBrowser.rpc('rotate_buy_sell_planners', {

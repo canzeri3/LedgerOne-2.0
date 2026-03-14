@@ -266,10 +266,10 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
                         </div>
 
                         {/* Star only on favourited coins (no empty star for others) */}
-                        {isFav && (
+                                           {isFav && (
                           <span className="shrink-0 pl-2">
                             <Star
-                              className="h-4 w-4 text-yellow-400"
+                              className="h-4 w-4 text-amber-300/70"
                               fill="currentColor"
                               strokeWidth={0}
                             />

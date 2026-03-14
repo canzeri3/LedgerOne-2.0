@@ -4,6 +4,7 @@ import { getConsensusPrices } from "../../../server/services/priceService";
 // map canonical id -> provider-specific id (e.g., trx -> tron for CoinGecko)
 import { mapToProvider /*, normalizeCoinId*/ } from "@/server/db/coinRegistry";
 import { cacheGet, cacheSet } from "@/server/ttlCache";
+import { aliasCoinId } from "@/lib/coinIdAliases";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -336,11 +337,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Resolve provider-specific id for CoinGecko (e.g., trx -> tron). Non-breaking:
-  // we still return canonicalId in the response.
-  const cgId = (await mapToProvider(canonicalId, "coingecko")) ?? canonicalId;
-  if (cgId !== canonicalId)
-    notes.push(`map.coingecko:${canonicalId}->${cgId}`);
+  // Resolve provider-specific id for CoinGecko (e.g., trx -> tron).
+  // First apply the static alias map so common symbol ids still work even if
+  // core_coin_mappings is unavailable or incomplete, then try DB mappings.
+  const aliasId = aliasCoinId(canonicalId) ?? canonicalId;
+  const cgId = (await mapToProvider(aliasId, "coingecko")) ?? aliasId;
+  if (aliasId !== canonicalId) {
+    notes.push(`alias.coingecko:${canonicalId}->${aliasId}`);
+  }
+  if (cgId !== aliasId)
+    notes.push(`map.coingecko:${aliasId}->${cgId}`);
+  
 
   const hotKey = `history:hot:${currency}:${interval}:${days}:${cgId}`;
   const lastGoodKey = `history:lastgood:${currency}:${interval}:${days}:${cgId}`;

@@ -1,66 +1,470 @@
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import { notFound, redirect } from 'next/navigation'
-import AdminAnchorsClient from './AdminAnchorsClient'
+'use client'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+import { useEffect, useState } from 'react'
+import { supabaseBrowser } from '@/lib/supabaseClient'
+import { fmtCurrency } from '@/lib/format'
 
-function envOrThrow(name: string) {
-  const v = process.env[name]
-  if (!v) throw new Error(`Missing env var: ${name}`)
-  return v
+type AnchorRowDb = {
+  coingecko_id: string
+  anchor_top_price: number | null
+  pump_threshold_multiple: number | null
+  force_manual_anchor: boolean | null
 }
 
-function getAdminEmailAllowlist(): Set<string> {
-  // Use one of these env vars; prefer LEDGERONE_ADMIN_EMAILS in prod.
-  const raw =
-    process.env.LEDGERONE_ADMIN_EMAILS ??
-    process.env.ADMIN_EMAILS ??
-    process.env.NEXT_PUBLIC_ADMIN_EMAILS ??
-    ''
-
-  const emails = raw
-    .split(/[,;\n\t ]+/g)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-
-  return new Set(emails)
+type AnchorRowUi = {
+  coingecko_id: string
+  anchor_top_price: string // text input; '' => null
+  pump_threshold_multiple: string // text input; '' => default 1.5
+  force_manual_anchor: boolean
+  dirty?: boolean
 }
 
-export default async function AdminAnchorsPage() {
-  const cookieStore = await cookies()
+type ResolvedAnchorUi = {
+  topPrice: number | null
+  source: string | null
+  error?: boolean
+}
 
-  const supabase = createServerClient(
-    envOrThrow('NEXT_PUBLIC_SUPABASE_URL'),
-    envOrThrow('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+const DEFAULT_PUMP = 1.5
+
+function parseNumberOrNull(raw: string): number | null {
+  const s = raw.trim()
+  if (!s) return null
+  const n = Number(s)
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
+function formatAnchorSource(source: string | null | undefined): string {
+  switch (source) {
+    case 'auto_pump':
+      return 'Auto pump'
+    case 'admin_anchor_forced':
+      return 'Manual forced'
+    case 'admin_anchor_fallback':
+      return 'Admin fallback'
+    case 'admin_anchor_post_history_fallback':
+      return 'Admin fallback'
+    case 'fallback_high':
+      return 'Fallback high'
+    default:
+      return 'Unavailable'
+  }
+}
+
+async function fetchResolvedAnchor(
+  coingeckoId: string
+): Promise<ResolvedAnchorUi> {
+  const res = await fetch(
+    `/api/planner/user-top-price?id=${encodeURIComponent(
+      coingeckoId
+    )}&currency=USD`,
     {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: '', ...options, maxAge: 0 })
-        },
-      },
+      cache: 'no-store',
     }
   )
 
-  const { data } = await supabase.auth.getUser()
-  const user = data?.user
+  if (!res.ok) {
+    throw new Error(`Failed to resolve current anchor for ${coingeckoId}.`)
+  }
 
-  // Not logged in -> send to login
-  if (!user) redirect('/login')
+  const data = await res.json()
 
-  // Logged in but not admin -> show NOTHING (404)
-  const email = (user.email ?? '').toLowerCase()
-  const allow = getAdminEmailAllowlist()
-  if (!email || !allow.has(email)) notFound()
+  return {
+    topPrice:
+      typeof data?.topPrice === 'number' && Number.isFinite(data.topPrice)
+        ? data.topPrice
+        : null,
+    source: typeof data?.source === 'string' ? data.source : null,
+    error: false,
+  }
+}
 
-  // Admin -> render your existing UI component unchanged
-  return <AdminAnchorsClient />
+export default function AdminAnchorsClient() {
+  const [rows, setRows] = useState<AnchorRowUi[]>([])
+  const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [resolvedAnchors, setResolvedAnchors] = useState<
+    Record<string, ResolvedAnchorUi>
+  >({})
+  const [resolvedAnchorLoading, setResolvedAnchorLoading] = useState<
+    Record<string, boolean>
+  >({})
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      setError(null)
+      setMessage(null)
+      try {
+        const { data, error } = await supabaseBrowser
+          .from('coin_anchors')
+          .select(
+            'coingecko_id,anchor_top_price,pump_threshold_multiple,force_manual_anchor'
+          )
+          .order('coingecko_id', { ascending: true })
+
+        if (error) throw error
+        if (cancelled) return
+
+        const mapped: AnchorRowUi[] = (data as AnchorRowDb[]).map((row) => ({
+          coingecko_id: row.coingecko_id,
+          anchor_top_price:
+            row.anchor_top_price == null ? '' : String(row.anchor_top_price),
+          pump_threshold_multiple:
+            row.pump_threshold_multiple == null
+              ? String(DEFAULT_PUMP)
+              : String(row.pump_threshold_multiple),
+          force_manual_anchor: !!row.force_manual_anchor,
+          dirty: false,
+        }))
+
+        setRows(mapped)
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message ?? 'Failed to load coin_anchors.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!rows.length) return
+
+    let cancelled = false
+    const ids = rows.map((row) => row.coingecko_id)
+
+    setResolvedAnchorLoading((prev) => {
+      const next = { ...prev }
+      ids.forEach((id) => {
+        next[id] = true
+      })
+      return next
+    })
+
+    async function loadResolvedAnchors() {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const resolved = await fetchResolvedAnchor(id)
+            return [id, resolved] as const
+          } catch {
+            return [
+              id,
+              { topPrice: null, source: null, error: true } as ResolvedAnchorUi,
+            ] as const
+          }
+        })
+      )
+
+      if (cancelled) return
+
+      setResolvedAnchors((prev) => {
+        const next = { ...prev }
+        entries.forEach(([id, resolved]) => {
+          next[id] = resolved
+        })
+        return next
+      })
+
+      setResolvedAnchorLoading((prev) => {
+        const next = { ...prev }
+        ids.forEach((id) => {
+          next[id] = false
+        })
+        return next
+      })
+    }
+
+    void loadResolvedAnchors()
+
+    return () => {
+      cancelled = true
+    }
+  }, [rows.map((row) => row.coingecko_id).join('|')])
+
+  const refreshResolvedAnchor = async (coingeckoId: string) => {
+    setResolvedAnchorLoading((prev) => ({ ...prev, [coingeckoId]: true }))
+
+    try {
+      const resolved = await fetchResolvedAnchor(coingeckoId)
+      setResolvedAnchors((prev) => ({ ...prev, [coingeckoId]: resolved }))
+    } catch {
+      setResolvedAnchors((prev) => ({
+        ...prev,
+        [coingeckoId]: { topPrice: null, source: null, error: true },
+      }))
+    } finally {
+      setResolvedAnchorLoading((prev) => ({ ...prev, [coingeckoId]: false }))
+    }
+  }
+
+  const markDirty = (id: string, updater: (r: AnchorRowUi) => AnchorRowUi) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.coingecko_id === id ? { ...updater(r), dirty: true } : r
+      )
+    )
+  }
+
+  const onChangeAnchor = (id: string, value: string) => {
+    markDirty(id, (r) => ({ ...r, anchor_top_price: value }))
+  }
+
+  const onChangePumpMultiple = (id: string, value: string) => {
+    markDirty(id, (r) => ({ ...r, pump_threshold_multiple: value }))
+  }
+
+  const onToggleForceManual = (id: string) => {
+    markDirty(id, (r) => ({
+      ...r,
+      force_manual_anchor: !r.force_manual_anchor,
+    }))
+  }
+
+  const onSaveRow = async (row: AnchorRowUi) => {
+    setError(null)
+    setMessage(null)
+
+    // Pump multiple validation
+    const pumpNum =
+      parseNumberOrNull(row.pump_threshold_multiple) ?? DEFAULT_PUMP
+    if (!Number.isFinite(pumpNum) || pumpNum <= 1.0) {
+      setError(
+        `Pump multiple for ${row.coingecko_id} must be > 1.0 (e.g. 1.5 or 1.7).`
+      )
+      return
+    }
+
+    // Admin top price (nullable)
+    const anchorNum = parseNumberOrNull(row.anchor_top_price)
+
+    // NEW: If Manual is forced, require a valid positive admin top
+    if (row.force_manual_anchor) {
+      if (!Number.isFinite(anchorNum as number) || (anchorNum as number) <= 0) {
+        setError(
+          `To force manual mode for ${row.coingecko_id}, you must set a positive Admin top (USD).`
+        )
+        return
+      }
+    }
+
+    setSavingId(row.coingecko_id)
+    try {
+      const { error } = await supabaseBrowser
+        .from('coin_anchors')
+        .update({
+          anchor_top_price: anchorNum,
+          pump_threshold_multiple: pumpNum,
+          force_manual_anchor: row.force_manual_anchor,
+        })
+        .eq('coingecko_id', row.coingecko_id)
+
+      if (error) throw error
+
+      setRows((prev) =>
+        prev.map((r) =>
+          r.coingecko_id === row.coingecko_id ? { ...r, dirty: false } : r
+        )
+      )
+
+      await refreshResolvedAnchor(row.coingecko_id)
+      setMessage(`Saved settings for ${row.coingecko_id}.`)
+    } catch (e: any) {
+      setError(e?.message ?? `Failed to save ${row.coingecko_id}.`)
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-6xl mx-auto space-y-6">
+      <header className="border-b border-[rgb(41,42,45)]/80 pb-4">
+        <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90">
+          Price Cycle Anchors
+        </h1>
+        <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)] max-w-2xl">
+          Configure per-asset pump thresholds and manual top prices used by the
+          price-cycle engine. Auto uses historical 50–70% pumps; manual anchors
+          act as fallbacks, and you can force manual when needed.
+        </p>
+      </header>
+
+      {loading && (
+        <div className="text-sm text-slate-400">Loading anchors…</div>
+      )}
+
+      {!loading && error && (
+        <div className="rounded-md border border-red-500/60 bg-red-900/20 px-3 py-2 text-xs text-red-200">
+          {error}
+        </div>
+      )}
+
+      {!loading && message && !error && (
+        <div className="rounded-md border border-emerald-500/50 bg-emerald-900/20 px-3 py-2 text-xs text-emerald-200">
+          {message}
+        </div>
+      )}
+
+      {!loading && !error && rows.length === 0 && (
+        <div className="text-sm text-slate-400">
+          No coin_anchors rows found. Seed the table, then reload this page.
+        </div>
+      )}
+
+      {!loading && rows.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-[rgb(41,42,45)] bg-[rgb(28,29,31)]">
+          <table className="min-w-full text-left text-[12px] md:text-[13px] text-slate-200">
+            <thead className="bg-[rgb(32,33,35)] text-[rgb(163,163,164)]">
+              <tr>
+                <th className="px-3 py-2 font-medium">Asset (coingecko_id)</th>
+                <th className="px-3 py-2 font-medium">Pump threshold (×)</th>
+                <th className="px-3 py-2 font-medium">Admin top (USD)</th>
+                <th className="px-3 py-2 font-medium">Current anchor (USD)</th>
+                <th className="px-3 py-2 font-medium">Mode</th>
+                <th className="px-3 py-2 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const isSaving = savingId === row.coingecko_id
+                const dirty = !!row.dirty
+                const resolved = resolvedAnchors[row.coingecko_id]
+                const isResolvedLoading =
+                  resolvedAnchorLoading[row.coingecko_id] === true
+
+                return (
+                  <tr
+                    key={row.coingecko_id}
+                    className="border-t border-[rgb(41,42,45)]/80 hover:bg-[rgb(33,34,36)]"
+                  >
+                    <td className="px-3 py-2 align-middle">
+                      <span className="font-mono text-[12px]">
+                        {row.coingecko_id}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-2 align-middle">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="w-24 rounded-md bg-[rgb(41,42,43)] border border-[rgb(58,59,63)] px-2 py-1 text-[12px] text-slate-100 placeholder:text-[rgb(120,121,125)] focus:outline-none focus:ring-0 focus:border-transparent"
+                        placeholder={String(DEFAULT_PUMP)}
+                        value={row.pump_threshold_multiple}
+                        onChange={(e) =>
+                          onChangePumpMultiple(
+                            row.coingecko_id,
+                            e.target.value
+                          )
+                        }
+                        disabled={isSaving}
+                      />
+                    </td>
+
+                    <td className="px-3 py-2 align-middle">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="w-28 rounded-md bg-[rgb(41,42,43)] border border-[rgb(58,59,63)] px-2 py-1 text-[12px] text-slate-100 placeholder:text-[rgb(120,121,125)] focus:outline-none focus:ring-0 focus:border-transparent"
+                        placeholder="(auto only)"
+                        value={row.anchor_top_price}
+                        onChange={(e) =>
+                          onChangeAnchor(row.coingecko_id, e.target.value)
+                        }
+                        disabled={isSaving}
+                      />
+                      <div className="mt-1 text-[11px] text-[rgb(140,140,144)]">
+                        If blank to rely on auto pump unless forced.
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2 align-middle">
+                      <div className="min-w-[148px]">
+                        {isResolvedLoading ? (
+                          <div className="text-[12px] text-[rgb(163,163,164)]">
+                            Loading…
+                          </div>
+                        ) : resolved?.topPrice != null ? (
+                          <>
+                            <div className="text-[12px] font-medium text-slate-100">
+                              {fmtCurrency(resolved.topPrice)}
+                            </div>
+                            <div className="mt-1 text-[11px] text-[rgb(140,140,144)]">
+                              {formatAnchorSource(resolved.source)}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[12px] text-slate-300">—</div>
+                            <div className="mt-1 text-[11px] text-[rgb(140,140,144)]">
+                              {resolved?.error ? 'Resolver unavailable' : 'No anchor'}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2 align-middle">
+                      <button
+                        type="button"
+                        onClick={() => onToggleForceManual(row.coingecko_id)}
+                        disabled={isSaving}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border ${
+                          row.force_manual_anchor
+                            ? 'border-amber-400/70 bg-amber-500/10 text-amber-100'
+                            : 'border-[rgb(70,71,75)] bg-[rgb(34,35,37)] text-slate-200'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 rounded-full ${
+                            row.force_manual_anchor
+                              ? 'bg-amber-400'
+                              : 'bg-[rgb(90,91,95)]'
+                          }`}
+                        />
+                        <span>
+                          {row.force_manual_anchor ? 'Manual (forced)' : 'Auto'}
+                        </span>
+                      </button>
+                      <div className="mt-1 text-[11px] text-[rgb(140,140,144)] max-w-[180px]">
+                        Uses the admin top price
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2 align-middle text-right">
+                      <button
+                        type="button"
+                        onClick={() => onSaveRow(row)}
+                        disabled={isSaving || !dirty}
+                        className={`inline-flex items-center rounded-md px-3 py-1.5 text-[12px] font-medium border ${
+                          isSaving
+                            ? 'border-[rgb(80,81,85)] bg-[rgb(45,46,49)] text-slate-300'
+                            : dirty
+                            ? 'border-[rgb(109,93,186)] bg-[rgb(43,39,64)] text-[rgb(219,217,255)] hover:bg-[rgb(51,46,78)]'
+                            : 'border-[rgb(70,71,75)] bg-[rgb(34,35,37)] text-slate-300'
+                        }`}
+                      >
+                        {isSaving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
