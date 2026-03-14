@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+import { getHistory } from '@/lib/dataCore'
+import { mapToProvider, normalizeCoinId } from '@/server/db/coinRegistry'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-type HistoryPoint = { t: number; p: number | null }
 
 type AnchorRow = {
   coingecko_id: string
@@ -14,361 +14,428 @@ type AnchorRow = {
   force_manual_anchor: boolean | null
 }
 
-/* ─────────────────────────────────────────────────────────────
-   Helpers
-   - internal base URL for dataCore server-to-server calls
-   - Supabase admin client for coin_anchors
-   - price-history fetch
-   - auto-pump cycle detection
-────────────────────────────────────────────────────────────── */
+type TopPriceSource =
+  | 'admin_anchor_forced'
+  | 'auto_pump'
+  | 'admin_anchor'
+  | 'fallback_high'
+  | null
 
-function getInternalBaseUrl() {
-  return process.env.INTERNAL_BASE_URL || 'http://localhost:3000'
+type CycleMeta = {
+  lowPrice: number
+  lowTime: string
+  highPrice: number
+  highTime: string
+}
+
+type DebugMeta = {
+  notes: string[]
+  pointCount: number
+  localLowCount: number
+  fallbackMaxHigh: number | null
+  fallbackMaxHighTime: string | null
+  historyDebug: {
+    requestedId: string
+    canonicalId: string | null
+    providerId: string | null
+    aliases: string[]
+    historyId: string | null
+  }
+}
+
+type HistoryPoint = {
+  t: number
+  p: number
+}
+
+const DEFAULT_PUMP_MULTIPLE = 1.5
+const HISTORY_DAYS = 365
+
+function uniqueLower(values: Array<string | null | undefined>): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+
+  for (const value of values) {
+    const key = String(value ?? '').trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(key)
+  }
+
+  return out
+}
+
+function addProtocolAlias(id: string | null | undefined): string[] {
+  const raw = String(id ?? '').trim().toLowerCase()
+  if (!raw) return []
+
+  if (raw.endsWith('-protocol')) {
+    return [raw, raw.replace(/-protocol$/, '')]
+  }
+
+  return [raw, `${raw}-protocol`]
 }
 
 function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    ''
 
-  if (!url || !serviceKey) {
-    throw new Error('Supabase environment variables are not configured.')
-  }
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ''
 
-  return createClient(url, serviceKey, {
+  if (!url || !key) return null
+
+  return createClient(url, key, {
     auth: { persistSession: false },
+    db: { schema: 'public' },
   })
 }
 
-async function fetchHistory(
-  id: string,
-  currency: string,
-  days: number,
-  debugNotes: string[]
-): Promise<{ points: HistoryPoint[]; debug: any }> {
-  const base = getInternalBaseUrl()
-  const url = `${base}/api/price-history?id=${encodeURIComponent(
-    id
-  )}&days=${days}&interval=daily&currency=${encodeURIComponent(currency)}`
+async function resolveAliases(requestedId: string) {
+  const raw = requestedId.trim().toLowerCase()
 
-  const res = await fetch(url, {
-    // no caching; we want freshest daily history for cycle detection
-    cache: 'no-store',
-  })
+  let canonicalId: string | null = null
+  let providerId: string | null = null
 
-  if (!res.ok) {
-    debugNotes.push(`history.fetch_error:status=${res.status}`)
-    return { points: [], debug: null }
+  try {
+    canonicalId = await normalizeCoinId(raw)
+  } catch {
+    canonicalId = null
   }
 
-  const json = await res.json()
-  const points = (json?.points ?? []) as HistoryPoint[]
-  return { points, debug: json?.debug ?? null }
-}
-
-/**
- * Find a local-low →  pump-multiple high cycle.
- *
- * - uses daily lows (wicks) (we trust /api/price-history "p" as low)
- * - walks LOWS from *newest* backwards until one has a pump≥ multiple
- * - returns autoTopPrice and a cycle struct if found
- */
-function findPumpCycle(
-  points: HistoryPoint[],
-  pumpMultiple: number,
-  debugNotes: string[]
-): {
-  autoTopPrice: number | null
-  cycle:
-    | {
-        lowPrice: number
-        lowTime: string
-        highPrice: number
-        highTime: string
-      }
-    | null
-  fallbackMaxHigh: number | null
-  fallbackMaxHighTime: string | null
-  localLowCount: number
-} {
-  const n = points.length
-  if (!n) {
-    debugNotes.push('history.empty')
-    return {
-      autoTopPrice: null,
-      cycle: null,
-      fallbackMaxHigh: null,
-      fallbackMaxHighTime: null,
-      localLowCount: 0,
-    }
+  try {
+    providerId = canonicalId ? await mapToProvider(canonicalId, 'coingecko') : null
+  } catch {
+    providerId = null
   }
 
-  const localLowIdxs: number[] = []
-  let fallbackMaxHigh = 0
-  let fallbackMaxHighTime: string | null = null
-
-  // 1) Collect local lows + fallback max of the series (whatever "p" represents)
-  for (let i = 0; i < n; i++) {
-    const p = points[i].p
-    if (p != null && p > 0 && p > fallbackMaxHigh) {
-      fallbackMaxHigh = p
-      fallbackMaxHighTime = new Date(points[i].t).toISOString()
-    }
-
-    if (i === 0 || i === n - 1) continue
-    const pPrev = points[i - 1].p
-    const pCur = points[i].p
-    const pNext = points[i + 1].p
-    if (pCur == null || pCur <= 0) continue
-
-    // local low: equal/lower than neighbors (we're using lows, not closes)
-    if ((pPrev == null || pCur <= pPrev) && (pNext == null || pCur <= pNext)) {
-      localLowIdxs.push(i)
-    }
-  }
-
-  const localLowCount = localLowIdxs.length
-  debugNotes.push(`localLows=${localLowCount}`)
-
-  // 2) Precompute suffix maxima so we can answer:
-  //    "What is the PEAK price after index k?" in O(1)
-  const suffixMax: number[] = new Array(n).fill(-Infinity)
-  const suffixMaxIdx: number[] = new Array(n).fill(-1)
-
-  let curMax = -Infinity
-  let curIdx = -1
-  for (let i = n - 1; i >= 0; i--) {
-    const p = points[i].p
-    if (p != null && p > 0 && p >= curMax) {
-      curMax = p
-      curIdx = i
-    }
-    suffixMax[i] = curMax
-    suffixMaxIdx[i] = curIdx
-  }
-
-  let autoTopPrice: number | null = null
-  let cycle: {
-    lowPrice: number
-    lowTime: string
-    highPrice: number
-    highTime: string
-  } | null = null
-
-  // 3) Walk lows from newest back:
-  //    - Require: peak after that low is >= L * pumpMultiple (qualifying pump)
-  //    - Then return the PEAK after that low (not the first 1.5x crossing)
-  for (let li = localLowIdxs.length - 1; li >= 0; li--) {
-    const lowIdx = localLowIdxs[li]
-    const lowPoint = points[lowIdx]
-    const L = lowPoint.p
-    if (L == null || L <= 0) continue
-    if (lowIdx + 1 >= n) continue
-
-    const threshold = L * pumpMultiple
-
-    const peak = suffixMax[lowIdx + 1]
-    const peakIdx = suffixMaxIdx[lowIdx + 1]
-
-    if (peakIdx !== -1 && Number.isFinite(peak) && peak >= threshold) {
-      autoTopPrice = peak
-      cycle = {
-        lowPrice: L,
-        lowTime: new Date(lowPoint.t).toISOString(),
-        highPrice: peak,
-        highTime: new Date(points[peakIdx].t).toISOString(),
-      }
-      debugNotes.push(
-        `auto_pump_peak_from_low_idx=${lowIdx};peak_idx=${peakIdx}`
-      )
-      break
-    }
-  }
-
-  if (!autoTopPrice && fallbackMaxHigh) {
-    debugNotes.push('auto_pump.none_fallback_max_high_used_for_debug_only')
-  }
+  const aliases = uniqueLower([
+    raw,
+    canonicalId,
+    providerId,
+    ...addProtocolAlias(raw),
+    ...addProtocolAlias(canonicalId),
+    ...addProtocolAlias(providerId),
+  ])
 
   return {
-    autoTopPrice,
-    cycle,
-    fallbackMaxHigh: fallbackMaxHigh || null,
-    fallbackMaxHighTime,
-    localLowCount,
+    raw,
+    canonicalId: canonicalId ? canonicalId.toLowerCase() : null,
+    providerId: providerId ? providerId.toLowerCase() : null,
+    aliases,
   }
 }
 
-/* ─────────────────────────────────────────────────────────────
-   GET /api/planner/user-top-price
-   Query:
-     - id:        coingecko id (e.g. bitcoin, near-protocol)
-     - currency:  quote currency (default USD)
-     - debug=1    to include internal notes
-   Response:
-     {
-       id,
-       currency,
-       topPrice,
-       source,          // "auto_pump" | "admin_anchor_forced" | "admin_anchor" | "none"
-       adminTopPrice,
-       autoTopPrice,
-       pumpMultiple,
-       asOf,
-       cycle: { lowPrice, lowTime, highPrice, highTime } | null,
-       debug: { notes[], pointCount, localLowCount, fallbackMaxHigh, fallbackMaxHighTime }
-     }
-────────────────────────────────────────────────────────────── */
+function hasAnchorConfig(row: AnchorRow) {
+  return (
+    Number.isFinite(Number(row.anchor_top_price)) ||
+    Number.isFinite(Number(row.pump_threshold_multiple)) ||
+    row.force_manual_anchor === true
+  )
+}
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url)
-  const id = url.searchParams.get('id')
-  const currency = (url.searchParams.get('currency') || 'USD').toUpperCase()
-  const debugFlag = url.searchParams.get('debug') === '1'
+function pickAnchorRow(rows: AnchorRow[], raw: string, aliases: string[]) {
+  if (!rows.length) return null
 
-  if (!id) {
+  const aliasRank = new Map<string, number>(aliases.map((id, idx) => [id, idx]))
+
+  const pool = rows.some(hasAnchorConfig)
+    ? rows.filter(hasAnchorConfig)
+    : rows
+
+  const ranked = [...pool].sort((a, b) => {
+    const aId = String(a.coingecko_id || '').toLowerCase()
+    const bId = String(b.coingecko_id || '').toLowerCase()
+
+    const aExact = aId === raw ? 0 : 1
+    const bExact = bId === raw ? 0 : 1
+    if (aExact !== bExact) return aExact - bExact
+
+    const aRank = aliasRank.get(aId) ?? 999
+    const bRank = aliasRank.get(bId) ?? 999
+    if (aRank !== bRank) return aRank - bRank
+
+    return aId.localeCompare(bId)
+  })
+
+  return ranked[0] ?? null
+}
+
+async function loadAnchorRow(raw: string, aliases: string[], notes: string[]) {
+  const supabase = getSupabaseAdmin()
+  if (!supabase) {
+    notes.push('anchor_row.client_missing')
+    return null
+  }
+
+  if (!aliases.length) {
+    notes.push('anchor_row.missing')
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('coin_anchors')
+    .select('coingecko_id,anchor_top_price,pump_threshold_multiple,force_manual_anchor')
+    .in('coingecko_id', aliases)
+
+  if (error) {
+    notes.push(`anchor_row.error:${error.message}`)
+    return null
+  }
+
+  const rows = ((data ?? []) as AnchorRow[]).map((row) => ({
+    ...row,
+    coingecko_id: String(row.coingecko_id || '').toLowerCase(),
+  }))
+
+  if (!rows.length) {
+    notes.push('anchor_row.missing')
+    return null
+  }
+
+  const picked = pickAnchorRow(rows, raw, aliases)
+  if (!picked) {
+    notes.push('anchor_row.missing')
+    return null
+  }
+
+  notes.push('anchor_row.ok')
+  if (rows.length > 1) {
+    notes.push(`anchor_row.aliases=${rows.map((row) => row.coingecko_id).join(',')}`)
+    notes.push(`anchor_row.selected=${picked.coingecko_id}`)
+  }
+
+  return picked
+}
+
+function normalizePoints(points: unknown): HistoryPoint[] {
+  if (!Array.isArray(points)) return []
+
+  return points
+    .map((point) => {
+      const t = Number((point as any)?.t)
+      const p = Number((point as any)?.p)
+      return { t, p }
+    })
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p) && point.p > 0)
+    .sort((a, b) => a.t - b.t)
+}
+
+async function loadHistory(aliases: string[], currency: string, notes: string[]) {
+  for (const id of aliases) {
+    try {
+      const payload = await getHistory(id, HISTORY_DAYS, 'daily', currency)
+      const points = normalizePoints(payload?.points)
+
+      if (points.length > 0) {
+        notes.push(`history.id=${id}`)
+        return { historyId: id, points }
+      }
+
+      notes.push(`history.empty:${id}`)
+    } catch (error: any) {
+      notes.push(`history.error:${id}:${error?.message ?? 'unknown'}`)
+    }
+  }
+
+  return { historyId: null, points: [] as HistoryPoint[] }
+}
+
+function getLocalLowIndices(points: HistoryPoint[]) {
+  const lows: number[] = []
+
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = points[i - 1].p
+    const curr = points[i].p
+    const next = points[i + 1].p
+
+    if (curr <= prev && curr < next) {
+      lows.push(i)
+    }
+  }
+
+  return lows
+}
+
+function findPumpCycle(points: HistoryPoint[], pumpMultiple: number, localLowIndices: number[]) {
+  for (let i = localLowIndices.length - 1; i >= 0; i -= 1) {
+    const lowIdx = localLowIndices[i]
+    const low = points[lowIdx]
+
+    let peakIdx = -1
+    let peakPrice = -Infinity
+
+    for (let j = lowIdx + 1; j < points.length; j += 1) {
+      if (points[j].p > peakPrice) {
+        peakPrice = points[j].p
+        peakIdx = j
+      }
+    }
+
+    if (peakIdx > lowIdx && peakPrice >= low.p * pumpMultiple) {
+      return { lowIdx, peakIdx }
+    }
+  }
+
+  return null
+}
+
+function getFallbackHigh(points: HistoryPoint[]) {
+  if (!points.length) return null
+
+  let best = points[0]
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].p > best.p) best = points[i]
+  }
+
+  return best
+}
+
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url)
+  const requestedId = String(url.searchParams.get('id') || '').trim().toLowerCase()
+  const currency = String(url.searchParams.get('currency') || 'USD').trim().toUpperCase()
+  const wantDebug = ['1', 'true', 'yes', 'on'].includes(
+    String(url.searchParams.get('debug') || '').trim().toLowerCase()
+  )
+
+  if (!requestedId) {
     return NextResponse.json(
-      { error: 'Missing id (coingecko id).' },
-      { status: 400 }
+      { error: 'Missing id' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 
-  const debugNotes: string[] = []
+  const notes: string[] = []
+  const { raw, canonicalId, providerId, aliases } = await resolveAliases(requestedId)
 
-  // ── 1) Load anchor_row (admin config for this coin) ────────────────────────
-  let anchor: AnchorRow | null = null
-  let pumpMultiple = 1.5
+  const anchorRow = await loadAnchorRow(raw, aliases, notes)
 
-  try {
-    const supabase = getSupabaseAdmin()
+  const adminTopPrice = Number.isFinite(Number(anchorRow?.anchor_top_price))
+    ? Number(anchorRow?.anchor_top_price)
+    : null
 
-    // Handle the NEAR case gracefully: near vs near-protocol
-    const altId =
-      id.endsWith('-protocol') && id.includes('-')
-        ? id.replace('-protocol', '')
-        : null
+  const pumpMultiple =
+    Number.isFinite(Number(anchorRow?.pump_threshold_multiple)) &&
+    Number(anchorRow?.pump_threshold_multiple) > 0
+      ? Number(anchorRow?.pump_threshold_multiple)
+      : DEFAULT_PUMP_MULTIPLE
 
-    let query = supabase
-      .from('coin_anchors')
-      .select(
-        'coingecko_id,anchor_top_price,pump_threshold_multiple,force_manual_anchor'
-      )
-
-    if (altId) {
-      query = query.or(`coingecko_id.eq.${id},coingecko_id.eq.${altId}`)
-    } else {
-      query = query.eq('coingecko_id', id)
-    }
-
-    const { data, error } = await query.maybeSingle()
-
-    if (error) {
-      debugNotes.push(`anchor_row.error:${error.message}`)
-    } else if (data) {
-      anchor = data as AnchorRow
-      debugNotes.push('anchor_row.ok')
-
-      if (
-        data.pump_threshold_multiple != null &&
-        !Number.isNaN(Number(data.pump_threshold_multiple)) &&
-        Number(data.pump_threshold_multiple) > 1.0
-      ) {
-        pumpMultiple = Number(data.pump_threshold_multiple)
-      }
-    } else {
-      debugNotes.push('anchor_row.missing')
-    }
-  } catch (e: any) {
-    debugNotes.push(`anchor_row.exception:${e?.message ?? 'unknown'}`)
-  }
-
-  debugNotes.push(`pumpMultiple=${pumpMultiple.toFixed(4)}`)
-
-  // ── 2) Load daily history (dataCore) & detect pump cycle ───────────────────
-  const { points, debug: historyDebug } = await fetchHistory(
-    id,
-    currency,
-    365,
-    debugNotes
-  )
-
-  const {
-    autoTopPrice,
-    cycle,
-    fallbackMaxHigh,
-    fallbackMaxHighTime,
-    localLowCount,
-  } = findPumpCycle(points, pumpMultiple, debugNotes)
-
-  const pointCount = points.length
-
-  // ── 3) Priority tree for effective top price ───────────────────────────────
-    const adminTopPrice =
-    anchor && typeof anchor.anchor_top_price === 'number'
-      ? anchor.anchor_top_price
-      : null
-  const forceManual = !!anchor?.force_manual_anchor
+  notes.push(`pumpMultiple=${pumpMultiple.toFixed(4)}`)
 
   let topPrice: number | null = null
-  let source:
-    | 'auto_pump'
-    | 'admin_anchor_forced'
-    | 'admin_anchor'
-    | 'fallback_high'
-    | 'none' = 'none'
+  let source: TopPriceSource = null
+  let autoTopPrice: number | null = null
+  let cycle: CycleMeta | null = null
+  let pointCount = 0
+  let localLowCount = 0
+  let fallbackMaxHigh: number | null = null
+  let fallbackMaxHighTime: string | null = null
+  let historyId: string | null = null
 
-  if (forceManual && adminTopPrice && adminTopPrice > 0) {
-    // 1) Force manual override: admin top wins over auto
+  if (anchorRow?.force_manual_anchor === true && adminTopPrice && adminTopPrice > 0) {
     topPrice = adminTopPrice
     source = 'admin_anchor_forced'
-    debugNotes.push('topPrice.source=admin_anchor_forced')
-  } else if (autoTopPrice && autoTopPrice > 0) {
-    // 2) Auto pump cycle if available
-    topPrice = autoTopPrice
-    source = 'auto_pump'
-    debugNotes.push('topPrice.source=auto_pump')
-  } else if (adminTopPrice && adminTopPrice > 0) {
-    // 3) Fallback to admin manual value if auto not available
-    topPrice = adminTopPrice
-    source = 'admin_anchor'
-    debugNotes.push('topPrice.source=admin_anchor_fallback')
-  } else if (fallbackMaxHigh && fallbackMaxHigh > 0) {
-    // 4) Hard fallback: use max high seen in the sampled window
-    topPrice = fallbackMaxHigh
-    source = 'fallback_high'
-    debugNotes.push('topPrice.source=fallback_high')
+    notes.push('topPrice.source=admin_anchor_forced')
   } else {
-    // 5) No usable price yet
-    topPrice = null
-    source = 'none'
-    debugNotes.push('topPrice.source=none')
+    const history = await loadHistory(aliases, currency, notes)
+    historyId = history.historyId
+    const points = history.points
+    pointCount = points.length
+
+    if (!points.length) {
+      notes.push('history.empty')
+    } else {
+      const localLows = getLocalLowIndices(points)
+      localLowCount = localLows.length
+      notes.push(`localLows=${localLows.length}`)
+
+      const cycleMatch = findPumpCycle(points, pumpMultiple, localLows)
+      const fallbackHigh = getFallbackHigh(points)
+
+      fallbackMaxHigh = fallbackHigh?.p ?? null
+      fallbackMaxHighTime = fallbackHigh ? new Date(fallbackHigh.t).toISOString() : null
+
+      if (cycleMatch) {
+        const low = points[cycleMatch.lowIdx]
+        const high = points[cycleMatch.peakIdx]
+
+        autoTopPrice = high.p
+        topPrice = high.p
+        source = 'auto_pump'
+        cycle = {
+          lowPrice: low.p,
+          lowTime: new Date(low.t).toISOString(),
+          highPrice: high.p,
+          highTime: new Date(high.t).toISOString(),
+        }
+
+        notes.push(`auto_pump_peak_from_low_idx=${cycleMatch.lowIdx};peak_idx=${cycleMatch.peakIdx}`)
+        notes.push('topPrice.source=auto_pump')
+      } else if (adminTopPrice && adminTopPrice > 0) {
+        topPrice = adminTopPrice
+        source = 'admin_anchor'
+        notes.push('topPrice.source=admin_anchor_fallback')
+      } else if (fallbackHigh && fallbackHigh.p > 0) {
+        topPrice = fallbackHigh.p
+        source = 'fallback_high'
+        notes.push('topPrice.source=fallback_high')
+      }
+    }
   }
 
+  if (!topPrice && adminTopPrice && adminTopPrice > 0) {
+    topPrice = adminTopPrice
+    source = anchorRow?.force_manual_anchor ? 'admin_anchor_forced' : 'admin_anchor'
+    notes.push('topPrice.source=admin_anchor_post_history_fallback')
+  }
 
-  const payload: any = {
-    id,
+  const body: {
+    id: string
+    currency: string
+    topPrice: number | null
+    source: TopPriceSource
+    adminTopPrice: number | null
+    autoTopPrice: number | null
+    pumpMultiple: number
+    asOf: string
+    cycle: CycleMeta | null
+    debug?: DebugMeta
+  } = {
+    id: requestedId,
     currency,
     topPrice,
     source,
     adminTopPrice,
-    autoTopPrice: autoTopPrice ?? null,
+    autoTopPrice,
     pumpMultiple,
     asOf: new Date().toISOString(),
     cycle,
-    debug: {
-      notes: debugNotes,
+  }
+
+  if (wantDebug) {
+    body.debug = {
+      notes,
       pointCount,
       localLowCount,
       fallbackMaxHigh,
       fallbackMaxHighTime,
-      historyDebug,
-    },
+      historyDebug: {
+        requestedId,
+        canonicalId,
+        providerId,
+        aliases,
+        historyId,
+      },
+    }
   }
 
-  // If not in debug mode, you can trim some internals later; for now we always
-  // return full payload because you’re using it for curl-based validation.
-  if (!debugFlag) {
-    // You *could* strip historyDebug/notes here, but leaving as-is is fine.
-  }
-
-  return NextResponse.json(payload)
+  return NextResponse.json(body, {
+    headers: { 'Cache-Control': 'no-store' },
+  })
 }

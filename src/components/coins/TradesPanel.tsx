@@ -364,8 +364,9 @@ export default function TradesPanel({ id }: Props) {
   const [qtyMode, setQtyMode] = useState<'tokens' | 'usd'>('tokens')
   // NEW: lock the quantity mode to side (Buy=USD, Sell=Tokens) unless user unlocks
   const [qtyLocked, setQtyLocked] = useState<boolean>(true)
-  const [fee, setFee] = useState<string>('') // keep empty so placeholder shows
-  const [time, setTime] = useState<string>(() => new Date().toISOString().slice(0, 16))
+const [fee, setFee] = useState<string>('') // keep empty so placeholder shows
+const [time, setTime] = useState<string>(() => new Date().toISOString().slice(0, 16))
+const [ledgerOnly, setLedgerOnly] = useState<boolean>(false)
 
   // input refs (for caret restoration)
   const priceRef = useRef<HTMLInputElement>(null)
@@ -593,30 +594,31 @@ async function refreshHoldingsTokens(_opts?: { sellPlannerId?: string }) {
     }
   }
 
-  function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
-    if (!user) return
-    const uid = user.id
-    const cid = id
+function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId: string | null }) {
+  if (!user) return
+  const uid = user.id
+  const cid = id
 
-    // Recent trades list
-    void globalMutate(['coin-trades', uid, cid])
+  // Recent trades list
+  void globalMutate(['coin-trades', uid, cid])
 
-    // Buy planner + ladder
+  // Buy planner + ladder
+  if (opts.buyPlannerId) {
     void globalMutate(['/buy-planner/active', uid, cid])
     void globalMutate(['/buy-planner/active-ladder', uid, cid])
-    if (opts.buyPlannerId) {
-      void globalMutate(['/trades/buys/by-planner', uid, cid, opts.buyPlannerId])
-      void globalMutate(['/trades/buys/for-ladder', uid, cid, opts.buyPlannerId])
-    }
-
-    // Sell planner + ladder
-    void globalMutate(['/sell-active', uid, cid])
-    if (opts.sellPlannerId) {
-      void globalMutate(['/sell-levels', uid, cid, opts.sellPlannerId])
-      void globalMutate(['/sells', uid, cid, opts.sellPlannerId])
-    }
+    void globalMutate(['/trades/buys/by-planner', uid, cid, opts.buyPlannerId])
+    void globalMutate(['/trades/buys/for-ladder', uid, cid, opts.buyPlannerId])
   }
 
+  // Sell planner + ladder
+  if (opts.buyPlannerId || opts.sellPlannerId) {
+    void globalMutate(['/sell-active', uid, cid])
+  }
+  if (opts.sellPlannerId) {
+    void globalMutate(['/sell-levels', uid, cid, opts.sellPlannerId])
+    void globalMutate(['/sells', uid, cid, opts.sellPlannerId])
+  }
+}
   function broadcast() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('buyPlannerUpdated', { detail: { coinId: id } }))
@@ -695,32 +697,38 @@ setLoading(false)  }
     const spid = selectedSellPlannerId || activeSell?.id || ''
     if (!spid) { setPlannerRemainingTokens(0); return }
     void refreshPlannerRemainingTokens(spid)
-  }, [user, id, side, selectedSellPlannerId, activeSell?.id])
+  }, [user, id, side, selectedSellPlannerId, activeSell?.id])// When user changes side or changes selected Sell Planner, recompute planned remaining
+useEffect(() => {
+  if (!user) { setPlannerRemainingTokens(0); return }
+  if (side !== 'sell' || ledgerOnly) { setPlannerRemainingTokens(0); return }
+  const spid = selectedSellPlannerId || activeSell?.id || ''
+  if (!spid) { setPlannerRemainingTokens(0); return }
+  void refreshPlannerRemainingTokens(spid)
+}, [user, id, side, ledgerOnly, selectedSellPlannerId, activeSell?.id])
 
 
-  // Keep "Available to sell" synced to the current Sell Planner selection
-  useEffect(() => {
-    if (side !== 'sell') { setHoldingsTokens(0); return }
-    void refreshHoldingsTokens({ sellPlannerId: selectedSellPlannerId })
-  }, [side, selectedSellPlannerId])
+// Keep overall holdings synced for ledger-only sells
+useEffect(() => {
+  if (side !== 'sell') { setHoldingsTokens(0); return }
+  void refreshHoldingsTokens()
+}, [side, ledgerOnly, selectedSellPlannerId])
 
-  // NEW: whenever side changes, force canonical mode + re-lock
-  useEffect(() => {
-    setQtyMode(side === 'buy' ? 'usd' : 'tokens')
-    setQtyLocked(true)
-  }, [side])
+// NEW: whenever side changes, force canonical mode + re-lock
+useEffect(() => {
+  setQtyMode(side === 'buy' ? 'usd' : 'tokens')
+  setQtyLocked(true)
+}, [side])
 
-  const canSubmit = useMemo(() => {
-    const p = parseNum(price)
-    const q = parseNum(qty)
-    if (!(q > 0)) return false
-    if (qtyMode === 'usd' && !(p > 0)) return false
-    if (!user) return false
-    if (side === 'buy') return !!activeBuy
-    if (side === 'sell') return !!(selectedSellPlannerId || activeSell?.id)
-    return false
-  }, [user, side, price, qty, qtyMode, activeBuy, activeSell?.id, selectedSellPlannerId])
-
+const canSubmit = useMemo(() => {
+  const p = parseNum(price)
+  const q = parseNum(qty)
+  if (!(q > 0)) return false
+  if (qtyMode === 'usd' && !(p > 0)) return false
+  if (!user) return false
+  if (side === 'buy') return ledgerOnly ? true : !!activeBuy
+  if (side === 'sell') return ledgerOnly ? true : !!(selectedSellPlannerId || activeSell?.id)
+  return false
+}, [user, side, price, qty, qtyMode, ledgerOnly, activeBuy, activeSell?.id, selectedSellPlannerId])
   // ─────────────────────────────────────────────────────────
   // NEW: helpers to REGENERATE active sell ladder after a BUY
   // ─────────────────────────────────────────────────────────
@@ -1077,144 +1085,192 @@ setLoading(false)  }
       setSaving(false)
     }
   }
-    async function submitTrade() {
-    if (!user) return
-    setSaving(true); setErr(null); setOk(null)
+async function submitTrade() {
+  if (!user) return
+  setSaving(true); setErr(null); setOk(null)
 
-    const trade_time_iso = toIso(time)
+  const trade_time_iso = toIso(time)
 
-    const p = parseNum(price)
-    const qEntered = parseNum(qty)
-    const feeNum = parseNum(fee || '0') || 0
-    let quantityTokens = qEntered
-    if (qtyMode === 'usd') {
-      if (!(p > 0)) { setErr('Enter a valid Price to convert $ to tokens.'); setSaving(false); return }
-      quantityTokens = qEntered / p
-    }
+  const p = parseNum(price)
+  const qEntered = parseNum(qty)
+  const feeNum = parseNum(fee || '0') || 0
+  let quantityTokens = qEntered
+  if (qtyMode === 'usd') {
+    if (!(p > 0)) { setErr('Enter a valid Price to convert $ to tokens.'); setSaving(false); return }
+    quantityTokens = qEntered / p
+  }
 
-    if (side === 'buy') {
-if (!activeBuy) { setErr('Cannot save trade: no active plan available for this coin.'); setSaving(false); return }
-      const payload: PendingBuy['payload'] = {
-        user_id: user.id, coingecko_id: id, side: 'buy',
-        price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
-        buy_planner_id: activeBuy.id, sell_planner_id: activeSell?.id ?? null,
-      }
-
-      // NEW: confirm if buy exceeds the “yellow/alert” allowance of the ACTIVE Buy Planner
-      const refPx =
-        Number.isFinite(livePrice as number) && (livePrice as number) > 0
-          ? (livePrice as number)
-          : (p > 0 ? p : null)
-
-      if (refPx) {
-        try {
-          const { allowedUsd, allowedTokens, hasLevels } = await computeBuyAlertAllowance(activeBuy, refPx)
-if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            setConfirmOffPlanCtx({
-              tradeSide: 'buy',
-              plannerLabel: 'Buy Planner',
-              allowedTokens,
-              enteredTokens: quantityTokens,
-              allowedUsd,
-              enteredUsd: quantityTokens * refPx,
-            })
-            setPendingBuy({
-              buyPlannerId: activeBuy.id,
-              sellPlannerId: activeSell?.id ?? null,
-              payload,
-            })
-            setConfirmOffPlanOpen(true)
-            setSaving(false)
-            return
-          }
-        } catch {
-          // Soft-fail: never block trade entry if allowance computation fails.
-        }
-      }
-
-      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-      if (error) { setErr(error.message); setSaving(false); return }      // NEW: Immediately regenerate ACTIVE sell ladder so rows/prices move with new average
-      try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
-
-          setOk('Buy recorded.')
-      broadcast()
-      refreshUiAfterTrade({ buyPlannerId: activeBuy.id, sellPlannerId: activeSell?.id ?? null })
-      refreshHoldingsTokens()
-      resetAfterSubmit()
-
-
-      } else {
-      const chosen = selectedSellPlannerId || activeSell?.id || null
-      if (!chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
-
-      // NEW: client-side precheck (DB trigger is the hard enforcement)
-      try {
-const available = await fetchHoldingsTokensNow({ sellPlannerId: chosen })
-        if (quantityTokens > available + 1e-12) {
-          setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
-          setSaving(false)
-          return
-        }
-      } catch {
-        // If this fails, allow DB trigger to enforce.
-      }
-
-      const payload: PendingSell['payload'] = {
-        user_id: user.id, coingecko_id: id, side: 'sell',
-        price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
-        sell_planner_id: chosen, buy_planner_id: null,
-      }
-
-      // NEW: confirm if sell exceeds the “yellow/alert” allocation of the selected Sell Planner
-      const refPx =
-        Number.isFinite(livePrice as number) && (livePrice as number) > 0
-          ? (livePrice as number)
-          : (p > 0 ? p : null)
-
-      if (refPx) {
-        try {
-          const { allowedTokens, hasLevels } = await computeAlertAllowance(chosen, refPx)
-if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {            setConfirmOffPlanCtx({
-              tradeSide: 'sell',
-              plannerLabel: plannerLabelFor(chosen),
-              allowedTokens,
-              enteredTokens: quantityTokens,
-              allowedUsd: allowedTokens * refPx,
-              enteredUsd: quantityTokens * refPx,
-            })
-            setPendingSell({ chosenId: chosen, payload })
-            setConfirmOffPlanOpen(true)
-            setSaving(false)
-            return
-          }
-        } catch {
-          // Soft-fail: never block trade entry if allowance computation fails.
-        }
+  if (side === 'buy') {
+    if (ledgerOnly) {
+      const payload = {
+        user_id: user.id,
+        coingecko_id: id,
+        side: 'buy' as const,
+        price: p,
+        quantity: quantityTokens,
+        fee: feeNum,
+        trade_time: trade_time_iso,
+        buy_planner_id: null,
+        sell_planner_id: null,
       }
 
       const { error } = await supabaseBrowser.from('trades').insert(payload as any)
       if (error) { setErr(error.message); setSaving(false); return }
 
-      setOk('Sell recorded.')
-      broadcast()
-      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosen })
+      setOk('Buy recorded in ledger only.')
+      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: null })
       refreshHoldingsTokens()
       resetAfterSubmit()
-
+      setSaving(false)
+      return
     }
 
-    setSaving(false)
+    if (!activeBuy) { setErr('Cannot save trade: no active plan available for this coin.'); setSaving(false); return }
+    const payload: PendingBuy['payload'] = {
+      user_id: user.id, coingecko_id: id, side: 'buy',
+      price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
+      buy_planner_id: activeBuy.id, sell_planner_id: activeSell?.id ?? null,
+    }
+
+    // NEW: confirm if buy exceeds the “yellow/alert” allowance of the ACTIVE Buy Planner
+    const refPx =
+      Number.isFinite(livePrice as number) && (livePrice as number) > 0
+        ? (livePrice as number)
+        : (p > 0 ? p : null)
+
+    if (refPx) {
+      try {
+        const { allowedUsd, allowedTokens, hasLevels } = await computeBuyAlertAllowance(activeBuy, refPx)
+        if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {
+          setConfirmOffPlanCtx({
+            tradeSide: 'buy',
+            plannerLabel: 'Buy Planner',
+            allowedTokens,
+            enteredTokens: quantityTokens,
+            allowedUsd,
+            enteredUsd: quantityTokens * refPx,
+          })
+          setPendingBuy({
+            buyPlannerId: activeBuy.id,
+            sellPlannerId: activeSell?.id ?? null,
+            payload,
+          })
+          setConfirmOffPlanOpen(true)
+          setSaving(false)
+          return
+        }
+      } catch {
+        // Soft-fail: never block trade entry if allowance computation fails.
+      }
+    }
+
+    const { error } = await supabaseBrowser.from('trades').insert(payload as any)
+    if (error) { setErr(error.message); setSaving(false); return }
+    try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
+
+    setOk('Buy recorded.')
+    broadcast()
+    refreshUiAfterTrade({ buyPlannerId: activeBuy.id, sellPlannerId: activeSell?.id ?? null })
+    refreshHoldingsTokens()
+    resetAfterSubmit()
+  } else {
+    const chosen = ledgerOnly ? null : (selectedSellPlannerId || activeSell?.id || null)
+    if (!ledgerOnly && !chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
+    const chosenPlannerId = chosen as PlannerId | null
+
+    // NEW: client-side precheck (DB trigger is the hard enforcement)
+    try {
+      const available = await fetchHoldingsTokensNow(ledgerOnly ? undefined : { sellPlannerId: chosenPlannerId })
+      if (quantityTokens > available + 1e-12) {
+        setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
+        setSaving(false)
+        return
+      }
+    } catch {
+      // If this fails, allow DB trigger to enforce.
+    }
+
+    if (ledgerOnly) {
+      const payload = {
+        user_id: user.id,
+        coingecko_id: id,
+        side: 'sell' as const,
+        price: p,
+        quantity: quantityTokens,
+        fee: feeNum,
+        trade_time: trade_time_iso,
+        sell_planner_id: null,
+        buy_planner_id: null,
+      }
+
+      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
+      if (error) { setErr(error.message); setSaving(false); return }
+
+      setOk('Sell recorded in ledger only.')
+      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: null })
+      refreshHoldingsTokens()
+      resetAfterSubmit()
+      setSaving(false)
+      return
+    }
+
+    const payload: PendingSell['payload'] = {
+      user_id: user.id, coingecko_id: id, side: 'sell',
+      price: p, quantity: quantityTokens, fee: feeNum, trade_time: trade_time_iso,
+      sell_planner_id: chosenPlannerId as PlannerId, buy_planner_id: null,
+    }
+
+    // NEW: confirm if sell exceeds the “yellow/alert” allocation of the selected Sell Planner
+    const refPx =
+      Number.isFinite(livePrice as number) && (livePrice as number) > 0
+        ? (livePrice as number)
+        : (p > 0 ? p : null)
+
+    if (refPx) {
+      try {
+        const { allowedTokens, hasLevels } = await computeAlertAllowance(chosenPlannerId as PlannerId, refPx)
+        if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {
+          setConfirmOffPlanCtx({
+            tradeSide: 'sell',
+            plannerLabel: plannerLabelFor(chosenPlannerId as PlannerId),
+            allowedTokens,
+            enteredTokens: quantityTokens,
+            allowedUsd: allowedTokens * refPx,
+            enteredUsd: quantityTokens * refPx,
+          })
+          setPendingSell({ chosenId: chosenPlannerId as PlannerId, payload })
+          setConfirmOffPlanOpen(true)
+          setSaving(false)
+          return
+        }
+      } catch {
+        // Soft-fail: never block trade entry if allowance computation fails.
+      }
+    }
+
+    const { error } = await supabaseBrowser.from('trades').insert(payload as any)
+    if (error) { setErr(error.message); setSaving(false); return }
+
+    setOk('Sell recorded.')
+    broadcast()
+    refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosenPlannerId })
+    refreshHoldingsTokens()
+    resetAfterSubmit()
   }
 
-  function resetAfterSubmit() {
-    setPrice('')
-    setQty('')
-    setFee('')
-    // Keep mode aligned with current side and re-lock
-    setQtyMode(side === 'buy' ? 'usd' : 'tokens')
-    setQtyLocked(true)
-    setTime(new Date().toISOString().slice(0, 16))
-  }
+  setSaving(false)
+}
 
+function resetAfterSubmit() {
+  setPrice('')
+  setQty('')
+  setFee('')
+  setLedgerOnly(false)
+  // Keep mode aligned with current side and re-lock
+  setQtyMode(side === 'buy' ? 'usd' : 'tokens')
+  setQtyLocked(true)
+  setTime(new Date().toISOString().slice(0, 16))
+}
   const noActiveBuy = !activeBuy
   const noActiveSell = !activeSell
 
@@ -1503,9 +1559,43 @@ className={`${tradeInput} text-[rgb(157,163,175)]`}
       </div>
 
 {/* Actions row: (Sell) planner selector LEFT, helper text RIGHT of it, buttons FAR RIGHT */}
+{/* Actions row: toggle LEFT, then (Sell) planner selector, helper text, buttons RIGHT */}
 <div className="flex flex-col gap-2 md:flex-row md:items-center min-w-0">
-  {/* Left: sell planner selector */}
-  {side === 'sell' ? (
+  {/* Left: floating ledger-only toggle */}
+<div className="flex items-center gap-3 md:shrink-0 md:self-start">
+<label className="inline-flex items-center gap-2 text-[12px] font-medium text-slate-200 select-none cursor-pointer">
+  <input
+    type="checkbox"
+    checked={ledgerOnly}
+    onChange={(e) => setLedgerOnly(e.target.checked)}
+    className="peer sr-only"
+  />
+  <span
+    className="relative inline-block h-4 w-8 rounded-full bg-slate-600 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform after:duration-150 after:content-[''] peer-checked:bg-violet-500/70 peer-checked:after:translate-x-4"
+    aria-hidden="true"
+  />
+  <span>Ledger only</span>
+</label>
+
+  <span
+    data-pin-toggle-slot
+    className="inline-flex items-center"
+    aria-hidden="true"
+  />
+
+  <span
+    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-[0.02em] ${
+      ledgerOnly
+        ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
+        : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+    }`}
+  >
+    {ledgerOnly ? 'Planner impact off' : 'Planner impact on'}
+  </span>
+</div>
+
+  {/* Middle-left: sell planner selector */}
+  {side === 'sell' && !ledgerOnly ? (
     <div className="w-full md:w-[240px] md:shrink-0">
       <SellPlannerSelector
         value={selectedSellPlannerId}
@@ -1517,26 +1607,35 @@ className={`${tradeInput} text-[rgb(157,163,175)]`}
   ) : null}
 
   {/* Middle: helper text */}
-  {side === 'sell' ? (
-    <div className="text-[11px] text-slate-400 leading-snug min-w-0 md:flex-1">
+  <div className="text-[11px] text-slate-400 leading-snug min-w-0 md:flex-1">
+    {ledgerOnly ? (
       <div>
-        Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
+        {side === 'sell' && user ? (
+          <>
+            {' '}Total available to sell:{' '}
+            <span className="text-slate-200">{holdingsLoading ? '…' : fmtTokens(holdingsTokens)}</span> tokens.
+          </>
+        ) : null}
       </div>
-
-      {user && (
+    ) : side === 'sell' ? (
+      <>
         <div>
-          Available to sell:{' '}
-          <span className="text-slate-200">
-{plannerRemainingLoading ? '…' : fmtTokens(plannerRemainingTokens)}
-          </span>{' '}
-          tokens
+          Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
         </div>
-      )}
-    </div>
-  ) : (
-    // Spacer keeps buttons right-aligned on desktop when not selling
-    <div className="hidden md:block md:flex-1" />
-  )}
+
+        {user && (
+          <div>
+            Available to sell:{' '}
+            <span className="text-slate-200">{plannerRemainingLoading ? '…' : fmtTokens(plannerRemainingTokens)}</span>{' '}
+            tokens
+          </div>
+        )}
+      </>
+    ) : (
+      <div>
+      </div>
+    )}
+  </div>
 
   {/* Right: buttons */}
   <div className="flex gap-2 md:shrink-0 md:justify-end">
@@ -1561,7 +1660,7 @@ className={`${tradeInput} text-[rgb(157,163,175)]`}
     </button>
   </div>
 </div>
-  
+
       </div>
       <style jsx>{`
   /* Matches Planner page "Save New" hover behavior (gradient reveal on hover) */
