@@ -9,7 +9,14 @@ import { aliasCoinId } from "@/lib/coinIdAliases";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Pt = { t: number; p: number };
+type Pt = {
+  t: number;
+  p: number;
+  o?: number;
+  h?: number;
+  l?: number;
+  c?: number;
+};
 
 const CG_BASE =
   process.env.PROVIDER_CG_BASE ?? "https://api.coingecko.com/api/v3";
@@ -62,7 +69,7 @@ async function fetchDailyFromDb(
 
   const url =
     `${SUPABASE_URL}/rest/v1/coin_bars_daily` +
-    `?select=ts,close` +
+    `?select=ts,open,high,low,close` +
     `&id=eq.${encodeURIComponent(canonicalId)}` +
     `&currency=eq.${encodeURIComponent(currency)}` +
     `&ts=gte.${encodeURIComponent(fromIso)}` +
@@ -91,12 +98,18 @@ async function fetchDailyFromDb(
     return data.map((row) => ({
       t: new Date(row.ts).getTime(),
       p: Number(row.close),
+      o: Number(row.open),
+      h: Number(row.high),
+      l: Number(row.low),
+      c: Number(row.close),
     }));
   } catch {
     // Any network / JSON errors => treat as no data.
     return null;
   }
 }
+
+
 
 /**
  * Upsert daily bars into coin_bars_daily using Supabase REST.
@@ -141,14 +154,18 @@ async function upsertDailyBars(
       )
     ).toISOString();
 
-    const close = pt.p;
+    const close = Number.isFinite(pt.c) ? Number(pt.c) : pt.p;
+    const open = Number.isFinite(pt.o) ? Number(pt.o) : close;
+    const high = Number.isFinite(pt.h) ? Number(pt.h) : close;
+    const low = Number.isFinite(pt.l) ? Number(pt.l) : close;
+
     return {
       id: canonicalId,
       currency,
       ts: tsMidnight,
-      open: close,
-      high: close,
-      low: close,
+      open,
+      high,
+      low,
       close,
       volume: null as number | null,
     };
@@ -224,6 +241,130 @@ async function upsertDailyBars(
 // ─────────────────────────────────────────────────────────────
 // Coingecko + consensus helpers (existing Phase 4A logic)
 // ─────────────────────────────────────────────────────────────
+
+function looksCloseOnlyHistory(points: Pt[]): boolean {
+  if (points.length < 10) return false;
+
+  let flatCount = 0;
+
+  for (const point of points) {
+    const open = Number(point.o ?? point.p);
+    const high = Number(point.h ?? point.p);
+    const low = Number(point.l ?? point.p);
+    const close = Number(point.c ?? point.p);
+
+    if (
+      Number.isFinite(open) &&
+      Number.isFinite(high) &&
+      Number.isFinite(low) &&
+      Number.isFinite(close) &&
+      open === high &&
+      high === low &&
+      low === close
+    ) {
+      flatCount += 1;
+    }
+  }
+
+  return flatCount / points.length >= 0.95;
+}
+
+function normalizeOhlcPoints(raw: unknown): Pt[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: Pt[] = [];
+
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length < 5) continue;
+
+    const t = Number(row[0]);
+    const o = Number(row[1]);
+    const h = Number(row[2]);
+    const l = Number(row[3]);
+    const c = Number(row[4]);
+
+    if (
+      !Number.isFinite(t) ||
+      !Number.isFinite(o) ||
+      !Number.isFinite(h) ||
+      !Number.isFinite(l) ||
+      !Number.isFinite(c) ||
+      o <= 0 ||
+      h <= 0 ||
+      l <= 0 ||
+      c <= 0
+    ) {
+      continue;
+    }
+
+    out.push({ t, p: c, o, h, l, c });
+  }
+
+  return out.sort((a, b) => a.t - b.t);
+}
+
+function pickCgOhlcDays(days: number): string {
+  if (days <= 1) return "1";
+  if (days <= 7) return "7";
+  if (days <= 14) return "14";
+  if (days <= 30) return "30";
+  if (days <= 90) return "90";
+  if (days <= 180) return "180";
+  if (days <= 365) return "365";
+  return "max";
+}
+
+async function fetchCgOhlc(
+  id: string,
+  currency: string,
+  days: number
+): Promise<Pt[]> {
+  const url =
+    `${CG_BASE}/coins/${encodeURIComponent(id)}/ohlc` +
+    `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
+    `&days=${encodeURIComponent(pickCgOhlcDays(days))}` +
+    `&precision=full`;
+
+  const raw = await robustJsonFetch(url);
+  return normalizeOhlcPoints(raw);
+}
+
+async function fetchCgOhlcRangeChunked(
+  id: string,
+  currency: string,
+  days: number
+): Promise<Pt[]> {
+  const DAY_SEC = 24 * 60 * 60;
+  const WINDOW_SEC = 180 * DAY_SEC;
+  const endSec = Math.floor(Date.now() / 1000);
+  const startSec = endSec - days * DAY_SEC;
+  const merged: Pt[] = [];
+
+  for (let fromSec = startSec; fromSec < endSec; fromSec += WINDOW_SEC) {
+    const toSec = Math.min(endSec, fromSec + WINDOW_SEC);
+    const url =
+      `${CG_BASE}/coins/${encodeURIComponent(id)}/ohlc/range` +
+      `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
+      `&from=${encodeURIComponent(String(fromSec))}` +
+      `&to=${encodeURIComponent(String(toSec))}` +
+      `&interval=daily` +
+      `&precision=full`;
+
+    const raw = await robustJsonFetch(url);
+    merged.push(...normalizeOhlcPoints(raw));
+  }
+
+  merged.sort((a, b) => a.t - b.t);
+
+  const dedup: Pt[] = [];
+  for (const point of merged) {
+    if (!dedup.length || dedup[dedup.length - 1].t !== point.t) {
+      dedup.push(point);
+    }
+  }
+
+  return dedup;
+}
 
 function cgHeaders(): Record<string, string> {
   const demo = process.env.CG_API_KEY || process.env.X_CG_DEMO_API_KEY;
@@ -376,16 +517,15 @@ export async function GET(req: NextRequest) {
             const DAY_MS = 24 * 60 * 60 * 1000;
             const HOUR_MS = 60 * 60 * 1000;
             const windowStartMs = Date.now() - days * DAY_MS;
-
-            // Allow a small tolerance (DB might not have an exact point at window start)
             const coverageOk = dbDaily[0].t <= windowStartMs + 36 * HOUR_MS;
+            const closeOnlyApprox = looksCloseOnlyHistory(dbDaily);
 
-            if (coverageOk) {
+            if (coverageOk && !closeOnlyApprox) {
               notes.push("db.daily.hit");
               points = dbDaily;
             } else {
-              // Partial DB coverage: fall back to CG for the full window and opportunistically backfill DB.
-              notes.push("db.daily.partial");
+              if (!coverageOk) notes.push("db.daily.partial");
+              if (closeOnlyApprox) notes.push("db.daily.close_only");
               notes.push("db.daily.miss");
             }
           } else {
@@ -395,8 +535,39 @@ export async function GET(req: NextRequest) {
           notes.push("db.disabled");
         }
 
+        // If DB didn't satisfy, try to fetch OHLC so downstream consumers
+        // (like anchor detection) can use real candle highs/lows (wicks).
+        if (points.length === 0) {
+          try {
+            if (days > 180) {
+              notes.push(`cg.ohlc.range(${days})`);
+              const ohlcRange = await fetchCgOhlcRangeChunked(cgId, currency, days);
+              if (Array.isArray(ohlcRange) && ohlcRange.length >= 2) {
+                points = ohlcRange;
+              } else {
+                notes.push("cg.ohlc.range.empty");
+              }
+            }
+          } catch (e: any) {
+            notes.push(`cg.ohlc.range.error:${String(e?.message || e)}`);
+          }
+        }
 
-        // If DB didn't satisfy, fall back to Coingecko daily path
+        if (points.length === 0) {
+          try {
+            notes.push(`cg.ohlc(${days})`);
+            const ohlc = await fetchCgOhlc(cgId, currency, days);
+            if (Array.isArray(ohlc) && ohlc.length >= 2) {
+              points = ohlc;
+            } else {
+              notes.push("cg.ohlc.empty");
+            }
+          } catch (e: any) {
+            notes.push(`cg.ohlc.error:${String(e?.message || e)}`);
+          }
+        }
+
+        // Final daily fallback preserves the existing close-only behavior.
         if (points.length === 0) {
           notes.push(`cg.daily(${days})`);
           const daily = await fetchCgDaily(cgId, currency, days); // mapped id here
@@ -422,7 +593,7 @@ export async function GET(req: NextRequest) {
         // For hourly/minute, we still attempt market_chart for <= 7d windows
         const cappedDays = Math.min(days, 7); // CG returns hourly granularity up to 7D reliably
         const url =
-          `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` + // mapped id here
+          `${CG_BASE}/coins/${encodeURIComponent(cgId)}/market_chart` +
           `?vs_currency=${encodeURIComponent(currency.toLowerCase())}` +
           `&days=${encodeURIComponent(String(cappedDays))}`;
         notes.push(`cg.generic(${cappedDays}d)`);
@@ -433,6 +604,7 @@ export async function GET(req: NextRequest) {
         points = prices.map(([t, p]) => ({ t, p }));
       }
     }
+  
   } catch (e: any) {
     notes.push(`cg.error:${String(e?.message || e)}`);
   }

@@ -52,7 +52,14 @@ export type PricesPayload = {
   updatedAt: string; // ISO
 };
 
-export type HistoryPoint = { t: number; p: number };
+export type HistoryPoint = {
+  t: number;
+  p: number;
+  o?: number;
+  h?: number;
+  l?: number;
+  c?: number;
+};
 
 export type HistoryPayload = {
   points: HistoryPoint[];

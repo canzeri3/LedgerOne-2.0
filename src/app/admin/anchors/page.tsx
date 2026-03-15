@@ -25,7 +25,7 @@ type ResolvedAnchorUi = {
   error?: boolean
 }
 
-const DEFAULT_PUMP = 1.5
+const DEFAULT_PUMP = 1.8
 
 function parseNumberOrNull(raw: string): number | null {
   const s = raw.trim()
@@ -41,8 +41,8 @@ function formatAnchorSource(source: string | null | undefined): string {
       return 'Auto pump'
     case 'admin_anchor_forced':
       return 'Manual forced'
+    case 'admin_anchor':
     case 'admin_anchor_fallback':
-      return 'Admin fallback'
     case 'admin_anchor_post_history_fallback':
       return 'Admin fallback'
     case 'fallback_high':
@@ -295,9 +295,9 @@ export default function AdminAnchorsClient() {
           Price Cycle Anchors
         </h1>
         <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)] max-w-2xl">
-          Configure per-asset pump thresholds and manual top prices used by the
-          price-cycle engine. Auto uses historical 50–70% pumps; manual anchors
-          act as fallbacks, and you can force manual when needed.
+Configure per-asset pump thresholds and manual top prices used by the
+price-cycle engine. Auto uses a 1.8x pump by default unless overridden
+per asset; manual anchors act as fallbacks, and you can force manual when needed.
         </p>
       </header>
 

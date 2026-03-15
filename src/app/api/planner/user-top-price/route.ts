@@ -278,27 +278,32 @@ function getLocalLowIndices(points: HistoryPoint[]) {
 
   return lows
 }
-
- function findPumpCycle(
+function findPumpCycle(
   points: HistoryPoint[],
   pumpMultiple: number,
   localLowIndices: number[]
 ) {
+  // Business rule:
+  // start from the most recent LOCAL LOW and move backward in time.
+  // For each low, scan forward to the end of the loaded dataset,
+  // find the highest wick/high after that low, and use that peak
+  // if it satisfies the pump multiple.
   for (let i = localLowIndices.length - 1; i >= 0; i -= 1) {
     const lowIdx = localLowIndices[i]
     const low = points[lowIdx]
 
     let peakIdx = -1
-    let peakPrice = -Infinity
+    let peakHigh = -Infinity
 
     for (let j = lowIdx + 1; j < points.length; j += 1) {
-      if (points[j].h > peakPrice) {
-        peakPrice = points[j].h
+      const high = points[j].h
+      if (high > peakHigh) {
+        peakHigh = high
         peakIdx = j
       }
     }
 
-    if (peakIdx > lowIdx && peakPrice >= low.l * pumpMultiple) {
+    if (peakIdx !== -1 && peakHigh >= low.l * pumpMultiple) {
       return { lowIdx, peakIdx }
     }
   }
@@ -401,7 +406,7 @@ export async function GET(request: NextRequest) {
       } else if (adminTopPrice && adminTopPrice > 0) {
         topPrice = adminTopPrice
         source = 'admin_anchor'
-        notes.push('topPrice.source=admin_anchor_fallback')
+notes.push('topPrice.source=admin_anchor')
       } else if (fallbackHigh && fallbackHigh.h > 0) {
         topPrice = fallbackHigh.h
         source = 'fallback_high'
@@ -413,7 +418,7 @@ export async function GET(request: NextRequest) {
   if (!topPrice && adminTopPrice && adminTopPrice > 0) {
     topPrice = adminTopPrice
     source = anchorRow?.force_manual_anchor ? 'admin_anchor_forced' : 'admin_anchor'
-    notes.push('topPrice.source=admin_anchor_post_history_fallback')
+notes.push('topPrice.source=admin_anchor')
   }
 
   const body: {
