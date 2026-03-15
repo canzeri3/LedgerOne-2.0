@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -76,15 +76,28 @@ function CoinDropdown({
     ? `${selected.name} (${(selected.symbol ?? '').toUpperCase()})`
     : ''
 
+  const deferredQuery = useDeferredValue(query)
+
+  const searchableItems = useMemo(
+    () =>
+      items.map((coin) => ({
+        coin,
+        searchText: [coin.name, coin.symbol, coin.coingecko_id]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase(),
+      })),
+    [items]
+  )
+
   const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = deferredQuery.trim().toLowerCase()
     if (!q) return items
-    return items.filter(c => {
-      const name = c.name?.toLowerCase() ?? ''
-      const sym = c.symbol?.toLowerCase() ?? ''
-      return name.includes(q) || sym.includes(q)
-    })
-  }, [items, query])
+
+    return searchableItems
+      .filter(({ searchText }) => searchText.includes(q))
+      .map(({ coin }) => coin)
+  }, [deferredQuery, items, searchableItems])
 
   useEffect(() => {
     const nextIndex = filteredItems.findIndex(i => i.coingecko_id === selectedId)
@@ -311,7 +324,7 @@ function CoinDropdown({
 export default function PlannerPage() {
   // ── Data: coins list ──────────────────────────────────────────────────────
   const { data: coins } = useSWR<Coin[]>(
-    '/api/coins?limit=200&order=marketcap',
+    '/api/coins?limit=500&order=marketcap',
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )

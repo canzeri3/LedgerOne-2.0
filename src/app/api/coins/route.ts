@@ -7,7 +7,7 @@ const supabase = createClient(
 )
 
 const DEFAULT_LIMIT = 200
-const MAX_LIMIT = 200
+const MAX_LIMIT = 500
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)

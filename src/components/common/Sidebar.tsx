@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, ReactNode } from 'react'
+import { useDeferredValue, useMemo, useState, ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import useSWR from 'swr'
@@ -93,10 +93,13 @@ export default function Sidebar() {
   const [coinsOpen, setCoinsOpen] = useState<boolean>(true)
   const [query, setQuery] = useState('')
 
-  const { data: coins } = useSWR<Coin[]>('/api/coins?limit=200&order=marketcap', fetcher)
-    const { set: favSet } = useFavorites()
+  const { data: coins } = useSWR<Coin[]>(
+    '/api/coins?limit=500&order=marketcap',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
+  const { set: favSet } = useFavorites()
 
-  // Keep existing market-cap sort logic (top 200)
   const topCoins: Coin[] = useMemo(() => {
     const list = Array.isArray(coins) ? coins.slice() : []
     list.sort((a, b) => {
@@ -104,22 +107,32 @@ export default function Sidebar() {
       const rb = b.market_cap_rank ?? Number.MAX_SAFE_INTEGER
       return ra - rb
     })
-    return list.slice(0, 200)
+    return list.slice(0, 500)
   }, [coins])
 
-  // Search filter
-  const filteredCoins = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const src = topCoins
-    if (!q) return src
-    return src.filter(
-      (c) =>
-        c.symbol?.toLowerCase().includes(q) ||
-        c.name?.toLowerCase().includes(q) ||
-        c.coingecko_id?.toLowerCase().includes(q)
-    )
-  }, [query, topCoins])
+  const deferredQuery = useDeferredValue(query)
 
+  const searchableCoins = useMemo(
+    () =>
+      topCoins.map((coin) => ({
+        coin,
+        searchText: [coin.symbol, coin.name, coin.coingecko_id]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase(),
+      })),
+    [topCoins]
+  )
+
+  const filteredCoins = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase()
+    if (!q) return topCoins
+
+    return searchableCoins
+      .filter(({ searchText }) => searchText.includes(q))
+      .map(({ coin }) => coin)
+  }, [deferredQuery, searchableCoins, topCoins])
+  
   return (
     // Sidebar scrolls independently if content exceeds viewport
 <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden scrollbar-auto-hide">
