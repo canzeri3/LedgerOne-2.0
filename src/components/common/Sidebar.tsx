@@ -93,10 +93,10 @@ export default function Sidebar() {
   const [coinsOpen, setCoinsOpen] = useState<boolean>(true)
   const [query, setQuery] = useState('')
 
-  const { data: coins } = useSWR<Coin[]>('/api/coins', fetcher)
-  const { set: favSet } = useFavorites()
+  const { data: coins } = useSWR<Coin[]>('/api/coins?limit=200&order=marketcap', fetcher)
+    const { set: favSet } = useFavorites()
 
-  // Keep existing market-cap sort logic (top 50)
+  // Keep existing market-cap sort logic (top 200)
   const topCoins: Coin[] = useMemo(() => {
     const list = Array.isArray(coins) ? coins.slice() : []
     list.sort((a, b) => {
@@ -104,7 +104,7 @@ export default function Sidebar() {
       const rb = b.market_cap_rank ?? Number.MAX_SAFE_INTEGER
       return ra - rb
     })
-    return list.slice(0, 50)
+    return list.slice(0, 200)
   }, [coins])
 
   // Search filter

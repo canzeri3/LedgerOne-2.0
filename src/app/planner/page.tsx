@@ -311,7 +311,7 @@ function CoinDropdown({
 export default function PlannerPage() {
   // ── Data: coins list ──────────────────────────────────────────────────────
   const { data: coins } = useSWR<Coin[]>(
-    '/api/coins?limit=50&order=marketcap',
+    '/api/coins?limit=200&order=marketcap',
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
