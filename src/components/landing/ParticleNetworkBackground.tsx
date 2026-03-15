@@ -37,35 +37,27 @@ type NodePoint = {
   lineAlphaScale: number
 }
 
-const MAX_DPR = 2
+const MAX_DPR = 1.5
+const TARGET_FPS = 45
+const FRAME_MS = 1000 / TARGET_FPS
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-/**
- * Normalized layout taken from your markup screenshot.
- * Values are based on the container size, so they scale responsively.
- *
- * RED = big cluster
- * YELLOW = small clusters only
- */
 const CLUSTER_LAYOUT: ClusterSpec[] = [
-// Small Right-Top
   {
-  id: 'top-left',
-  kind: 'small',
-  centerX: 0.93,
-  centerY: 0.175,
-  radiusX: 0.025,
-  radiusY: 0.065,
-  rotation: 0,
-  minDots: 5,
-  maxDots: 10,
-  linkDistance: 78,
-},
-
-  // Big Top hero/card cluster
+    id: 'top-left',
+    kind: 'small',
+    centerX: 0.93,
+    centerY: 0.175,
+    radiusX: 0.025,
+    radiusY: 0.065,
+    rotation: 0,
+    minDots: 5,
+    maxDots: 10,
+    linkDistance: 78,
+  },
   {
     id: 'hero-big',
     kind: 'big',
@@ -78,7 +70,6 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
     maxDots: 60,
     linkDistance: 150,
   },
-  // Tiny right-side small oval
   {
     id: 'top-right-tiny',
     kind: 'small',
@@ -91,34 +82,30 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
     maxDots: 6,
     linkDistance: 20,
   },
-
-// Big Bottom hero/card cluster
-{
-  id: 'right-lower-card',
-  kind: 'small',
-  centerX: 0.68,
-  centerY: 0.6,
-  radiusX: 0.2,
-  radiusY: 0.17,
-  rotation: 0.22,
-  minDots: 45,
-  maxDots: 50,
-  linkDistance: 150,
-},
-
-{
-  id: 'center-left-mid',
-  kind: 'small',
-  centerX: 0.41,
-  centerY: 0.68,
-  radiusX: 0.045,
-  radiusY: 0.09,
-  rotation: -0.35,
-  minDots: 6,
-  maxDots: 10,
-  linkDistance: 80,
-},
-  // Bottom-right oval
+  {
+    id: 'right-lower-card',
+    kind: 'small',
+    centerX: 0.68,
+    centerY: 0.6,
+    radiusX: 0.2,
+    radiusY: 0.17,
+    rotation: 0.22,
+    minDots: 45,
+    maxDots: 50,
+    linkDistance: 150,
+  },
+  {
+    id: 'center-left-mid',
+    kind: 'small',
+    centerX: 0.41,
+    centerY: 0.68,
+    radiusX: 0.045,
+    radiusY: 0.09,
+    rotation: -0.35,
+    minDots: 6,
+    maxDots: 10,
+    linkDistance: 80,
+  },
   {
     id: 'bottom-right',
     kind: 'small',
@@ -133,11 +120,12 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
   },
 ]
 
-function pickDotCount(spec: ClusterSpec, width: number, height: number) {
-  const areaScale = clamp((width * height) / 1_600_000, 0.9, 1.15)
+function pickDotCount(spec: ClusterSpec, width: number, height: number, reducedMotion: boolean) {
+  const areaScale = clamp((width * height) / 1_600_000, 0.9, 1.1)
+  const densityScale = reducedMotion ? 0.82 : 0.9
   const raw =
     spec.minDots +
-    Math.round((spec.maxDots - spec.minDots) * areaScale * (0.45 + Math.random() * 0.4))
+    Math.round((spec.maxDots - spec.minDots) * areaScale * densityScale * (0.45 + Math.random() * 0.32))
 
   return clamp(raw, spec.minDots, spec.maxDots)
 }
@@ -168,28 +156,36 @@ function makeNode(spec: ClusterSpec, width: number, height: number, reducedMotio
   const sampled = samplePointInEllipse(spec, width, height)
   const minEdge = Math.min(width, height)
 
-const driftSpeed = reducedMotion ? 0.02 : 0.11
+  const driftSpeed = reducedMotion ? 0.018 : 0.085
   const angle = Math.random() * Math.PI * 2
-
   const isBig = spec.kind === 'big'
 
   return {
-    x: sampled.x + (Math.random() - 0.5) * (isBig ? 10 : 6),
-    y: sampled.y + (Math.random() - 0.5) * (isBig ? 10 : 6),
+    x: sampled.x + (Math.random() - 0.5) * (isBig ? 9 : 5),
+    y: sampled.y + (Math.random() - 0.5) * (isBig ? 9 : 5),
     homeX: sampled.x,
     homeY: sampled.y,
     vx: Math.cos(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
     vy: Math.sin(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
     pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
     radius: isBig
-      ? (minEdge < 420 ? 1.25 : 1.45) + Math.random() * 2.3
-      : (minEdge < 420 ? 1.0 : 1.15) + Math.random() * 1.6,
-    glow: isBig ? 8 + Math.random() * 12 : 5 + Math.random() * 8,
+      ? (minEdge < 420 ? 1.25 : 1.45) + Math.random() * 2.1
+      : (minEdge < 420 ? 1.0 : 1.15) + Math.random() * 1.45,
+    glow: isBig ? 7 + Math.random() * 10 : 4 + Math.random() * 7,
     alpha: isBig ? 0.16 + Math.random() * 0.16 : 0.14 + Math.random() * 0.14,
     clusterId: spec.id,
     linkDistance: spec.linkDistance,
     lineAlphaScale: isBig ? 1 : 0.82,
   }
+}
+
+function addNodeToClusterMap(map: Map<string, NodePoint[]>, node: NodePoint) {
+  const existing = map.get(node.clusterId)
+  if (existing) {
+    existing.push(node)
+    return
+  }
+  map.set(node.clusterId, [node])
 }
 
 export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBackgroundProps) {
@@ -209,6 +205,23 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     let height = 0
     let dpr = 1
     let nodes: NodePoint[] = []
+    let nodesByCluster = new Map<string, NodePoint[]>()
+    let lastFrameTime = 0
+    let sceneInView = true
+    let destroyed = false
+
+    const shouldAnimate = () => !destroyed && sceneInView && !document.hidden
+
+    const stopAnimation = () => {
+      if (!animationFrameId) return
+      window.cancelAnimationFrame(animationFrameId)
+      animationFrameId = 0
+    }
+
+    const queueFrame = () => {
+      if (animationFrameId || !shouldAnimate()) return
+      animationFrameId = window.requestAnimationFrame(render)
+    }
 
     const setCanvasSize = () => {
       const bounds = canvas.getBoundingClientRect()
@@ -223,26 +236,27 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
 
     const createNodes = () => {
       const nextNodes: NodePoint[] = []
+      const nextByCluster = new Map<string, NodePoint[]>()
 
       for (const spec of CLUSTER_LAYOUT) {
-        const count = pickDotCount(spec, width, height)
-
+        const count = pickDotCount(spec, width, height, reducedMotion)
         for (let i = 0; i < count; i += 1) {
-          nextNodes.push(makeNode(spec, width, height, reducedMotion))
+          const node = makeNode(spec, width, height, reducedMotion)
+          nextNodes.push(node)
+          addNodeToClusterMap(nextByCluster, node)
         }
       }
 
       nodes = nextNodes
+      nodesByCluster = nextByCluster
     }
 
     const updateNodes = () => {
       for (const node of nodes) {
         node.vx += (node.homeX - node.x) * node.pull
         node.vy += (node.homeY - node.y) * node.pull
-
-       node.vx *= 0.996
-node.vy *= 0.996
-
+        node.vx *= 0.996
+        node.vy *= 0.996
         node.x += node.vx
         node.y += node.vy
       }
@@ -261,7 +275,6 @@ node.vy *= 0.996
       topGlow.addColorStop(0.24, 'rgba(49, 46, 129, 0.04)')
       topGlow.addColorStop(0.52, 'rgba(15, 23, 42, 0.04)')
       topGlow.addColorStop(0.82, 'rgba(2, 6, 23, 0.00)')
-
       ctx.fillStyle = topGlow
       ctx.fillRect(0, 0, width, height)
 
@@ -276,7 +289,6 @@ node.vy *= 0.996
       heroGlow.addColorStop(0, 'rgba(37, 99, 235, 0.03)')
       heroGlow.addColorStop(0.32, 'rgba(30, 41, 59, 0.04)')
       heroGlow.addColorStop(0.72, 'rgba(2, 6, 23, 0.00)')
-
       ctx.fillStyle = heroGlow
       ctx.fillRect(0, 0, width, height)
 
@@ -285,40 +297,40 @@ node.vy *= 0.996
       nightWash.addColorStop(0.26, 'rgba(2, 6, 23, 0.08)')
       nightWash.addColorStop(0.72, 'rgba(2, 6, 23, 0.14)')
       nightWash.addColorStop(1, 'rgba(2, 6, 23, 0.3)')
-
       ctx.fillStyle = nightWash
       ctx.fillRect(0, 0, width, height)
     }
 
     const drawConnections = () => {
-      for (let i = 0; i < nodes.length; i += 1) {
-        for (let j = i + 1; j < nodes.length; j += 1) {
-          const a = nodes[i]
-          const b = nodes[j]
+      for (const clusterNodes of nodesByCluster.values()) {
+        for (let i = 0; i < clusterNodes.length; i += 1) {
+          const a = clusterNodes[i]
 
-          // Only connect dots inside the same marked cluster.
-          if (a.clusterId !== b.clusterId) continue
+          for (let j = i + 1; j < clusterNodes.length; j += 1) {
+            const b = clusterNodes[j]
+            const dx = a.x - b.x
+            const dy = a.y - b.y
+            const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
+            const distanceLimitSq = distanceLimit * distanceLimit
+            const distanceSq = dx * dx + dy * dy
 
-          const dx = a.x - b.x
-          const dy = a.y - b.y
-          const distance = Math.hypot(dx, dy)
-          const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
+            if (distanceSq > distanceLimitSq) continue
 
-          if (distance > distanceLimit) continue
+            const distance = Math.sqrt(distanceSq)
+            const linkStrength = 1 - distance / distanceLimit
+            const opacity =
+              (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
 
-          const linkStrength = 1 - distance / distanceLimit
-          const opacity =
-            (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
-
-          ctx.beginPath()
-          ctx.moveTo(a.x, a.y)
-          ctx.lineTo(b.x, b.y)
-          ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
-          ctx.lineWidth = distance < distanceLimit * 0.42 ? 1.02 : 0.78
-          ctx.shadowColor = 'rgba(96, 165, 250, 0.2)'
-          ctx.shadowBlur = 3
-          ctx.stroke()
-          ctx.shadowBlur = 0
+            ctx.beginPath()
+            ctx.moveTo(a.x, a.y)
+            ctx.lineTo(b.x, b.y)
+            ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
+            ctx.lineWidth = distance < distanceLimit * 0.42 ? 0.96 : 0.72
+            ctx.shadowColor = 'rgba(96, 165, 250, 0.18)'
+            ctx.shadowBlur = 2
+            ctx.stroke()
+            ctx.shadowBlur = 0
+          }
         }
       }
     }
@@ -330,7 +342,7 @@ node.vy *= 0.996
         ctx.beginPath()
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
         ctx.fillStyle = `rgba(239, 246, 255, ${node.alpha.toFixed(4)})`
-        ctx.shadowColor = 'rgba(96, 165, 250, 0.95)'
+        ctx.shadowColor = 'rgba(96, 165, 250, 0.92)'
         ctx.shadowBlur = node.glow
         ctx.fill()
 
@@ -342,39 +354,93 @@ node.vy *= 0.996
       }
     }
 
-    const render = () => {
+    const render = (now: number) => {
+      animationFrameId = 0
+      if (!shouldAnimate()) return
+
+      if (lastFrameTime && now - lastFrameTime < FRAME_MS) {
+        queueFrame()
+        return
+      }
+
+      lastFrameTime = now
       ctx.clearRect(0, 0, width, height)
       drawBackdrop()
       drawConnections()
       drawNodes()
       updateNodes()
-      animationFrameId = window.requestAnimationFrame(render)
+      queueFrame()
     }
 
     const resetScene = () => {
       setCanvasSize()
       createNodes()
+      lastFrameTime = 0
+      queueFrame()
     }
 
-    const handleReducedMotionChange = (event: MediaQueryListEvent) => {
-      reducedMotion = event.matches
+    const syncAnimationState = () => {
+      if (shouldAnimate()) {
+        lastFrameTime = 0
+        queueFrame()
+      } else {
+        stopAnimation()
+      }
+    }
+
+    const handleReducedMotionChange = () => {
+      reducedMotion = reducedMotionQuery.matches
       createNodes()
+      syncAnimationState()
     }
 
-    resetScene()
-    render()
-
+    const resizeTarget = canvas.parentElement ?? canvas
     const resizeObserver = new ResizeObserver(() => {
       resetScene()
     })
 
-    resizeObserver.observe(canvas)
-    reducedMotionQuery.addEventListener('change', handleReducedMotionChange)
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        sceneInView = Boolean(entries[0]?.isIntersecting)
+        syncAnimationState()
+      },
+      {
+        threshold: 0,
+        rootMargin: '20% 0px 20% 0px',
+      }
+    )
+
+    const onVisibilityChange = () => {
+      syncAnimationState()
+    }
+
+    resetScene()
+    resizeObserver.observe(resizeTarget)
+    intersectionObserver.observe(canvas)
+
+    if (typeof reducedMotionQuery.addEventListener === 'function') {
+      reducedMotionQuery.addEventListener('change', handleReducedMotionChange)
+    } else {
+      // eslint-disable-next-line deprecation/deprecation
+      reducedMotionQuery.addListener(handleReducedMotionChange)
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    syncAnimationState()
 
     return () => {
-      window.cancelAnimationFrame(animationFrameId)
+      destroyed = true
+      stopAnimation()
       resizeObserver.disconnect()
-      reducedMotionQuery.removeEventListener('change', handleReducedMotionChange)
+      intersectionObserver.disconnect()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+
+      if (typeof reducedMotionQuery.removeEventListener === 'function') {
+        reducedMotionQuery.removeEventListener('change', handleReducedMotionChange)
+      } else {
+        // eslint-disable-next-line deprecation/deprecation
+        reducedMotionQuery.removeListener(handleReducedMotionChange)
+      }
     }
   }, [])
 

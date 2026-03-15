@@ -41,7 +41,8 @@ function NavLink({
   icon: ReactNode
 }) {
   const pathname = usePathname()
-  const active = pathname === href || pathname?.startsWith(href + '/')
+const hrefPath = href.split('?')[0]
+const active = pathname === hrefPath || pathname?.startsWith(hrefPath + '/')
 
   return (
     <Link
@@ -72,10 +73,25 @@ const LOGO_SHIFT_Y_PX = 10 // positive = move image DOWN, negative = move UP (bo
 
 export default function Sidebar() {
   const pathname = usePathname()
+
+  const plannerHref = useMemo(() => {
+    const parts = (pathname ?? '').split('/').filter(Boolean)
+    if (parts[0] !== 'coins' || !parts[1]) return '/planner'
+
+    const coinId = (() => {
+      try {
+        return decodeURIComponent(parts[1])
+      } catch {
+        return parts[1]
+      }
+    })().trim()
+
+    return coinId ? `/planner?id=${encodeURIComponent(coinId)}` : '/planner'
+  }, [pathname])
+
   // Open Coins section by default on all pages
   const [coinsOpen, setCoinsOpen] = useState<boolean>(true)
   const [query, setQuery] = useState('')
-
 
   const { data: coins } = useSWR<Coin[]>('/api/coins', fetcher)
   const { set: favSet } = useFavorites()
@@ -150,11 +166,11 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
     </li>
 
     <li>
-      <NavLink
-        href="/planner"
-        label="Planner"
-        icon={<Target className="h-4 w-4 opacity-80" />}
-      />
+<NavLink
+  href={plannerHref}
+  label="Planner"
+  icon={<Target className="h-4 w-4 opacity-80" />}
+/>
     </li>
 
     <li>

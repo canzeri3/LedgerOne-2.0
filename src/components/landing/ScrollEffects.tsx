@@ -32,6 +32,59 @@ function usePrefersReducedMotion() {
   return reduced
 }
 
+type FrameSubscriber = () => void
+
+const frameSubscribers = new Set<FrameSubscriber>()
+let frameRafId = 0
+let frameListening = false
+
+function flushFrameSubscribers() {
+  frameRafId = 0
+  frameSubscribers.forEach((fn) => fn())
+}
+
+function requestSharedFrame() {
+  if (typeof window === 'undefined') return
+  if (frameRafId) return
+  frameRafId = window.requestAnimationFrame(flushFrameSubscribers)
+}
+
+function attachSharedFrameListeners() {
+  if (frameListening || typeof window === 'undefined') return
+
+  frameListening = true
+  window.addEventListener('scroll', requestSharedFrame, { passive: true })
+  window.addEventListener('resize', requestSharedFrame)
+  document.addEventListener('visibilitychange', requestSharedFrame)
+}
+
+function detachSharedFrameListeners() {
+  if (!frameListening || typeof window === 'undefined') return
+
+  frameListening = false
+  window.removeEventListener('scroll', requestSharedFrame)
+  window.removeEventListener('resize', requestSharedFrame)
+  document.removeEventListener('visibilitychange', requestSharedFrame)
+
+  if (frameRafId) {
+    window.cancelAnimationFrame(frameRafId)
+    frameRafId = 0
+  }
+}
+
+function subscribeToSharedFrame(fn: FrameSubscriber) {
+  if (typeof window === 'undefined') return () => {}
+
+  frameSubscribers.add(fn)
+  attachSharedFrameListeners()
+  requestSharedFrame()
+
+  return () => {
+    frameSubscribers.delete(fn)
+    if (!frameSubscribers.size) detachSharedFrameListeners()
+  }
+}
+
 type RevealProps = {
   children: React.ReactNode
   className?: string
@@ -39,11 +92,6 @@ type RevealProps = {
   once?: boolean
 }
 
-/**
- * Scroll reveal (fade + lift + slight blur) using IntersectionObserver.
- * - Transform-only (no layout shifts)
- * - Respects prefers-reduced-motion
- */
 export function Reveal({ children, className = '', delayMs = 0, once = true }: RevealProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
@@ -83,7 +131,7 @@ export function Reveal({ children, className = '', delayMs = 0, once = true }: R
       ref={ref}
       style={{ transitionDelay: `${delayMs}ms`, willChange: 'transform, opacity, filter' }}
       className={
-        `transition-all duration-700 ease-out ` +
+        `transition-[opacity,transform,filter] duration-700 ease-out ` +
         (inView ? 'opacity-100 translate-y-0 blur-0' : 'opacity-0 translate-y-6 blur-[2px]') +
         ` ${className}`
       }
@@ -99,30 +147,21 @@ type ScrollSpreadProps = {
   children: React.ReactNode
   className?: string
   fromOffsets?: FromOffset[]
-  startAt?: number // 0..1 of viewport height
-  endAt?: number   // 0..1 of viewport height
+  startAt?: number
+  endAt?: number
   maxRotateDeg?: number
 }
+
 type SplitRowProps = {
   children: React.ReactNode
   className?: string
-  /** Horizontal “split” distance in px for the left/right cards */
   spreadX?: number
-  /** Vertical settle distance in px (adds depth without looking messy) */
   liftY?: number
-  /** Transition duration in ms */
   durationMs?: number
-  /** Stagger between cards in ms */
   staggerMs?: number
-  /** Reveal once (recommended for clean feel) */
   once?: boolean
 }
 
-/**
- * Clean 3-up (or N-up) row animation:
- * cards start slightly “clustered” + faded, then split apart into place with a stagger.
- * This avoids jitter from continuous scroll-scrubbing.
- */
 export function SplitRow({
   children,
   className = '',
@@ -160,7 +199,6 @@ export function SplitRow({
           setOn(false)
         }
       },
-      // Slightly later trigger gives a more intentional “arrive + settle” feel
       { threshold: 0.18, rootMargin: '0px 0px -10% 0px' }
     )
 
@@ -174,12 +212,11 @@ export function SplitRow({
   return (
     <div ref={ref} className={className}>
       {items.map((child, i) => {
-        // For a 3-up row: left moves from +spreadX, right from -spreadX, center from 0
-        // For N-up: move proportionally toward center.
-        const dir = count === 3 ? (i === 0 ? 1 : i === 2 ? -1 : 0) : (mid - i)
+        const dir = count === 3 ? (i === 0 ? 1 : i === 2 ? -1 : 0) : mid - i
 
         const x0 = dir * spreadX
-        const y0 = count === 3 ? (i === 1 ? liftY : liftY * 0.6) : Math.min(liftY, Math.abs(dir) * (liftY * 0.55))
+        const y0 =
+          count === 3 ? (i === 1 ? liftY : liftY * 0.6) : Math.min(liftY, Math.abs(dir) * (liftY * 0.55))
 
         const opacity = on ? 1 : 0
         const scale = on ? 1 : 0.985
@@ -208,7 +245,6 @@ export function SplitRow({
 }
 
 function inferOffsets(count: number): FromOffset[] {
-  // Default “spread then settle” offsets (transform-only).
   if (count === 3) return [{ x: 32, y: 10, r: 1.2 }, { x: 0, y: 18, r: 0 }, { x: -32, y: 10, r: -1.2 }]
   return Array.from({ length: count }, (_, i) => {
     const mid = (count - 1) / 2
@@ -217,10 +253,6 @@ function inferOffsets(count: number): FromOffset[] {
   })
 }
 
-/**
- * Scroll-driven “cards spread apart then settle” effect.
- * Adds subtle rotation + scale for richer motion, still transform-only.
- */
 export function ScrollSpread({
   children,
   className = '',
@@ -247,31 +279,15 @@ export function ScrollSpread({
     const el = ref.current
     if (!el || typeof window === 'undefined') return
 
-    let raf = 0
-    const tick = () => {
-      raf = 0
+    return subscribeToSharedFrame(() => {
       const rect = el.getBoundingClientRect()
       const vh = Math.max(1, window.innerHeight)
       const startPx = vh * startAt
       const endPx = vh * endAt
       const denom = Math.max(1, startPx - endPx)
       const next = clamp01((startPx - rect.top) / denom)
-      setP(next)
-    }
-
-    const onScroll = () => {
-      if (raf) return
-      raf = window.requestAnimationFrame(tick)
-    }
-
-    tick()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) window.cancelAnimationFrame(raf)
-    }
+      setP((prev) => (Math.abs(prev - next) > 0.001 ? next : prev))
+    })
   }, [endAt, reducedMotion, startAt])
 
   return (
@@ -309,16 +325,13 @@ export function ScrollSpread({
 
 type ParallaxProps = {
   className?: string
-  strengthY?: number // px
-  strengthX?: number // px
+  strengthY?: number
+  strengthX?: number
   startAt?: number
   endAt?: number
   children?: React.ReactNode
 }
 
-/**
- * Parallax for decorative layers (halos, glows). Transform-only and pointer-events should remain none.
- */
 export function Parallax({
   className = '',
   strengthY = 22,
@@ -329,54 +342,37 @@ export function Parallax({
 }: ParallaxProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
-  const [p, setP] = useState(reducedMotion ? 1 : 0)
 
   useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
     if (reducedMotion) {
-      setP(1)
+      el.style.transform = 'translate3d(0px, 0px, 0px)'
       return
     }
 
-    const el = ref.current
-    if (!el || typeof window === 'undefined') return
-
-    let raf = 0
-    const tick = () => {
-      raf = 0
+    return subscribeToSharedFrame(() => {
       const rect = el.getBoundingClientRect()
       const vh = Math.max(1, window.innerHeight)
       const startPx = vh * startAt
       const endPx = vh * endAt
       const denom = Math.max(1, startPx - endPx)
-      const next = clamp01((startPx - rect.top) / denom)
-      setP(next)
-    }
+      const p = clamp01((startPx - rect.top) / denom)
+      const inv = 1 - p
+      const x = strengthX * inv
+      const y = strengthY * inv
 
-    const onScroll = () => {
-      if (raf) return
-      raf = window.requestAnimationFrame(tick)
-    }
-
-    tick()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) window.cancelAnimationFrame(raf)
-    }
-  }, [endAt, reducedMotion, startAt])
-
-  const inv = 1 - p
-  const x = strengthX * inv
-  const y = strengthY * inv
+      el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`
+    })
+  }, [endAt, reducedMotion, startAt, strengthX, strengthY])
 
   return (
     <div
       ref={ref}
       className={className}
       style={{
-        transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`,
+        transform: 'translate3d(0px, 0px, 0px)',
         willChange: 'transform',
       }}
     >
@@ -389,38 +385,20 @@ type ScrollProgressProps = {
   heightPx?: number
 }
 
-/**
- * Thin top progress bar: makes the page feel “alive” while scrolling.
- */
 export function ScrollProgress({ heightPx = 2 }: ScrollProgressProps) {
   const reducedMotion = usePrefersReducedMotion()
-  const [p, setP] = useState(0)
+  const barRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (reducedMotion) return
+    const el = barRef.current
+    if (!el || reducedMotion) return
 
-    let raf = 0
-    const tick = () => {
-      raf = 0
+    return subscribeToSharedFrame(() => {
       const doc = document.documentElement
       const max = Math.max(1, doc.scrollHeight - window.innerHeight)
-      const next = clamp01(window.scrollY / max)
-      setP(next)
-    }
-
-    const onScroll = () => {
-      if (raf) return
-      raf = window.requestAnimationFrame(tick)
-    }
-
-    tick()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
-      if (raf) window.cancelAnimationFrame(raf)
-    }
+      const p = clamp01(window.scrollY / max)
+      el.style.transform = `scaleX(${p.toFixed(4)})`
+    })
   }, [reducedMotion])
 
   if (reducedMotion) return null
@@ -428,8 +406,9 @@ export function ScrollProgress({ heightPx = 2 }: ScrollProgressProps) {
   return (
     <div className="pointer-events-none fixed left-0 top-0 z-[60] w-full" style={{ height: heightPx }}>
       <div
+        ref={barRef}
         className="h-full w-full origin-left bg-gradient-to-r from-indigo-500/70 via-emerald-500/60 to-sky-500/70"
-        style={{ transform: `scaleX(${p.toFixed(4)})` }}
+        style={{ transform: 'scaleX(0)' }}
       />
     </div>
   )
@@ -440,9 +419,6 @@ type DrawLineProps = {
   once?: boolean
 }
 
-/**
- * Small underline “draw” animation when it enters view.
- */
 export function DrawLine({ className = '', once = true }: DrawLineProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)

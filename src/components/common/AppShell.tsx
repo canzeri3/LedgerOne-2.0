@@ -73,13 +73,36 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Existing scroll shadow effect
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const onScroll = () => setScrolled(window.scrollY > (isMergedLanding ? 24 : 0))
-    onScroll()
+
+    const threshold = isMergedLanding ? 24 : 0
+    let raf = 0
+    let last = -1
+
+    const update = () => {
+      raf = 0
+      const next = window.scrollY > threshold ? 1 : 0
+      if (next !== last) {
+        last = next
+        setScrolled(next === 1)
+      }
+    }
+
+    const onScroll = () => {
+      if (raf) return
+      raf = window.requestAnimationFrame(update)
+    }
+
+    update()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    window.addEventListener('resize', onScroll)
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) window.cancelAnimationFrame(raf)
+    }
   }, [isMergedLanding])
-
-
+  
   // Watch the header AlertsTooltip text and detect if there is any numeric count > 0
   // Important: re-attach on route changes because the header tooltip subtree can be replaced.
   useEffect(() => {

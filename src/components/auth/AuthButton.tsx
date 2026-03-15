@@ -91,6 +91,7 @@ export default function AuthButton({ className, loggedOutVariant = 'icon' }: Pro
       setBusy(true)
       setOpen(false)
       await supabaseBrowser.auth.signOut()
+      router.replace('/')
       router.refresh()
     } finally {
       setBusy(false)

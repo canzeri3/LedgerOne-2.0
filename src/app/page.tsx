@@ -37,9 +37,9 @@ const PANEL_BALANCE_IMAGE = '/images/portfolio-balance-preview.png'
 
 const PANEL_IMAGE_ASPECT = '1200 / 1000'
 
-const PREVIEW_OPEN_MS = 560
-const PREVIEW_CLOSE_MS = 820
-const PREVIEW_IMAGE_SWAP_MS = 1000
+const PREVIEW_OPEN_MS = 280
+const PREVIEW_CLOSE_MS = 260
+const PREVIEW_IMAGE_SWAP_MS = 320
 const PREVIEW_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 type PreviewKey = 'buy' | 'sell' | 'balance'
@@ -116,7 +116,7 @@ function InfoCard({
   body: string
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-6 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-6 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-[transform,box-shadow] duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)]" />
       <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
 
@@ -134,7 +134,7 @@ function InfoCard({
 
 function InfoCardTight({ title, body }: { title: string; body: string }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
+    <div className="group relative overflow-hidden rounded-2xl bg-[#191a1c] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.34)] transition-[transform,box-shadow] duration-300 hover:-translate-y-[1px] hover:shadow-[0_18px_50px_rgba(0,0,0,0.42)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)]" />
       <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
 
@@ -200,14 +200,12 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
           }}
         />
 
-        <div
-          className={`relative transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-            open
-              ? 'translate-y-2 scale-[0.985] opacity-0 blur-[1px]'
-              : 'translate-y-0 scale-100 opacity-100 blur-0'
+          <div
+          className={`relative transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+            open ? 'translate-y-1 scale-[0.992] opacity-0' : 'translate-y-0 scale-100 opacity-100'
           }`}
           style={{
-            transitionDuration: `${open ? 420 : 680}ms`,
+            transitionDuration: `${open ? 260 : 320}ms`,
             transitionTimingFunction: PREVIEW_EASE,
           }}
         >
@@ -238,10 +236,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
 >
   <div className="relative h-full w-full">
     <div
-      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        activePreview === 'buy'
-          ? 'opacity-100 scale-100 blur-0'
-          : 'opacity-0 scale-[1.01] blur-[10px]'
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+        activePreview === 'buy' ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.008]'
       }`}
       style={{
         transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
@@ -252,17 +248,16 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         src={PANEL_BUY_IMAGE}
         alt=""
         fill
-        priority
+        priority={activePreview === 'buy'}
+        loading={activePreview === 'buy' ? 'eager' : 'lazy'}
         sizes="(min-width: 1024px) 52vw, 100vw"
-        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+        className="select-none object-contain object-center drop-shadow-[0_24px_56px_rgba(0,0,0,0.38)]"
       />
     </div>
 
     <div
-      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        activePreview === 'sell'
-          ? 'opacity-100 scale-100 blur-0'
-          : 'opacity-0 scale-[1.01] blur-[10px]'
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+        activePreview === 'sell' ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.008]'
       }`}
       style={{
         transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
@@ -273,17 +268,16 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         src={PANEL_SELL_IMAGE}
         alt=""
         fill
-        priority
+        priority={activePreview === 'sell'}
+        loading={activePreview === 'sell' ? 'eager' : 'lazy'}
         sizes="(min-width: 1024px) 52vw, 100vw"
-        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+        className="select-none object-contain object-center drop-shadow-[0_24px_56px_rgba(0,0,0,0.38)]"
       />
     </div>
 
     <div
-      className={`absolute inset-0 transform-gpu will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        activePreview === 'balance'
-          ? 'opacity-100 scale-100 blur-0'
-          : 'opacity-0 scale-[1.01] blur-[10px]'
+      className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+        activePreview === 'balance' ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.008]'
       }`}
       style={{
         transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
@@ -294,60 +288,61 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         src={PANEL_BALANCE_IMAGE}
         alt=""
         fill
-        priority
+        priority={activePreview === 'balance'}
+        loading={activePreview === 'balance' ? 'eager' : 'lazy'}
         sizes="(min-width: 1024px) 52vw, 100vw"
-        className="select-none object-contain object-center drop-shadow-[0_26px_70px_rgba(0,0,0,0.42)]"
+        className="select-none object-contain object-center drop-shadow-[0_24px_56px_rgba(0,0,0,0.38)]"
       />
     </div>
 
-{renderExpandedControls ? (
-  <>
-    <div
-      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('buy')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        open && activePreview === 'buy'
-          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
-          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
-      }`}
-      style={{
-        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
-        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      }}
-    >
-      {renderExpandedControls('buy')}
-    </div>
+    {renderExpandedControls ? (
+      <>
+        <div
+          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('buy')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
+            open && activePreview === 'buy'
+              ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
+              : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
+          }`}
+          style={{
+            transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          {renderExpandedControls('buy')}
+        </div>
 
-    <div
-      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('sell')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        open && activePreview === 'sell'
-          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
-          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
-      }`}
-      style={{
-        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
-        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      }}
-    >
-      {renderExpandedControls('sell')}
-    </div>
+        <div
+          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('sell')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
+            open && activePreview === 'sell'
+              ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
+              : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
+          }`}
+          style={{
+            transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          {renderExpandedControls('sell')}
+        </div>
 
-    <div
-      className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('balance')} -translate-x-1/2 will-change-[opacity,transform,filter] transition-[opacity,transform,filter] ${
-        open && activePreview === 'balance'
-          ? 'pointer-events-auto translate-y-0 opacity-100 blur-0 scale-100'
-          : 'pointer-events-none translate-y-0 opacity-0 blur-[10px] scale-[1.01]'
-      }`}
-      style={{
-        transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
-        transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      }}
-    >
-      {renderExpandedControls('balance')}
+        <div
+          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('balance')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
+            open && activePreview === 'balance'
+              ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
+              : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
+          }`}
+          style={{
+            transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
+            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          {renderExpandedControls('balance')}
+        </div>
+      </>
+    ) : null}
     </div>
-  </>
-) : null}
-
-  </div>
 </div>
+
         </div>
       </div>
     </div>
@@ -543,47 +538,45 @@ export default function LandingPage() {
   }, [])
 
   const runNextFrame = (fn: () => void) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(fn)
-    })
+    requestAnimationFrame(fn)
   }
 
   const closePreview = () => {
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
 
     setSelectedPreview(null)
     setPreviewVisible(false)
 
     previewTimerRef.current = setTimeout(() => {
       setDisplayedPreview(null)
+      previewTimerRef.current = null
     }, PREVIEW_CLOSE_MS)
   }
 
-const handlePreviewClick = (next: PreviewKey) => {
-  if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+  const handlePreviewClick = (next: PreviewKey) => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
 
-  if (selectedPreview === next && previewVisible) {
-    closePreview()
-    return
+    if (selectedPreview === next && previewVisible) {
+      closePreview()
+      return
+    }
+
+    setSelectedPreview(next)
+
+    if (displayedPreview !== next) {
+      setDisplayedPreview(next)
+    }
+
+    if (!previewVisible) {
+      runNextFrame(() => setPreviewVisible(true))
+    }
   }
-
-  setSelectedPreview(next)
-
-  if (!displayedPreview) {
-    setDisplayedPreview(next)
-    runNextFrame(() => setPreviewVisible(true))
-    return
-  }
-
-  if (!previewVisible) {
-    setDisplayedPreview(next)
-    runNextFrame(() => setPreviewVisible(true))
-    return
-  }
-
-  // Keep the expanded shell open and only crossfade the image.
-  setDisplayedPreview(next)
-}
 
 
 const renderExpandedPreviewPills = (current: PreviewKey | null) => {

@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 
 export default function AuthPanel() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +41,8 @@ export default function AuthPanel() {
   async function signOut() {
     await supabaseBrowser.auth.signOut()
     setUserEmail(null)
+    router.replace('/')
+    router.refresh()
   }
 
   // initial state – fire once when we don't know the user yet

@@ -61,8 +61,10 @@ function CoinDropdown({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState<number>(-1)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const popRef = useRef<HTMLDivElement | null>(null)
 
   const selected = useMemo(
@@ -70,27 +72,46 @@ function CoinDropdown({
     [items, selectedId]
   )
 
-  // Reset highlight when list or open state changes
-  useEffect(() => {
-    setHighlight(
-      items.length
-        ? Math.max(0, items.findIndex(i => i.coingecko_id === selectedId))
-        : -1
-    )
-  }, [items, selectedId, open])
+  const selectedLabel = selected
+    ? `${selected.name} (${(selected.symbol ?? '').toUpperCase()})`
+    : ''
 
-  // Close on click outside / Esc
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return items
+    return items.filter(c => {
+      const name = c.name?.toLowerCase() ?? ''
+      const sym = c.symbol?.toLowerCase() ?? ''
+      return name.includes(q) || sym.includes(q)
+    })
+  }, [items, query])
+
+  useEffect(() => {
+    const nextIndex = filteredItems.findIndex(i => i.coingecko_id === selectedId)
+    setHighlight(filteredItems.length ? Math.max(0, nextIndex) : -1)
+  }, [filteredItems, selectedId, open])
+
   useEffect(() => {
     if (!open) return
+
     function onDocClick(e: MouseEvent) {
       const t = e.target as Node
-      if (triggerRef.current?.contains(t)) return
+      if (inputRef.current?.contains(t)) return
       if (popRef.current?.contains(t)) return
       setOpen(false)
+      setIsEditing(false)
+      setQuery('')
     }
+
     function onEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      setOpen(false)
+      setIsEditing(false)
+      setQuery('')
+      inputRef.current?.blur()
     }
+
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onEsc)
     return () => {
@@ -99,75 +120,137 @@ function CoinDropdown({
     }
   }, [open])
 
-  // Keyboard nav when open
-  useEffect(() => {
-    if (!open) return
-    function onKey(e: KeyboardEvent) {
-      if (!items.length) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setHighlight(h => (h < items.length - 1 ? h + 1 : 0))
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setHighlight(h => (h > 0 ? h - 1 : items.length - 1))
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        const idx = highlight >= 0 ? highlight : 0
-        const choice = items[idx]
-        if (choice) {
-          onChange(choice.coingecko_id)
-          setOpen(false)
-        }
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open, items, highlight, onChange])
+  const displayValue = isEditing ? query : selectedLabel
 
-
-  
   return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        className="w-full min-w-[240px] md:min-w-[260px] rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-3 py-2 text-[14px] md:text-[15px] text-slate-200 hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70 flex items-center justify-between gap-3"
-      >
-        <span className="truncate">
-          {selected
-            ? `${selected.name} (${(selected.symbol ?? '').toUpperCase()})`
-            : 'Select a coin'}
+    <div className="relative w-full min-w-[240px] md:min-w-[300px]">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(163,163,164)]">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M13.75 13.75L17 17"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            <circle
+              cx="8.75"
+              cy="8.75"
+              r="5.75"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+          </svg>
         </span>
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 20 20"
-          fill="currentColor"
+
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="search"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls="planner-coin-combobox-listbox"
+          aria-label="Search or select a coin"
+          disabled={disabled}
+          value={displayValue}
+          placeholder="Search or select a coin"
+          onFocus={() => {
+            if (disabled) return
+            setOpen(true)
+            setIsEditing(true)
+            setQuery('')
+          }}
+          onClick={() => {
+            if (disabled) return
+            setOpen(true)
+            setIsEditing(true)
+            setQuery(current => current)
+          }}
+          onChange={e => {
+            if (!open) setOpen(true)
+            if (!isEditing) setIsEditing(true)
+            setQuery(e.target.value)
+          }}
+          onKeyDown={e => {
+            if (!filteredItems.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault()
+              return
+            }
+
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              if (!open) setOpen(true)
+              setHighlight(h => (h < filteredItems.length - 1 ? h + 1 : 0))
+              return
+            }
+
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              if (!open) setOpen(true)
+              setHighlight(h => (h > 0 ? h - 1 : filteredItems.length - 1))
+              return
+            }
+
+            if (e.key === 'Enter') {
+              if (!open) return
+              e.preventDefault()
+              const idx = highlight >= 0 ? highlight : 0
+              const choice = filteredItems[idx]
+              if (!choice) return
+              onChange(choice.coingecko_id)
+              setOpen(false)
+              setIsEditing(false)
+              setQuery('')
+              inputRef.current?.blur()
+            }
+          }}
+          className="w-full rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 pl-10 pr-10 py-2 text-[14px] md:text-[15px] text-slate-200 placeholder:text-[rgb(163,163,164)] hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70"
+        />
+
+        <button
+          type="button"
+          tabIndex={-1}
           aria-hidden="true"
-          className="opacity-70"
+          disabled={disabled}
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => {
+            if (disabled) return
+            if (open) {
+              setOpen(false)
+              setIsEditing(false)
+              setQuery('')
+              inputRef.current?.blur()
+              return
+            }
+            setOpen(true)
+            setIsEditing(true)
+            setQuery('')
+            inputRef.current?.focus()
+          }}
+          className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-300/70 hover:bg-[rgb(36,37,39)] hover:text-slate-200"
         >
-          <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" />
-        </svg>
-      </button>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08z" />
+          </svg>
+        </button>
+      </div>
 
       {open && (
         <div
           ref={popRef}
+          id="planner-coin-combobox-listbox"
           role="listbox"
           aria-label="Coins"
           className="absolute z-50 mt-2 w-full rounded-xl ring-1 ring-[rgb(41,42,45)] bg-[rgb(28,29,31)] shadow-xl overflow-x-hidden"
         >
-          <div className="max-h-[340px] overflow-y-auto">
-            {items.length === 0 ? (
+          <div className="max-h-[340px] overflow-y-auto p-1.5">
+            {filteredItems.length === 0 ? (
               <div className="px-3 py-3 text-sm text-[rgb(163,163,164)]">
-                No results
+                No coins match your search.
               </div>
             ) : (
-              items.map((c, idx) => {
+              filteredItems.map((c, idx) => {
                 const isActive = idx === highlight
                 const isSelected = c.coingecko_id === selectedId
                 return (
@@ -180,12 +263,15 @@ function CoinDropdown({
                     onClick={() => {
                       onChange(c.coingecko_id)
                       setOpen(false)
+                      setIsEditing(false)
+                      setQuery('')
+                      inputRef.current?.blur()
                     }}
                     className={
-                      'relative w-full text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between overflow-hidden whitespace-nowrap truncate ' +
+                      'relative w-full rounded-lg text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between gap-3 overflow-hidden whitespace-nowrap ' +
                       (isActive ? 'bg-[rgb(31,32,33)] ' : 'bg-transparent ') +
                       (isSelected
-                        ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] rounded-lg '
+                        ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] '
                         : 'z-0 ')
                     }
                   >
@@ -233,8 +319,6 @@ export default function PlannerPage() {
   // ── Local state: selected coin id ─────────────────────────────────────────
   const [coingeckoId, setCoingeckoId] = useState<string>('')
 
-  // ── Local state: inline search query for filtering the selector ───────────
-  const [coinQuery, setCoinQuery] = useState<string>('')
 
   // ── UI state: confirm “Save New” (Buy Planner) ──────────────────────────
   const [confirmSaveNewOpen, setConfirmSaveNewOpen] = useState<boolean>(false)
@@ -371,16 +455,21 @@ export default function PlannerPage() {
     router.replace(`/planner?${sp.toString()}`, { scroll: false })
   }, [coingeckoId, router, searchParams])
 
-  // Prime selection once coins load (prefer deep-link if present)
+  // Prime selection once coins load. If the URL already requests a coin,
+  // keep that requested coin as the first-open selection instead of letting
+  // the default top coin win on initial mount.
   useEffect(() => {
+    if (requestedId) {
+      if (coingeckoId !== requestedId) {
+        setCoingeckoId(requestedId)
+      }
+      return
+    }
+
     if (coingeckoId) return
     if (!coins || coins.length === 0) return
 
-    const fromQuery = requestedId
-      ? coins.find(c => c.coingecko_id === requestedId)
-      : null
-
-    setCoingeckoId(fromQuery?.coingecko_id ?? coins[0].coingecko_id)
+    setCoingeckoId(coins[0].coingecko_id)
   }, [coins, coingeckoId, requestedId])
 
   const selected = useMemo(
@@ -388,24 +477,6 @@ export default function PlannerPage() {
     [coins, coingeckoId]
   )
 
-  // Filtered list used by the dropdown based on search query (name or symbol)
-  const filteredCoins = useMemo(() => {
-    const list = coins ?? []
-    const q = coinQuery.trim().toLowerCase()
-    if (!q) return list
-    return list.filter(c => {
-      const name = c.name?.toLowerCase() ?? ''
-      const sym = c.symbol?.toLowerCase() ?? ''
-      return name.includes(q) || sym.includes(q)
-    })
-  }, [coins, coinQuery])
-
-  // Keep selection sane if list changes due to filtering
-  useEffect(() => {
-    if (!coingeckoId && filteredCoins.length > 0) {
-      setCoingeckoId(filteredCoins[0].coingecko_id)
-    }
-  }, [filteredCoins, coingeckoId])
 
   // ── New price cycle detection (banner only; no logic changes) ─────────────
   const { user } = useUser()
@@ -511,28 +582,14 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             </p>
           </div>
 
-          {/* Right side: Search + new integrated dropdown */}
-          <div className="flex items-center gap-2 md:gap-3">
-            {/* Inline search input (filters the dropdown list) */}
-            <div className="hidden sm:block">
-              <input
-                type="text"
-                inputMode="search"
-                placeholder="Coin Ticker…"
-                value={coinQuery}
-                onChange={e => setCoinQuery(e.target.value)}
-                className="rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-3 py-2 text-[13px] md:text-[14px] text-slate-200 placeholder:text-[rgb(163,163,164)] hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70 min-w-[180px]"
-                aria-label="Search coins by name or symbol"
-              />
-            </div>
-
-            <label className="text-slate-300 text-[13px] md:text-[14px]">
+          {/* Right side: single searchable coin selector */}
+          <div className="flex w-full md:w-auto items-center gap-2 md:gap-3">
+            <label className="shrink-0 text-slate-300 text-[13px] md:text-[14px]">
               Coin
             </label>
 
-            {/* Connected, professional dropdown */}
-               <CoinDropdown
-              items={filteredCoins}
+            <CoinDropdown
+              items={coins ?? []}
               selectedId={coingeckoId}
               onChange={(id) => {
                 userSelectedRef.current = true
@@ -540,9 +597,8 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
               }}
               disabled={!coins?.length}
             />
-
           </div>
-        </div>
+                  </div>
 
         <div className="text-[13px] md:text-[14px] text-slate-400">
           {selected ? `${selected.name} selected` : 'Loading coins…'}
