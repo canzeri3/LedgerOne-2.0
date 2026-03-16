@@ -48,7 +48,7 @@ const active = pathname === hrefPath || pathname?.startsWith(hrefPath + '/')
     <Link
       href={href}
       className={[
-        'flex items-center gap-2 rounded-lg px-3 py-2 transition-colors',
+'flex items-center gap-2 rounded-lg px-3 py-2 transition-colors max-md:min-h-11',
         'hover:bg-[rgb(42,43,44)]',
         active ? 'bg-[rgb(42,43,44)] !text-[rgb(252,252,252)]' : 'text-slate-200',
 
@@ -135,13 +135,14 @@ export default function Sidebar() {
   
   return (
     // Sidebar scrolls independently if content exceeds viewport
-<div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden scrollbar-auto-hide">
-        {/* Brand logo */}
-<div className="pt-4 pb-3 px-0 -ml-4 w-[calc(100%+16px)]">
+<div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-auto-hide md:overscroll-auto">
+          {/* Brand logo */}
+<div className="pt-3 pb-2 px-0 -ml-4 w-[calc(100%+16px)] md:pt-4 md:pb-3">
+
         {/* Brand logo */}
      <div className="pl-0 pr-1 pt-0 pb-0">
 
-        <div className="relative h-14 w-full overflow-hidden">
+   <div className="relative h-12 w-full overflow-hidden md:h-14">
           <Image
             src="/lg1-logo.png"
             alt="LedgerOne · portfolio planner"
@@ -167,7 +168,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
 
 
 
-            <nav className="px-2 py-3">
+            <nav className="px-2 py-2 md:py-3">
   {/* Primary nav with icons on the left */}
   <ul className="space-y-1">
     <li>
@@ -228,11 +229,11 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
   </ul>
 
         {/* Coins dropdown */}
-        <div className="mt-6">
+      <div className="mt-5 md:mt-6">
           <button
             type="button"
             onClick={() => setCoinsOpen((v) => !v)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-200 transition-colors hover:bg-white/10"
+className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-200 transition-colors hover:bg-white/10 max-md:min-h-11"
             aria-expanded={coinsOpen}
             aria-controls="coins-panel"
           >
@@ -246,15 +247,15 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
           </button>
 
           {coinsOpen && (
-            <div id="coins-panel" className="mt-2 px-2">
-              {/* Search input */}
+<div id="coins-panel" className="mt-2 px-1 md:px-2">
+                {/* Search input */}
               <div className="relative mb-2">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-300" />
                 <input
   value={query}
   onChange={(e) => setQuery(e.target.value)}
   className={[
-    'w-full rounded-md pl-8 pr-2 py-2 text-sm text-slate-100 placeholder:text-slate-400',
+'w-full rounded-md pl-8 pr-2 py-2 text-base text-slate-100 placeholder:text-slate-400 md:text-sm',
     'bg-[rgb(42,43,44)]',                 // inner area color
     'border border-[rgb(64,65,66)]',      // default border color
     'focus:outline-none focus:ring-2 focus:ring-[rgb(64,65,66)] focus:border-[rgb(64,65,66)]',
@@ -266,15 +267,15 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
               </div>
 
               {/* Unified coins list (UI-only reordering: favourites float to the top) */}
-<ul className="flex flex-col gap-1 max-h-72 overflow-auto overflow-x-hidden pr-1 scrollbar-auto-hide">
-                {filteredCoins.map((c) => {
+<ul className="flex flex-col gap-1 max-h-[min(52dvh,28rem)] overflow-auto overflow-x-hidden overscroll-contain pr-1 scrollbar-auto-hide md:max-h-72">
+                  {filteredCoins.map((c) => {
                   const isFav = favSet?.has?.(c.coingecko_id)
                   return (
                     <li key={c.coingecko_id} style={{ order: isFav ? -1 : 0 }}>
                       <Link
                         href={`/coins/${c.coingecko_id}`}
                         className={[
-                          'flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors',
+'flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors max-md:min-h-10',
                           'hover:bg-white/10', // stronger hover
                           pathname === `/coins/${c.coingecko_id}`
                           ? 'bg-white/15 !text-[rgb(252,252,252)]'
