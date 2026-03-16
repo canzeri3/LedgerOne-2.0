@@ -89,10 +89,17 @@ type RevealProps = {
   children: React.ReactNode
   className?: string
   delayMs?: number
+  durationMs?: number
   once?: boolean
 }
 
-export function Reveal({ children, className = '', delayMs = 0, once = true }: RevealProps) {
+export function Reveal({
+  children,
+  className = '',
+  delayMs = 0,
+  durationMs = 700,
+  once = true,
+}: RevealProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
   const [inView, setInView] = useState(reducedMotion)
@@ -129,10 +136,14 @@ export function Reveal({ children, className = '', delayMs = 0, once = true }: R
   return (
     <div
       ref={ref}
-      style={{ transitionDelay: `${delayMs}ms`, willChange: 'transform, opacity, filter' }}
+      style={{
+        transitionDelay: `${delayMs}ms`,
+        transitionDuration: `${durationMs}ms`,
+        willChange: 'transform, opacity, filter',
+      }}
       className={
-        `transition-[opacity,transform,filter] duration-700 ease-out ` +
-        (inView ? 'opacity-100 translate-y-0 blur-0' : 'opacity-0 translate-y-6 blur-[2px]') +
+        `transition-[opacity,transform,filter] ease-[cubic-bezier(0.22,1,0.36,1)] ` +
+        (inView ? 'opacity-100 translate-y-0 blur-0' : 'opacity-0 translate-y-8 blur-[3px]') +
         ` ${className}`
       }
     >
@@ -342,12 +353,14 @@ export function Parallax({
 }: ParallaxProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
+  const lastTransformRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
 
     if (reducedMotion) {
+      lastTransformRef.current = { x: 0, y: 0 }
       el.style.transform = 'translate3d(0px, 0px, 0px)'
       return
     }
@@ -360,9 +373,15 @@ export function Parallax({
       const denom = Math.max(1, startPx - endPx)
       const p = clamp01((startPx - rect.top) / denom)
       const inv = 1 - p
-      const x = strengthX * inv
-      const y = strengthY * inv
+      const x = Number((strengthX * inv).toFixed(2))
+      const y = Number((strengthY * inv).toFixed(2))
+      const lastTransform = lastTransformRef.current
 
+      if (lastTransform && Math.abs(lastTransform.x - x) < 0.08 && Math.abs(lastTransform.y - y) < 0.08) {
+        return
+      }
+
+      lastTransformRef.current = { x, y }
       el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`
     })
   }, [endAt, reducedMotion, startAt, strengthX, strengthY])
@@ -388,6 +407,7 @@ type ScrollProgressProps = {
 export function ScrollProgress({ heightPx = 2 }: ScrollProgressProps) {
   const reducedMotion = usePrefersReducedMotion()
   const barRef = useRef<HTMLDivElement | null>(null)
+  const lastProgressRef = useRef(-1)
 
   useEffect(() => {
     const el = barRef.current
@@ -397,6 +417,12 @@ export function ScrollProgress({ heightPx = 2 }: ScrollProgressProps) {
       const doc = document.documentElement
       const max = Math.max(1, doc.scrollHeight - window.innerHeight)
       const p = clamp01(window.scrollY / max)
+
+      if (Math.abs(lastProgressRef.current - p) < 0.0015) {
+        return
+      }
+
+      lastProgressRef.current = p
       el.style.transform = `scaleX(${p.toFixed(4)})`
     })
   }, [reducedMotion])

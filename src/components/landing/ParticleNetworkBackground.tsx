@@ -37,9 +37,48 @@ type NodePoint = {
   lineAlphaScale: number
 }
 
-const MAX_DPR = 1.5
-const TARGET_FPS = 45
-const FRAME_MS = 1000 / TARGET_FPS
+type BackdropCache = {
+  topGlow: CanvasGradient
+  heroGlow: CanvasGradient
+  nightWash: CanvasGradient
+}
+
+type ParticlePerformanceProfile = {
+  lowPower: boolean
+  maxDpr: number
+  targetFps: number
+  densityMultiplier: number
+  lineShadowBlur: number
+}
+
+const DEFAULT_PROFILE: ParticlePerformanceProfile = {
+  lowPower: false,
+  maxDpr: 1.5,
+  targetFps: 45,
+  densityMultiplier: 1,
+  lineShadowBlur: 2,
+}
+
+function getParticlePerformanceProfile(): ParticlePerformanceProfile {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return DEFAULT_PROFILE
+  }
+
+  const hardwareConcurrency = navigator.hardwareConcurrency || 8
+  const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8
+  const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+  const lowPower = coarsePointer || hardwareConcurrency <= 4 || deviceMemory <= 4
+
+  if (!lowPower) return DEFAULT_PROFILE
+
+  return {
+    lowPower: true,
+    maxDpr: 1.1,
+    targetFps: 36,
+    densityMultiplier: 0.72,
+    lineShadowBlur: 0,
+  }
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
@@ -120,9 +159,15 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
   },
 ]
 
-function pickDotCount(spec: ClusterSpec, width: number, height: number, reducedMotion: boolean) {
+function pickDotCount(
+  spec: ClusterSpec,
+  width: number,
+  height: number,
+  reducedMotion: boolean,
+  densityMultiplier: number
+) {
   const areaScale = clamp((width * height) / 1_600_000, 0.9, 1.1)
-  const densityScale = reducedMotion ? 0.82 : 0.9
+  const densityScale = (reducedMotion ? 0.82 : 0.9) * densityMultiplier
   const raw =
     spec.minDots +
     Math.round((spec.maxDots - spec.minDots) * areaScale * densityScale * (0.45 + Math.random() * 0.32))
@@ -185,7 +230,43 @@ function addNodeToClusterMap(map: Map<string, NodePoint[]>, node: NodePoint) {
     existing.push(node)
     return
   }
+
   map.set(node.clusterId, [node])
+}
+
+function createBackdropCache(ctx: CanvasRenderingContext2D, width: number, height: number): BackdropCache {
+  const topGlow = ctx.createRadialGradient(
+    width * 0.56,
+    height * 0.14,
+    0,
+    width * 0.56,
+    height * 0.14,
+    Math.max(width, height) * 0.58
+  )
+  topGlow.addColorStop(0, 'rgba(59, 130, 246, 0.035)')
+  topGlow.addColorStop(0.24, 'rgba(49, 46, 129, 0.04)')
+  topGlow.addColorStop(0.52, 'rgba(15, 23, 42, 0.04)')
+  topGlow.addColorStop(0.82, 'rgba(2, 6, 23, 0.00)')
+
+  const heroGlow = ctx.createRadialGradient(
+    width * 0.6,
+    height * 0.48,
+    0,
+    width * 0.6,
+    height * 0.48,
+    Math.max(width, height) * 0.6
+  )
+  heroGlow.addColorStop(0, 'rgba(37, 99, 235, 0.03)')
+  heroGlow.addColorStop(0.32, 'rgba(30, 41, 59, 0.04)')
+  heroGlow.addColorStop(0.72, 'rgba(2, 6, 23, 0.00)')
+
+  const nightWash = ctx.createLinearGradient(0, 0, 0, height)
+  nightWash.addColorStop(0, 'rgba(2, 6, 23, 0.18)')
+  nightWash.addColorStop(0.26, 'rgba(2, 6, 23, 0.08)')
+  nightWash.addColorStop(0.72, 'rgba(2, 6, 23, 0.14)')
+  nightWash.addColorStop(1, 'rgba(2, 6, 23, 0.3)')
+
+  return { topGlow, heroGlow, nightWash }
 }
 
 export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBackgroundProps) {
@@ -195,10 +276,15 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', {
+      alpha: true,
+      desynchronized: true,
+    })
     if (!ctx) return
 
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const profile = getParticlePerformanceProfile()
+
     let reducedMotion = reducedMotionQuery.matches
     let animationFrameId = 0
     let width = 0
@@ -206,7 +292,9 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     let dpr = 1
     let nodes: NodePoint[] = []
     let nodesByCluster = new Map<string, NodePoint[]>()
+    let backdropCache: BackdropCache | null = null
     let lastFrameTime = 0
+    let frameMs = 1000 / profile.targetFps
     let sceneInView = true
     let destroyed = false
 
@@ -223,15 +311,20 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
       animationFrameId = window.requestAnimationFrame(render)
     }
 
+    const rebuildBackdropCache = () => {
+      backdropCache = createBackdropCache(ctx, width, height)
+    }
+
     const setCanvasSize = () => {
       const bounds = canvas.getBoundingClientRect()
       width = Math.max(1, bounds.width)
       height = Math.max(1, bounds.height)
-      dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
+      dpr = Math.min(window.devicePixelRatio || 1, profile.maxDpr)
 
       canvas.width = Math.round(width * dpr)
       canvas.height = Math.round(height * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      rebuildBackdropCache()
     }
 
     const createNodes = () => {
@@ -239,7 +332,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
       const nextByCluster = new Map<string, NodePoint[]>()
 
       for (const spec of CLUSTER_LAYOUT) {
-        const count = pickDotCount(spec, width, height, reducedMotion)
+        const count = pickDotCount(spec, width, height, reducedMotion, profile.densityMultiplier)
         for (let i = 0; i < count; i += 1) {
           const node = makeNode(spec, width, height, reducedMotion)
           nextNodes.push(node)
@@ -263,45 +356,21 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     }
 
     const drawBackdrop = () => {
-      const topGlow = ctx.createRadialGradient(
-        width * 0.56,
-        height * 0.14,
-        0,
-        width * 0.56,
-        height * 0.14,
-        Math.max(width, height) * 0.58
-      )
-      topGlow.addColorStop(0, 'rgba(59, 130, 246, 0.035)')
-      topGlow.addColorStop(0.24, 'rgba(49, 46, 129, 0.04)')
-      topGlow.addColorStop(0.52, 'rgba(15, 23, 42, 0.04)')
-      topGlow.addColorStop(0.82, 'rgba(2, 6, 23, 0.00)')
-      ctx.fillStyle = topGlow
+      if (!backdropCache) return
+
+      ctx.fillStyle = backdropCache.topGlow
       ctx.fillRect(0, 0, width, height)
 
-      const heroGlow = ctx.createRadialGradient(
-        width * 0.6,
-        height * 0.48,
-        0,
-        width * 0.6,
-        height * 0.48,
-        Math.max(width, height) * 0.6
-      )
-      heroGlow.addColorStop(0, 'rgba(37, 99, 235, 0.03)')
-      heroGlow.addColorStop(0.32, 'rgba(30, 41, 59, 0.04)')
-      heroGlow.addColorStop(0.72, 'rgba(2, 6, 23, 0.00)')
-      ctx.fillStyle = heroGlow
+      ctx.fillStyle = backdropCache.heroGlow
       ctx.fillRect(0, 0, width, height)
 
-      const nightWash = ctx.createLinearGradient(0, 0, 0, height)
-      nightWash.addColorStop(0, 'rgba(2, 6, 23, 0.18)')
-      nightWash.addColorStop(0.26, 'rgba(2, 6, 23, 0.08)')
-      nightWash.addColorStop(0.72, 'rgba(2, 6, 23, 0.14)')
-      nightWash.addColorStop(1, 'rgba(2, 6, 23, 0.3)')
-      ctx.fillStyle = nightWash
+      ctx.fillStyle = backdropCache.nightWash
       ctx.fillRect(0, 0, width, height)
     }
 
     const drawConnections = () => {
+      const lineShadowBlur = profile.lineShadowBlur
+
       for (const clusterNodes of nodesByCluster.values()) {
         for (let i = 0; i < clusterNodes.length; i += 1) {
           const a = clusterNodes[i]
@@ -327,12 +396,13 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
             ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
             ctx.lineWidth = distance < distanceLimit * 0.42 ? 0.96 : 0.72
             ctx.shadowColor = 'rgba(96, 165, 250, 0.18)'
-            ctx.shadowBlur = 2
+            ctx.shadowBlur = lineShadowBlur
             ctx.stroke()
-            ctx.shadowBlur = 0
           }
         }
       }
+
+      ctx.shadowBlur = 0
     }
 
     const drawNodes = () => {
@@ -358,7 +428,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
       animationFrameId = 0
       if (!shouldAnimate()) return
 
-      if (lastFrameTime && now - lastFrameTime < FRAME_MS) {
+      if (lastFrameTime && now - lastFrameTime < frameMs) {
         queueFrame()
         return
       }
@@ -390,6 +460,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
 
     const handleReducedMotionChange = () => {
       reducedMotion = reducedMotionQuery.matches
+      frameMs = 1000 / (reducedMotion ? 24 : profile.targetFps)
       createNodes()
       syncAnimationState()
     }
@@ -413,6 +484,8 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     const onVisibilityChange = () => {
       syncAnimationState()
     }
+
+    frameMs = 1000 / (reducedMotion ? 24 : profile.targetFps)
 
     resetScene()
     resizeObserver.observe(resizeTarget)
@@ -453,6 +526,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
         ref={canvasRef}
         className="absolute inset-0 h-full w-full opacity-[0.98]"
         style={{
+          contain: 'layout paint size',
           maskImage,
           WebkitMaskImage: maskImage,
         }}

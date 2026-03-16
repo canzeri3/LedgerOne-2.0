@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { DrawLine, Parallax, Reveal, ScrollProgress, SplitRow } from '@/components/landing/ScrollEffects'
 import { CoinLogoMini } from '@/components/landing/CoinLogoMini'
 import { AboutGlow } from '@/components/landing/AboutGlow'
@@ -41,6 +41,13 @@ const PREVIEW_OPEN_MS = 280
 const PREVIEW_CLOSE_MS = 260
 const PREVIEW_IMAGE_SWAP_MS = 320
 const PREVIEW_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
+
+const IDLE_PRELOAD_PREVIEW_IMAGES = [PANEL_BUY_IMAGE, PANEL_SELL_IMAGE, PANEL_BALANCE_IMAGE]
+
+const DEFERRED_SECTION_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '900px',
+}
 
 type PreviewKey = 'buy' | 'sell' | 'balance'
 
@@ -169,17 +176,17 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
   return (
     <div className="relative isolate overflow-visible">
       {/* Base card */}
-      <div
-        className={`relative z-10 overflow-hidden rounded-3xl transition-[background-color,box-shadow,opacity] ${
-          open
-            ? 'bg-transparent shadow-none opacity-0'
-            : 'bg-[#1d1e21] shadow-[0_14px_40px_rgba(0,0,0,0.34)] opacity-100'
-        }`}
-        style={{
-          transitionDuration: `${open ? 420 : 680}ms`,
-          transitionTimingFunction: PREVIEW_EASE,
-        }}
-      >
+  <div
+  className={`relative z-10 overflow-hidden rounded-3xl transition-[background-color,box-shadow,opacity] ${
+    open
+      ? 'bg-transparent shadow-none opacity-0'
+      : 'bg-[rgba(29,30,33,0.68)] shadow-[0_14px_40px_rgba(0,0,0,0.30)] opacity-100'
+  }`}
+  style={{
+    transitionDuration: `${open ? 420 : 680}ms`,
+    transitionTimingFunction: PREVIEW_EASE,
+  }}
+>
         <div
           className={`pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0)_26%,rgba(0,0,0,0.12)_100%)] transition-opacity ${
             open ? 'opacity-0' : 'opacity-100'
@@ -525,15 +532,59 @@ function LandingFooter() {
 }
 
 export default function LandingPage() {
-  const [selectedPreview, setSelectedPreview] = useState<PreviewKey | null>(null)
-  const [displayedPreview, setDisplayedPreview] = useState<PreviewKey | null>(null)
-  const [previewVisible, setPreviewVisible] = useState(false)
+const [selectedPreview, setSelectedPreview] = useState<PreviewKey | null>(null)
+const [displayedPreview, setDisplayedPreview] = useState<PreviewKey | null>(null)
+const [previewVisible, setPreviewVisible] = useState(false)
+const [statsVisible, setStatsVisible] = useState(false)
 
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+    }
+  }, [])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let cancelled = false
+    let idleHandle: number | null = null
+    let timeoutHandle: number | null = null
+
+    const preloadImages = () => {
+      if (cancelled) return
+
+      for (const src of IDLE_PRELOAD_PREVIEW_IMAGES) {
+        const image = new window.Image()
+        image.decoding = 'async'
+        image.src = src
+      }
+    }
+
+    const idleScheduler = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+
+    if (typeof idleScheduler.requestIdleCallback === 'function') {
+      idleHandle = idleScheduler.requestIdleCallback(
+        () => {
+          preloadImages()
+        },
+        { timeout: 1200 }
+      )
+    } else {
+      timeoutHandle = window.setTimeout(preloadImages, 350)
+    }
+
+    return () => {
+      cancelled = true
+      if (idleHandle !== null && typeof idleScheduler.cancelIdleCallback === 'function') {
+        idleScheduler.cancelIdleCallback(idleHandle)
+      }
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle)
+      }
     }
   }, [])
 
@@ -557,26 +608,34 @@ export default function LandingPage() {
   }
 
   const handlePreviewClick = (next: PreviewKey) => {
-    if (previewTimerRef.current) {
-      clearTimeout(previewTimerRef.current)
-      previewTimerRef.current = null
-    }
-
-    if (selectedPreview === next && previewVisible) {
-      closePreview()
-      return
-    }
-
-    setSelectedPreview(next)
-
-    if (displayedPreview !== next) {
-      setDisplayedPreview(next)
-    }
-
-    if (!previewVisible) {
-      runNextFrame(() => setPreviewVisible(true))
-    }
+  if (previewTimerRef.current) {
+    clearTimeout(previewTimerRef.current)
+    previewTimerRef.current = null
   }
+
+  if (selectedPreview === next && previewVisible) {
+    closePreview()
+    return
+  }
+
+  setSelectedPreview(next)
+
+  if (displayedPreview !== next) {
+    setDisplayedPreview(next)
+  }
+
+  if (!previewVisible) {
+    runNextFrame(() => setPreviewVisible(true))
+  }
+}
+
+const handleStatsToggle = () => {
+  if (statsVisible) {
+    closePreview()
+  }
+
+  setStatsVisible((current) => !current)
+}
 
 
 const renderExpandedPreviewPills = (current: PreviewKey | null) => {
@@ -630,201 +689,242 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 
 
     {/* HERO + PREVIEW */}
-    <section id="overview" className="relative z-10 pt-24 sm:pt-28 lg:pt-32">
-            <Parallax
-        className="pointer-events-none absolute left-1/2 top-8 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl"
+    <section id="overview" className="relative z-10 pt-16 sm:pt-[4.5rem] lg:pt-[5.5rem]">
+      <Parallax
+        className="pointer-events-none absolute left-1/2 top-3 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl"
         strengthY={28}
         strengthX={10}
         startAt={1.0}
         endAt={0.2}
       />
 
-      <div className="relative z-10 grid items-start gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        
-                      <Reveal className="max-w-xl space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-medium text-emerald-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span>Portfolio planning workspace</span>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"></p>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl lg:text-5xl">
-                  Institutional discipline for personal crypto investing.
-                </h1>
-                <div className="mt-5 h-[2px] w-full max-w-[38rem] bg-gradient-to-r from-indigo-400/60 via-sky-400/20 to-transparent" />
-              </div>
-
-              <p className="text-sm leading-relaxed text-slate-400 sm:text-base">
-                Build structured allocations, define clear rules, and track execution against your plan—so decisions stay
-                consistent through volatility.
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-full bg-indigo-600/85 px-5 py-2.5 text-sm font-medium text-slate-100 shadow-md shadow-indigo-950/20 transition hover:bg-indigo-500/85"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="/signup"
-                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/30 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
-                >
-                  Request access
-                </Link>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Already onboarded?{' '}
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/30 px-2.5 py-0.5 text-[11px] font-medium leading-none text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
-                >
-                  Open dashboard
-                </Link>
-              </p>
-            </Reveal>
-
-            {/* PREVIEW */}
-<Reveal className="relative -mx-10 -my-8 px-10 py-8" delayMs={120}>
-  <Parallax
-    className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
-    strengthY={18}
-    strengthX={-10}
-    startAt={1.0}
-    endAt={0.2}
-  />
-
-
-  <div className="relative z-10">
-    <Panel
-      activePreview={displayedPreview}
-      expanded={previewVisible}
-      renderExpandedControls={renderExpandedPreviewPills}
-    >
-      <PanelHeader />
-
-      <div className="px-5 pb-5">                  {/* KPI row */}
-                  <div className="mt-4 flex items-center justify-between gap-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Key metrics</p>
-                    <div className="h-[3px] flex-1 bg-gradient-to-r from-slate-800/0 via-slate-800/70 to-slate-800/0" />
-                  </div>
-
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <MetricTile label="Net invested" value="$1.28M" note="vs target allocation" accent="text-slate-50" />
-                    <MetricTile
-                      label="Plan progress"
-                      value="37 / 52"
-                      note="Next band within 3.2%"
-                      accent="text-slate-50"
-                    />
-                    <MetricTile
-                      label="Risk metric"
-                      value="0.63"
-                      note="Risk posture: Balanced"
-                      accent="text-slate-50"
-                    />
-                  </div>
-
-<div className="mt-3 grid grid-cols-3 gap-3">
-  <div className="flex justify-center">
+<div className="relative z-20 mb-5 flex justify-end pr-4 sm:pr-6 lg:pr-10">
     <button
-      type="button"
-      onClick={() => handlePreviewClick('buy')}
-      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
-        selectedPreview === 'buy' ? 'scale-[1.03]' : ''
+    type="button"
+    onClick={handleStatsToggle}
+    aria-pressed={statsVisible}
+    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-[transform,border-color,background-color,color,box-shadow] duration-300 hover:-translate-y-[1px] ${
+      statsVisible
+        ? 'border-indigo-500/45 bg-indigo-500/12 text-indigo-100 shadow-[0_10px_28px_rgba(79,70,229,0.18)]'
+        : 'border-slate-700/70 bg-slate-900/35 text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45'
+    }`}
+  >
+    <span
+      className={`h-2 w-2 rounded-full transition-colors duration-300 ${
+        statsVisible
+          ? 'bg-indigo-300 shadow-[0_0_12px_rgba(165,180,252,0.95)]'
+          : 'bg-slate-500'
       }`}
-    >
-      <Pill tone="green" className="w-[176px] justify-center">Buy Planner</Pill>
-    </button>
-  </div>
-
-  <div className="flex justify-center">
-    <button
-      type="button"
-      onClick={() => handlePreviewClick('sell')}
-      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
-        selectedPreview === 'sell' ? 'scale-[1.03]' : ''
-      }`}
-    >
-      <Pill tone="red" className="w-[176px] justify-center">Sell Planner</Pill>
-    </button>
-  </div>
-
-  <div className="flex justify-center">
-    <button
-      type="button"
-      onClick={() => handlePreviewClick('balance')}
-      className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
-        selectedPreview === 'balance' ? 'scale-[1.03]' : ''
-      }`}
-    >
-      <Pill tone="indigo" className="w-[176px] justify-center">Portfolio Chart</Pill>
-    </button>
-  </div>
+    />
+    <span>Stats</span>
+  </button>
 </div>
-                  {/* Table */}
-                  <div className="relative mt-4 overflow-hidden rounded-2xl bg-[#17191c] shadow-[0_18px_40px_rgba(0,0,0,0.20)]">
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
-                    <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65" />
 
-                    <div className="relative p-3">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                          Top holdings · plan tracking
-                        </p>
-                      </div>
+<div className="relative z-10 grid items-start gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-10">
 
-                      <div className="mt-2 overflow-hidden rounded-xl border border-slate-800/60 bg-slate-950/20">
-                        <div className="sticky top-0 z-10 bg-slate-950/35 backdrop-blur-sm">
-                          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] font-medium text-slate-400">
-                            <span>Coin</span>
-                            <span className="text-right">LG1 Planner</span>
-                            <span className="text-right">Baseline</span>
-                            <span className="text-right">Drift</span>
-                          </div>
-                          <div className="h-px bg-slate-800/70" />
-                        </div>
+<Reveal className="max-w-xl space-y-8">
+  <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/5 px-3.5 py-1.5 text-xs font-medium text-emerald-200">
+    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+    <span>Portfolio planning workspace</span>
+  </div>
 
-                        <div className="h-[125px] overflow-y-auto">
-                          {DEMO_COIN_ROWS.map((row) => {
-                            const drift = row.plannedPct - row.baselinePct
-                            return (
-                              <div
-                                key={row.symbol}
-                                className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[10px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
+    <div className="space-y-2">
+      <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-4xl lg:text-5xl">
+        Institutional discipline for personal crypto investing.
+      </h1>
+<div className="mt-4 h-[3px] w-full max-w-[52rem] bg-gradient-to-r from-indigo-400/60 via-sky-400/20 to-transparent" />
+    </div>
 
-                                  <div className="flex flex-col leading-tight">
-                                    <span className="text-[10px] font-semibold text-slate-100">{row.symbol}</span>
-                                    <span className="text-[9px] text-slate-500">{row.name}</span>
-                                  </div>
-                                </div>
+  <p className="text-base leading-relaxed text-slate-400 sm:text-[1.075rem]">
+    Build structured allocations, define clear rules, and track execution against your plan—so decisions stay
+    consistent through volatility.
+  </p>
 
-                                <div className="text-right tabular-nums text-slate-200">{fmtSignedPct(row.plannedPct)}</div>
-                                <div className="text-right tabular-nums text-slate-400">
-                                  {fmtSignedPct(row.baselinePct)}
-                                </div>
-                                <div className="flex justify-end">
-                                  <Pill tone={toneForDriftValue(drift)}>{fmtSignedPct(drift)}</Pill>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
+  <div className="flex flex-wrap items-center gap-3">
+    <Link
+      href="/login"
+      className="inline-flex items-center justify-center rounded-full bg-indigo-600/85 px-6 py-3 text-[15px] font-medium text-slate-100 shadow-md shadow-indigo-950/20 transition hover:bg-indigo-500/85"
+    >
+      Sign in
+    </Link>
+    <Link
+      href="/signup"
+      className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/30 px-6 py-3 text-[15px] font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
+    >
+      Request access
+    </Link>
+  </div>
 
-                      <p className="mt-2 text-[10px] text-slate-500"></p>
-                    </div>
-                  </div>
-                        </div>
-              </Panel>
+  <p className="text-sm text-slate-500">
+    Already onboarded?{' '}
+    <Link
+      href="/dashboard"
+      className="inline-flex items-center rounded-full border border-slate-700/70 bg-slate-900/30 px-3 py-1 text-xs font-medium leading-none text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
+    >
+      Open dashboard
+    </Link>
+  </p>
+</Reveal>
+
+  
+{/* PREVIEW */}
+<div
+  className={`min-w-0 transition-[opacity,transform,filter] ${
+    statsVisible
+      ? 'translate-y-0 scale-100 opacity-100 blur-0'
+      : 'pointer-events-none translate-y-2 scale-[0.985] opacity-0 blur-[2px]'
+  }`}
+  style={{
+    transitionDuration: '520ms',
+    transitionTimingFunction: PREVIEW_EASE,
+    willChange: 'opacity, transform, filter',
+  }}
+  aria-hidden={!statsVisible}
+>
+  <Reveal className="relative -mx-10 -my-8 px-10 py-8" delayMs={120}>
+    <Parallax
+      className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
+      strengthY={18}
+      strengthX={-10}
+      startAt={1.0}
+      endAt={0.2}
+    />
+
+    <div className="relative z-10">
+      <Panel
+        activePreview={displayedPreview}
+        expanded={previewVisible}
+        renderExpandedControls={renderExpandedPreviewPills}
+      >
+        <PanelHeader />
+
+        <div className="px-5 pb-5">
+          {/* KPI row */}
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Key metrics</p>
+            <div className="h-[3px] flex-1 bg-gradient-to-r from-slate-800/0 via-slate-800/70 to-slate-800/0" />
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <MetricTile label="Net invested" value="$1.28M" note="vs target allocation" accent="text-slate-50" />
+            <MetricTile
+              label="Plan progress"
+              value="37 / 52"
+              note="Next band within 3.2%"
+              accent="text-slate-50"
+            />
+            <MetricTile
+              label="Risk metric"
+              value="0.63"
+              note="Risk posture: Balanced"
+              accent="text-slate-50"
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => handlePreviewClick('buy')}
+                className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+                  selectedPreview === 'buy' ? 'scale-[1.03]' : ''
+                }`}
+              >
+                <Pill tone="green" className="w-[176px] justify-center">
+                  Buy Planner
+                </Pill>
+              </button>
             </div>
-          </Reveal>
+
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => handlePreviewClick('sell')}
+                className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+                  selectedPreview === 'sell' ? 'scale-[1.03]' : ''
+                }`}
+              >
+                <Pill tone="red" className="w-[176px] justify-center">
+                  Sell Planner
+                </Pill>
+              </button>
+            </div>
+
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => handlePreviewClick('balance')}
+                className={`inline-flex min-w-[120px] justify-center transform-gpu transition-transform duration-200 ease-out hover:scale-[1.05] ${
+                  selectedPreview === 'balance' ? 'scale-[1.03]' : ''
+                }`}
+              >
+                <Pill tone="indigo" className="w-[176px] justify-center">
+                  Portfolio Chart
+                </Pill>
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="relative mt-4 overflow-hidden rounded-2xl bg-[#17191c] shadow-[0_18px_40px_rgba(0,0,0,0.20)]">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
+            <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65" />
+
+            <div className="relative p-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                  Top holdings · plan tracking
+                </p>
+              </div>
+
+              <div className="mt-2 overflow-hidden rounded-xl border border-slate-800/60 bg-slate-950/20">
+                <div className="sticky top-0 z-10 bg-slate-950/35 backdrop-blur-sm">
+                  <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] font-medium text-slate-400">
+                    <span>Coin</span>
+                    <span className="text-right">LG1 Planner</span>
+                    <span className="text-right">Baseline</span>
+                    <span className="text-right">Drift</span>
+                  </div>
+                  <div className="h-px bg-slate-800/70" />
+                </div>
+
+                <div className="h-[125px] overflow-y-auto">
+                  {DEMO_COIN_ROWS.map((row) => {
+                    const drift = row.plannedPct - row.baselinePct
+                    return (
+                      <div
+                        key={row.symbol}
+                        className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[10px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
+                      >
+                        <div className="flex items-center gap-2">
+                          <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
+
+                          <div className="flex flex-col leading-tight">
+                            <span className="text-[10px] font-semibold text-slate-100">{row.symbol}</span>
+                            <span className="text-[9px] text-slate-500">{row.name}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-right tabular-nums text-slate-200">{fmtSignedPct(row.plannedPct)}</div>
+                        <div className="text-right tabular-nums text-slate-400">{fmtSignedPct(row.baselinePct)}</div>
+                        <div className="flex justify-end">
+                          <Pill tone={toneForDriftValue(drift)}>{fmtSignedPct(drift)}</Pill>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <p className="mt-2 text-[10px] text-slate-500"></p>
+            </div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  </Reveal>
+</div>
           </div>
         </section>
 
@@ -858,202 +958,200 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 
 {/* VALUE PILLARS */}
 <section id="pillars" className="space-y-8">
+  <Reveal>
+    <Kicker
+      label="LEDGERONE · PRINCIPLES"
+      title="Built around clarity, discipline, and reporting."
+      subtitle="LedgerOne is designed to reduce noise and increase consistency—by turning portfolio management into a repeatable workflow."
+    />
+  </Reveal>
 
+  <SplitRow className="grid gap-6 lg:grid-cols-3">
+    <Reveal delayMs={0}>
+      <InfoCard
+        title="Rules-first planning"
+        body="Define targets, bands, and ladder levels up front—so actions follow a plan, not headlines."
+      />
+    </Reveal>
 
-            <Reveal>
-            <Kicker
-              label="LEDGERONE · PRINCIPLES"
-              title="Built around clarity, discipline, and reporting."
-              subtitle="LedgerOne is designed to reduce noise and increase consistency—by turning portfolio management into a repeatable workflow."
-            />
-          </Reveal>
+    <Reveal delayMs={90}>
+      <InfoCard
+        title="Portfolio-level visibility"
+        body="Track positions, progress, and drift in one place with clean, calm reporting."
+      />
+    </Reveal>
 
-          <SplitRow className="grid gap-6 lg:grid-cols-3">
-            <Reveal delayMs={0}>
-              <InfoCard
-                title="Rules-first planning"
-                body="Define targets, bands, and ladder levels up front—so actions follow a plan, not headlines."
-              />
-            </Reveal>
+    <Reveal delayMs={180}>
+      <InfoCard
+        title="Risk posture and guardrails"
+        body="Stay within a defined mandate using structured constraints that help keep decisions consistent."
+      />
+    </Reveal>
+  </SplitRow>
+</section>
 
-            <Reveal delayMs={90}>
-              <InfoCard
-                title="Portfolio-level visibility"
-                body="Track positions, progress, and drift in one place with clean, calm reporting."
-              />
-            </Reveal>
+{/* WORKFLOW */}
+<section id="planner" className="space-y-8">
+  <Reveal>
+    <Kicker
+      label="PRODUCT · WORKFLOW"
+      title="A simple workflow that keeps your portfolio on-plan."
+      subtitle="Define rules → execute with discipline → review progress over time."
+    />
+  </Reveal>
 
-            <Reveal delayMs={180}>
-              <InfoCard
-                title="Risk posture and guardrails"
-                body="Stay within a defined mandate using structured constraints that help keep decisions consistent."
-              />
-            </Reveal>
-          </SplitRow>
-        </section>
+  <SplitRow className="grid gap-6 lg:grid-cols-3">
+    <Reveal delayMs={0}>
+      <InfoCard
+        eyebrow="01 · Define"
+        title="Define your allocation rules"
+        body="Set targets, bands, and ladder levels per asset—before markets move."
+      />
+    </Reveal>
 
-        {/* WORKFLOW */}
-        <section id="planner" className="space-y-8">
-          <Reveal>
-            <Kicker
-              label="PRODUCT · WORKFLOW"
-              title="A simple workflow that keeps your portfolio on-plan."
-              subtitle="Define rules → execute with discipline → review progress over time."
-            />
-          </Reveal>
+    <Reveal delayMs={90}>
+      <InfoCard
+        eyebrow="02 · Execute"
+        title="Execute with discipline"
+        body="Identify when a level is in range, triggered, or filled—so actions follow the plan."
+      />
+    </Reveal>
 
-          <SplitRow className="grid gap-6 lg:grid-cols-3">
-            <Reveal delayMs={0}>
-              <InfoCard
-                eyebrow="01 · Define"
-                title="Define your allocation rules"
-                body="Set targets, bands, and ladder levels per asset—before markets move."
-              />
-            </Reveal>
+    <Reveal delayMs={180}>
+      <InfoCard
+        eyebrow="03 · Review"
+        title="Review risk & progress"
+        body="Track drift, exposure, and plan adherence with clean portfolio-level reporting."
+      />
+    </Reveal>
+  </SplitRow>
+</section>
 
-            <Reveal delayMs={90}>
-              <InfoCard
-                eyebrow="02 · Execute"
-                title="Execute with discipline"
-                body="Identify when a level is in range, triggered, or filled—so actions follow the plan."
-              />
-            </Reveal>
+{/* ABOUT */}
+<section id="about" className="relative overflow-visible">
+  <Reveal className="relative mx-auto max-w-3xl space-y-4 overflow-visible px-2 text-center">
+    <div className="flex justify-center">
+      <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+        LEDGERONE · ABOUT
+      </span>
+    </div>
 
-            <Reveal delayMs={180}>
-              <InfoCard
-                eyebrow="03 · Review"
-                title="Review risk & progress"
-                body="Track drift, exposure, and plan adherence with clean portfolio-level reporting."
-              />
-            </Reveal>
-          </SplitRow>
-        </section>
+    <div className="relative isolate mx-auto max-w-3xl">
+      <AboutGlow />
 
-        {/* ABOUT */}
-        <section id="about" className="relative overflow-visible">
-          <Reveal className="relative mx-auto max-w-3xl space-y-4 overflow-visible px-2 text-center">
-            <div className="flex justify-center">
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                LEDGERONE · ABOUT
-              </span>
-            </div>
+      <div className="relative z-10 space-y-4">
+        <h2 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
+          A calmer way to manage a crypto portfolio.
+        </h2>
 
-            <div className="relative isolate mx-auto max-w-3xl">
-              <AboutGlow />
+        <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
 
-              <div className="relative z-10 space-y-4">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
-                  A calmer way to manage a crypto portfolio.
-                </h2>
+        <p className="text-sm leading-relaxed text-slate-300 sm:text-base">
+          LedgerOne started as a simple need: manage crypto positions with the same structure used in
+          institutional portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools
+          were built for watching—not planning. LedgerOne focuses on your ledger, your rules, and clean
+          reporting so decisions stay consistent across volatility.
+        </p>
+      </div>
+    </div>
+  </Reveal>
+</section>
 
-                <DrawLine className="mx-auto max-w-[26rem] opacity-60" />
+{/* WHO IT'S FOR */}
+<section id="teams" className="space-y-8">
+  <Reveal>
+    <Kicker
+      label="RESOURCES · WHO IT’S FOR"
+      title="Designed for investors who want structure."
+      subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
+    />
+  </Reveal>
 
-                <p className="text-sm leading-relaxed text-slate-300 sm:text-base">
-                  LedgerOne started as a simple need: manage crypto positions with the same structure used in
-                  institutional portfolio workflows. Spreadsheets were fragile, dashboards were noisy, and most tools
-                  were built for watching—not planning. LedgerOne focuses on your ledger, your rules, and clean
-                  reporting so decisions stay consistent across volatility.
-                </p>
-              </div>
-            </div>
-          </Reveal>
-        </section>
+  <SplitRow className="grid gap-6 lg:grid-cols-3">
+    <Reveal delayMs={0}>
+      <InfoCard
+        title="Everyday investors"
+        body="Replace spreadsheets with a single workspace for positions, cost basis, and planning."
+      />
+    </Reveal>
 
-        {/* WHO IT'S FOR */}
-        <section id="teams" className="space-y-8">
-          <Reveal>
-            <Kicker
-              label="RESOURCES · WHO IT’S FOR"
-              title="Designed for investors who want structure."
-              subtitle="A rules-based workspace that prioritizes clarity and consistency over noise."
-            />
-          </Reveal>
+    <Reveal delayMs={90}>
+      <InfoCard
+        title="Process-driven allocators"
+        body="Set guardrails and allocation bands to reduce reactive decisions during volatility."
+      />
+    </Reveal>
 
-          <SplitRow className="grid gap-6 lg:grid-cols-3">
-            <Reveal delayMs={0}>
-              <InfoCard
-                title="Everyday investors"
-                body="Replace spreadsheets with a single workspace for positions, cost basis, and planning."
-              />
-            </Reveal>
+    <Reveal delayMs={180}>
+      <InfoCard
+        title="Long-horizon builders"
+        body="Scale in and out over months or years with a plan you can actually stick to."
+      />
+    </Reveal>
+  </SplitRow>
+</section>
 
-            <Reveal delayMs={90}>
-              <InfoCard
-                title="Process-driven allocators"
-                body="Set guardrails and allocation bands to reduce reactive decisions during volatility."
-              />
-            </Reveal>
+{/* SECURITY & DATA */}
+<Reveal>
+  <SecurityDataSection />
+</Reveal>
 
-            <Reveal delayMs={180}>
-              <InfoCard
-                title="Long-horizon builders"
-                body="Scale in and out over months or years with a plan you can actually stick to."
-              />
-            </Reveal>
-          </SplitRow>
-        </section>
+{/* FINAL CTA */}
+<Reveal>
+  <section
+    id="pricing"
+    className="relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6"
+  >
+    <Parallax
+      className="pointer-events-none absolute -left-24 -top-20 h-40 w-64 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/6 to-sky-500/10 blur-3xl"
+      strengthY={22}
+      strengthX={18}
+      startAt={1.0}
+      endAt={0.0}
+    />
+    <Parallax
+      className="pointer-events-none absolute -bottom-24 -right-24 h-44 w-72 rounded-full bg-gradient-to-r from-sky-500/10 via-emerald-500/6 to-indigo-500/10 blur-3xl"
+      strengthY={18}
+      strengthX={-16}
+      startAt={1.0}
+      endAt={0.0}
+    />
 
-        {/* SECURITY & DATA */}
-        <Reveal>
-          <SecurityDataSection />
-        </Reveal>
+    <div className="relative flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-slate-100">Ready to bring structure to your portfolio?</p>
+        <p className="text-sm text-slate-400">Sign in or request access to start using LedgerOne.</p>
+      </div>
 
-        {/* FINAL CTA */}
-        <Reveal>
-          <section
-            id="pricing"
-            className="relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6"
-          >
-            <Parallax
-              className="pointer-events-none absolute -left-24 -top-20 h-40 w-64 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/6 to-sky-500/10 blur-3xl"
-              strengthY={22}
-              strengthX={18}
-              startAt={1.0}
-              endAt={0.0}
-            />
-            <Parallax
-              className="pointer-events-none absolute -bottom-24 -right-24 h-44 w-72 rounded-full bg-gradient-to-r from-sky-500/10 via-emerald-500/6 to-indigo-500/10 blur-3xl"
-              strengthY={18}
-              strengthX={-16}
-              startAt={1.0}
-              endAt={0.0}
-            />
+      <div className="flex flex-nowrap items-center justify-center gap-3">
+        <Link
+          href="/login"
+          className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
+        >
+          Sign in
+        </Link>
+        <Link
+          href="/signup"
+          className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/35 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
+        >
+          Request access
+        </Link>
+      </div>
+    </div>
 
-            <div className="relative flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-100">Ready to bring structure to your portfolio?</p>
-                <p className="text-sm text-slate-400">Sign in or request access to start using LedgerOne.</p>
-              </div>
+    <p className="relative mt-4 text-center text-[11px] text-slate-500"></p>
+  </section>
+</Reveal>
 
-<div className="flex flex-nowrap items-center justify-center gap-3">
-                  <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-slate-50 shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="/signup"
-                  className="inline-flex items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/35 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900/45"
-                >
-                  Request access
-                </Link>
-              </div>
-            </div>
+{/* FAQ */}
+<Reveal>
+  <FAQSection />
+</Reveal>
 
-            <p className="relative mt-4 text-center text-[11px] text-slate-500"></p>
-          </section>
-        </Reveal>
-
-        {/* FAQ */}
-        <Reveal>
-          <FAQSection />
-        </Reveal>
-
-        {/* FOOTER */}
-        <Reveal>
-          <LandingFooter />
-        </Reveal>
+{/* FOOTER */}
+<Reveal>
+  <LandingFooter />
+</Reveal>
       </div>
     </>
   )

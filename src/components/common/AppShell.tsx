@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Settings as SettingsIcon, ChevronDown, Eye, EyeOff } from 'lucide-react'
+import { Settings as SettingsIcon, ChevronDown, Eye, EyeOff, Menu, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import AuthButton from '@/components/auth/AuthButton'
 // TS NOTE: Sidebar is default-exported at runtime but TS complains about the default export.
@@ -32,18 +32,19 @@ const GLOW_SCROLL = 'rgb(20,21,22)'
   const LOGO_H = 56;          // px height (base)
   const LOGO_H_SM = 64;       // px height on sm+
   // Logo sizing knob: increase to make logo bigger WITHOUT changing the container/border size
-   const LOGO_SCALE = 4.5
+   const LOGO_SCALE = 5.2
   // Logo horizontal nudge (px). Negative moves LEFT; does not change slot/border sizes.
   const LOGO_SHIFT_X_PX = -60
   // Logo vertical nudge (px). Positive moves DOWN; does not change slot/border sizes.
-  const LOGO_SHIFT_Y_PX = 12
+  const LOGO_SHIFT_Y_PX = 7
 
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const [scrolled, setScrolled] = useState(false)
   const [hasHeaderAlerts, setHasHeaderAlerts] = useState(false)
   const [showPageLoader, setShowPageLoader] = useState(false)
-    const [amountsHidden, setAmountsHidden] = useState(false)
+  const [amountsHidden, setAmountsHidden] = useState(false)
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
 
   // Init from localStorage AFTER mount (avoids hydration issues)
   useEffect(() => {
@@ -249,20 +250,101 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
   }, [amountsHidden, pathname])
 
+  useEffect(() => {
+    setIsMobileNavOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isMobileNavOpen) return
+
+    const previousOverflow = document.body.style.overflow
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileNavOpen(false)
+    }
+
+    const handleResize = () => {
+      if (window.innerWidth >= 768) setIsMobileNavOpen(false)
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [isMobileNavOpen])
+
   return (
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
 
+      {!isLanding && (
+        <>
+          <div
+            aria-hidden="true"
+            className={[
+              'fixed inset-0 z-[60] bg-black/55 transition-opacity duration-200 ease-out md:hidden',
+              isMobileNavOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+            ].join(' ')}
+            onClick={() => setIsMobileNavOpen(false)}
+          />
+
+          <div
+            aria-hidden={!isMobileNavOpen}
+            id="mobile-navigation-drawer"
+            className={[
+              'fixed inset-y-0 left-0 z-[70] w-[86vw] max-w-[360px] md:hidden transform transition-transform duration-200 ease-out',
+              isMobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+            ].join(' ')}
+          >
+            <div
+              className="flex h-full flex-col overflow-hidden border-r border-[rgb(43,44,45)] backdrop-blur-md shadow-2xl shadow-black/50"
+              style={{
+                backgroundColor: SIDEBAR_BG,
+                color: 'rgb(188,189,189)',
+              }}
+            >
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-medium text-slate-200">Navigation</span>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileNavOpen(false)}
+                  aria-label="Close navigation menu"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-200 transition-colors hover:bg-white/10 hover:text-slate-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div
+                className="min-h-0 flex-1 overflow-hidden"
+                onClickCapture={(event) => {
+                  const target = event.target as HTMLElement | null
+                  if (target?.closest('a')) setIsMobileNavOpen(false)
+                }}
+              >
+                <Sidebar />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Sticky sidebar + independent scrolling main column */}
       <div className="grid grid-cols-12">
+
         {/* Sticky, full-height sidebar (independent of page scroll) */}
-        <aside
+           <aside
           className={
             isLanding
               ? 'hidden'
-              : 'col-span-12 md:col-span-3 lg:col-span-2 sticky top-0 h-[100dvh] backdrop-blur-md ring-0 shadow-none z-50'
+              : 'hidden md:col-span-3 md:block lg:col-span-2 sticky top-0 h-[100dvh] backdrop-blur-md ring-0 shadow-none z-50'
           }
           style={{
             backgroundColor: SIDEBAR_BG,
@@ -425,18 +507,32 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
               </div>
             ) : (
               // Default in-app header (logo left, alerts + settings + auth right)
-              <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-3">
-                {/* Left: Logo for in-app views */}
-                <Link
-                  href="/dashboard"
-                  className="flex items-center gap-2"
-                  aria-label="LedgerOne dashboard"
-                >
-                  {/* In-app logo intentionally omitted (existing behavior preserved) */}
-                </Link>
+              <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+                {/* Left: mobile nav trigger + logo slot for in-app views */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileNavOpen(true)}
+                    aria-label="Open navigation menu"
+                    aria-expanded={isMobileNavOpen}
+                    aria-controls="mobile-navigation-drawer"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-200 transition-colors hover:bg-white/10 hover:text-slate-50 md:hidden"
+                  >
+                    <Menu className="h-4 w-4" />
+                  </button>
+
+                  <Link
+                    href="/dashboard"
+                    className="hidden items-center gap-2 md:flex"
+                    aria-label="LedgerOne dashboard"
+                  >
+                    {/* In-app logo intentionally omitted (existing behavior preserved) */}
+                  </Link>
+                </div>
 
                 {/* Right: alerts, settings, auth */}
                 <div className="flex items-center justify-end gap-3">
+                  
                   {/* Alerts in header – same logic as dashboard, styled via data-header-alerts + header-has-alerts */}
                   <div
                     className={[
