@@ -19,16 +19,16 @@ type CoinRow = {
 
 // Illustrative demo data only (no performance promises)
 const DEMO_COIN_ROWS: CoinRow[] = [
-  { symbol: 'BTC', name: 'Bitcoin', plannedPct: 0.214, baselinePct: 0.183 },
-  { symbol: 'ETH', name: 'Ethereum', plannedPct: 0.162, baselinePct: 0.141 },
-  { symbol: 'SOL', name: 'Solana', plannedPct: 0.288, baselinePct: 0.244 },
-  { symbol: 'BNB', name: 'BNB', plannedPct: 0.119, baselinePct: 0.112 },
-  { symbol: 'ADA', name: 'Cardano', plannedPct: -0.042, baselinePct: -0.061 },
-  { symbol: 'XRP', name: 'XRP', plannedPct: 0.081, baselinePct: 0.067 },
-  { symbol: 'DOGE', name: 'Dogecoin', plannedPct: 0.054, baselinePct: 0.091 },
-  { symbol: 'AVAX', name: 'Avalanche', plannedPct: 0.133, baselinePct: 0.098 },
-  { symbol: 'MATIC', name: 'Polygon', plannedPct: -0.017, baselinePct: -0.028 },
-  { symbol: 'LINK', name: 'Chainlink', plannedPct: 0.176, baselinePct: 0.149 },
+  { symbol: 'BTC', name: 'Bitcoin', plannedPct: 0.814, baselinePct: 0.183 },
+  { symbol: 'ETH', name: 'Ethereum', plannedPct: 0.462, baselinePct: 0.141 },
+  { symbol: 'SOL', name: 'Solana', plannedPct: 0.688, baselinePct: 0.244 },
+  { symbol: 'BNB', name: 'BNB', plannedPct: 0.919, baselinePct: 0.112 },
+  { symbol: 'ADA', name: 'Cardano', plannedPct: 0.22, baselinePct: -0.061 },
+  { symbol: 'XRP', name: 'XRP', plannedPct: 0.81, baselinePct: 0.067 },
+  { symbol: 'DOGE', name: 'Dogecoin', plannedPct: 0.54, baselinePct: 0.091 },
+  { symbol: 'AVAX', name: 'Avalanche', plannedPct: 0.33, baselinePct: 0.098 },
+  { symbol: 'MATIC', name: 'Polygon', plannedPct: 0.17, baselinePct: -0.028 },
+  { symbol: 'LINK', name: 'Chainlink', plannedPct: 0.276, baselinePct: 0.149 },
 ]
 
 const PANEL_BUY_IMAGE = '/images/portfolio-plan-overview-back.png'
@@ -208,8 +208,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         />
 
           <div
-          className={`relative transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
-            open ? 'translate-y-1 scale-[0.992] opacity-0' : 'translate-y-0 scale-100 opacity-100'
+className={`relative transform-gpu transition-[opacity,transform] ${
+              open ? 'translate-y-1 scale-[0.992] opacity-0' : 'translate-y-0 scale-100 opacity-100'
           }`}
           style={{
             transitionDuration: `${open ? 260 : 320}ms`,
@@ -226,8 +226,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         aria-hidden={!showExpandedShell}
       >
         <div
-          className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
-            open
+className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
+                open
               ? 'opacity-100 scale-[1.02] -translate-y-1'
               : 'opacity-0 scale-[0.992] translate-y-2'
           }`}
@@ -243,8 +243,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
 >
   <div className="relative h-full w-full">
     <div
-      className={`absolute inset-0 transform-gpu will-change-[opacity,transform] transition-[opacity,transform] ${
-        activePreview === 'buy' ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.008]'
+className={`absolute inset-0 transform-gpu transition-[opacity,transform] ${
+          activePreview === 'buy' ? 'opacity-100 scale-100' : 'opacity-0 scale-[1.008]'
       }`}
       style={{
         transitionDuration: `${PREVIEW_IMAGE_SWAP_MS}ms`,
@@ -305,8 +305,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
     {renderExpandedControls ? (
       <>
         <div
-          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('buy')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
-            open && activePreview === 'buy'
+className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('buy')} -translate-x-1/2 transition-[opacity,transform] ${
+              open && activePreview === 'buy'
               ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
               : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
           }`}
@@ -319,8 +319,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         </div>
 
         <div
-          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('sell')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
-            open && activePreview === 'sell'
+className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('sell')} -translate-x-1/2 transition-[opacity,transform] ${
+              open && activePreview === 'sell'
               ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
               : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
           }`}
@@ -333,8 +333,8 @@ const getPreviewControlsOffsetClass = (preview: PreviewKey) =>
         </div>
 
         <div
-          className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('balance')} -translate-x-1/2 will-change-[opacity,transform] transition-[opacity,transform] ${
-            open && activePreview === 'balance'
+className={`absolute left-1/2 top-full z-20 ${getPreviewControlsOffsetClass('balance')} -translate-x-1/2 transition-[opacity,transform] ${
+              open && activePreview === 'balance'
               ? 'pointer-events-auto translate-y-0 opacity-100 scale-100'
               : 'pointer-events-none translate-y-0 opacity-0 scale-[1.008]'
           }`}
@@ -395,8 +395,8 @@ function PanelHeader() {
         <div className="mt-1 h-2.5 w-2.5 rounded-full border border-indigo-400/30 bg-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.9)]" />
         <div className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">LedgerOne · Overview</p>
-          <p className="text-md font-semibold tracking-tight text-slate-100">Portfolio plan overview</p>
-          <p className="text-[11px] text-slate-500">Strategy P/L vs Buy &amp; Hold</p>
+          <p className="text-md font-semibold tracking-tight text-slate-100">Portfolio Plan Overview</p>
+          <p className="text-[11px] text-slate-500">LG1 Strategy vs Buy &amp; Hold</p>
         </div>
       </div>
 
@@ -769,15 +769,14 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
   
 {/* PREVIEW */}
 <div
-  className={`min-w-0 transition-[opacity,transform,filter] ${
+  className={`min-w-0 transition-[opacity,transform] ${
     statsVisible
-      ? 'translate-y-0 scale-100 opacity-100 blur-0'
-      : 'pointer-events-none translate-y-2 scale-[0.985] opacity-0 blur-[2px]'
+      ? 'translate-y-0 scale-100 opacity-100'
+      : 'pointer-events-none translate-y-2 scale-[0.985] opacity-0'
   }`}
   style={{
     transitionDuration: '520ms',
     transitionTimingFunction: PREVIEW_EASE,
-    willChange: 'opacity, transform, filter',
   }}
   aria-hidden={!statsVisible}
 >
@@ -799,30 +798,7 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
         <PanelHeader />
 
         <div className="px-5 pb-5">
-          {/* KPI row */}
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Key metrics</p>
-            <div className="h-[3px] flex-1 bg-gradient-to-r from-slate-800/0 via-slate-800/70 to-slate-800/0" />
-          </div>
-
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <MetricTile label="Net invested" value="$1.28M" note="vs target allocation" accent="text-slate-50" />
-            <MetricTile
-              label="Plan progress"
-              value="37 / 52"
-              note="Next band within 3.2%"
-              accent="text-slate-50"
-            />
-            <MetricTile
-              label="Risk metric"
-              value="0.63"
-              note="Risk posture: Balanced"
-              accent="text-slate-50"
-            />
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            <div className="flex justify-center">
+          <div className="mt-3 grid grid-cols-3 gap-3">            <div className="flex justify-center">
               <button
                 type="button"
                 onClick={() => handlePreviewClick('buy')}
@@ -866,59 +842,53 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
           </div>
 
           {/* Table */}
-          <div className="relative mt-4 overflow-hidden rounded-2xl bg-[#17191c] shadow-[0_18px_40px_rgba(0,0,0,0.20)]">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/[0.14] via-transparent to-transparent" />
-            <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]" />
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-500/12 to-transparent opacity-65" />
+          <div className="mt-4 p-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
 
-            <div className="relative p-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                  Top holdings · plan tracking
-                </p>
+              </p>
+            </div>
+
+<div className="mt-2 overflow-hidden rounded-2xl border border-[#061626] bg-slate-950/10 shadow-[0_0_0_1px_rgba(6,22,38,0.1)]">
+              <div className="sticky top-0 z-10 bg-slate-950/18 backdrop-blur-sm">
+                <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[11px] font-medium text-slate-400">
+                  <span>Coin</span>
+                  <span className="text-right">LG1 Planner</span>
+                  <span className="text-right">Baseline</span>
+                  <span className="text-right">Drift</span>
+                </div>
+                <div className="h-px bg-slate-800/70" />
               </div>
 
-              <div className="mt-2 overflow-hidden rounded-xl border border-slate-800/60 bg-slate-950/20">
-                <div className="sticky top-0 z-10 bg-slate-950/35 backdrop-blur-sm">
-                  <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center px-3 py-2 text-[10px] font-medium text-slate-400">
-                    <span>Coin</span>
-                    <span className="text-right">LG1 Planner</span>
-                    <span className="text-right">Baseline</span>
-                    <span className="text-right">Drift</span>
-                  </div>
-                  <div className="h-px bg-slate-800/70" />
-                </div>
+              <div className="h-[220px] overflow-y-auto">
+                {DEMO_COIN_ROWS.map((row) => {
+                  const drift = row.plannedPct - row.baselinePct
+                  return (
+                    <div
+                      key={row.symbol}
+                      className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[11px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
+                    >
+                      <div className="flex items-center gap-2">
+                        <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
 
-                <div className="h-[125px] overflow-y-auto">
-                  {DEMO_COIN_ROWS.map((row) => {
-                    const drift = row.plannedPct - row.baselinePct
-                    return (
-                      <div
-                        key={row.symbol}
-                        className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[10px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
-                      >
-                        <div className="flex items-center gap-2">
-                          <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
-
-                          <div className="flex flex-col leading-tight">
-                            <span className="text-[10px] font-semibold text-slate-100">{row.symbol}</span>
-                            <span className="text-[9px] text-slate-500">{row.name}</span>
-                          </div>
-                        </div>
-
-                        <div className="text-right tabular-nums text-slate-200">{fmtSignedPct(row.plannedPct)}</div>
-                        <div className="text-right tabular-nums text-slate-400">{fmtSignedPct(row.baselinePct)}</div>
-                        <div className="flex justify-end">
-                          <Pill tone={toneForDriftValue(drift)}>{fmtSignedPct(drift)}</Pill>
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-[11px] font-semibold text-slate-100">{row.symbol}</span>
+                          <span className="text-[10px] text-slate-500">{row.name}</span>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
 
-              <p className="mt-2 text-[10px] text-slate-500"></p>
+                      <div className="text-right tabular-nums text-slate-200">{fmtSignedPct(row.plannedPct)}</div>
+                      <div className="text-right tabular-nums text-slate-400">{fmtSignedPct(row.baselinePct)}</div>
+                      <div className="flex justify-end">
+                        <Pill tone={toneForDriftValue(drift)}>{fmtSignedPct(drift)}</Pill>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
+
+            <p className="mt-2 text-[10px] text-slate-500">Data starts January 1, 2020.</p>
           </div>
         </div>
       </Panel>
