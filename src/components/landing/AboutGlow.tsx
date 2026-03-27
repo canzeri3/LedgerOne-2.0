@@ -71,31 +71,41 @@ export function AboutGlow() {
         className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[19rem] w-[60rem] max-w-[98vw] -translate-x-1/2 -translate-y-1/2"
       >
         <div
-          className={`aboutGlowInner h-full w-full rounded-full transform-gpu ${
-            inView ? 'aboutGlowInnerOn' : 'aboutGlowInnerOff'
-          }`}
+          className="aboutGlowShell h-full w-full rounded-full transform-gpu"
           style={{
-            willChange: 'transform, opacity',
-            backgroundImage: `
-              radial-gradient(ellipse 70% 64% at 50% 50%, rgba(99,102,241,0.07) 0%, rgba(99,102,241,0.07) 22%, rgba(99,102,241,0.05) 46%, rgba(99,102,241,0.00) 82%),
-              radial-gradient(ellipse 58% 52% at 50% 50%, rgba(56,189,248,0.05) 0%, rgba(56,189,248,0.05) 28%, rgba(56,189,248,0.025) 50%, rgba(56,189,248,0.00) 84%),
-              radial-gradient(ellipse 48% 42% at 50% 50%, rgba(16,185,129,0.022) 0%, rgba(16,185,129,0.022) 32%, rgba(16,185,129,0.008) 54%, rgba(16,185,129,0.00) 86%)
-            `,
+            contain: 'paint',
+            willChange: 'opacity',
           }}
-        />
+        >
+          <div
+            className={`aboutGlowInner h-full w-full rounded-full transform-gpu ${
+              inView ? 'aboutGlowInnerOn' : 'aboutGlowInnerOff'
+            }`}
+            style={{
+              willChange: 'transform, opacity',
+              backgroundImage: `
+                radial-gradient(ellipse 70% 64% at 50% 50%, rgba(99,102,241,0.07) 0%, rgba(99,102,241,0.07) 22%, rgba(99,102,241,0.05) 46%, rgba(99,102,241,0.00) 82%),
+                radial-gradient(ellipse 58% 52% at 50% 50%, rgba(56,189,248,0.05) 0%, rgba(56,189,248,0.05) 28%, rgba(56,189,248,0.025) 50%, rgba(56,189,248,0.00) 84%),
+                radial-gradient(ellipse 48% 42% at 50% 50%, rgba(16,185,129,0.022) 0%, rgba(16,185,129,0.022) 32%, rgba(16,185,129,0.008) 54%, rgba(16,185,129,0.00) 86%)
+              `,
+            }}
+          />
+        </div>
       </div>
 
       <style jsx>{`
+        .aboutGlowShell {
+          filter: blur(10px);
+        }
+
         .aboutGlowInnerOff {
           opacity: 0;
           transform: scale(0.94);
-          filter: blur(10px);
         }
 
         .aboutGlowInnerOn {
           opacity: 1;
           transform: scale(1);
-          filter: blur(10px);
           animation:
             aboutGlowEnter 1500ms cubic-bezier(.16,.84,.2,1) both,
             aboutGlowBreathe 6.2s ease-in-out 1650ms infinite;
@@ -133,7 +143,6 @@ export function AboutGlow() {
           .aboutGlowInnerOn {
             opacity: 1;
             transform: scale(1);
-            filter: blur(10px);
             animation: none;
           }
         }

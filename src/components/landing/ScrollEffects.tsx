@@ -139,7 +139,7 @@ export function Reveal({
       style={{
         transitionDelay: `${delayMs}ms`,
         transitionDuration: `${durationMs}ms`,
-        willChange: 'transform, opacity, filter',
+        willChange: inView ? 'auto' : 'transform, opacity, filter',
       }}
       className={
         `transition-[opacity,transform,filter] ease-[cubic-bezier(0.22,1,0.36,1)] ` +
@@ -237,14 +237,14 @@ export function SplitRow({
         return (
           <div
             key={(child as any)?.key ?? i}
-            style={{
+                style={{
               transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`,
               opacity,
               transitionProperty: 'transform, opacity',
               transitionDuration: `${durationMs}ms`,
               transitionTimingFunction: 'cubic-bezier(.2,.85,.2,1)',
               transitionDelay: `${i * staggerMs}ms`,
-              willChange: 'transform, opacity',
+              willChange: on ? 'auto' : 'transform, opacity',
             }}
           >
             {child}
@@ -274,7 +274,9 @@ export function ScrollSpread({
 }: ScrollSpreadProps) {
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
-  const [p, setP] = useState(reducedMotion ? 1 : 0)
+  const itemRefs = useRef<HTMLDivElement[]>([])
+  const lastProgressRef = useRef<number | null>(null)
+  const activeRef = useRef(true)
 
   const items = useMemo(() => React.Children.toArray(children), [children])
   const offsets = useMemo(() => {
@@ -282,46 +284,98 @@ export function ScrollSpread({
   }, [fromOffsets, items.length])
 
   useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, items.length)
+  }, [items.length])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
     if (reducedMotion) {
-      setP(1)
+      lastProgressRef.current = 1
+      itemRefs.current.forEach((node) => {
+        if (!node) return
+        node.style.transform = 'translate3d(0px, 0px, 0) rotate(0deg) scale(1)'
+      })
       return
     }
 
-    const el = ref.current
-    if (!el || typeof window === 'undefined') return
+    let isMounted = true
+    let io: IntersectionObserver | null = null
 
-    return subscribeToSharedFrame(() => {
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          activeRef.current = Boolean(entries[0]?.isIntersecting)
+        },
+        {
+          threshold: 0,
+          rootMargin: '20% 0px 20% 0px',
+        }
+      )
+
+      io.observe(el)
+    }
+
+    const unsubscribe = subscribeToSharedFrame(() => {
+      if (!isMounted || !activeRef.current) return
+
       const rect = el.getBoundingClientRect()
       const vh = Math.max(1, window.innerHeight)
       const startPx = vh * startAt
       const endPx = vh * endAt
       const denom = Math.max(1, startPx - endPx)
       const next = clamp01((startPx - rect.top) / denom)
-      setP((prev) => (Math.abs(prev - next) > 0.001 ? next : prev))
+      const last = lastProgressRef.current
+
+      if (last !== null && Math.abs(last - next) <= 0.001) {
+        return
+      }
+
+      lastProgressRef.current = next
+      const inv = 1 - next
+      const scale = 0.978 + 0.022 * next
+
+      for (let i = 0; i < itemRefs.current.length; i += 1) {
+        const node = itemRefs.current[i]
+        if (!node) continue
+
+        const from = offsets[i] || {}
+        const x0 = from.x ?? 0
+        const y0 = from.y ?? 0
+        const r0 = from.r ?? 0
+        const x = x0 * inv
+        const y = y0 * inv
+        const r = (Math.max(-maxRotateDeg, Math.min(maxRotateDeg, r0)) || 0) * inv
+
+        node.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(${r.toFixed(3)}deg) scale(${scale.toFixed(4)})`
+      }
     })
-  }, [endAt, reducedMotion, startAt])
+
+    return () => {
+      isMounted = false
+      io?.disconnect()
+      unsubscribe?.()
+    }
+  }, [endAt, items.length, maxRotateDeg, offsets, reducedMotion, startAt])
 
   return (
     <div ref={ref} className={className}>
       {items.map((child, i) => {
         const from = offsets[i] || {}
-        const x0 = from.x ?? 0
-        const y0 = from.y ?? 0
-        const r0 = from.r ?? 0
-
-        const inv = 1 - p
-        const x = x0 * inv
-        const y = y0 * inv
-        const r = (Math.max(-maxRotateDeg, Math.min(maxRotateDeg, r0)) || 0) * inv
-        const scale = 0.978 + 0.022 * p
+        const x0 = reducedMotion ? 0 : from.x ?? 0
+        const y0 = reducedMotion ? 0 : from.y ?? 0
+        const r0 = reducedMotion ? 0 : (Math.max(-maxRotateDeg, Math.min(maxRotateDeg, from.r ?? 0)) || 0)
+        const scale = reducedMotion ? 1 : 0.978
 
         return (
           <div
             key={(child as any)?.key ?? i}
+            ref={(node) => {
+              if (node) itemRefs.current[i] = node
+            }}
             style={{
-              transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(${r.toFixed(
-                3
-              )}deg) scale(${scale.toFixed(4)})`,
+              transform: `translate3d(${x0.toFixed(2)}px, ${y0.toFixed(2)}px, 0) rotate(${r0.toFixed(3)}deg) scale(${scale.toFixed(4)})`,
               transition: 'transform 90ms linear',
               willChange: 'transform',
             }}
@@ -354,18 +408,38 @@ export function Parallax({
   const reducedMotion = usePrefersReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
   const lastTransformRef = useRef<{ x: number; y: number } | null>(null)
+  const activeRef = useRef(true)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
 
     if (reducedMotion) {
+      activeRef.current = false
       lastTransformRef.current = { x: 0, y: 0 }
       el.style.transform = 'translate3d(0px, 0px, 0px)'
       return
     }
 
-    return subscribeToSharedFrame(() => {
+    let io: IntersectionObserver | null = null
+
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          activeRef.current = Boolean(entries[0]?.isIntersecting)
+        },
+        {
+          threshold: 0,
+          rootMargin: '20% 0px 20% 0px',
+        }
+      )
+
+      io.observe(el)
+    }
+
+    const unsubscribe = subscribeToSharedFrame(() => {
+      if (!activeRef.current) return
+
       const rect = el.getBoundingClientRect()
       const vh = Math.max(1, window.innerHeight)
       const startPx = vh * startAt
@@ -384,6 +458,11 @@ export function Parallax({
       lastTransformRef.current = { x, y }
       el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`
     })
+
+    return () => {
+      io?.disconnect()
+      unsubscribe?.()
+    }
   }, [endAt, reducedMotion, startAt, strengthX, strengthY])
 
   return (
@@ -484,8 +563,9 @@ export function DrawLine({ className = '', once = true }: DrawLineProps) {
         style={{
           transform: `scaleX(${on ? 1 : 0})`,
           transition: 'transform 650ms cubic-bezier(.2,.8,.2,1)',
-          willChange: 'transform',
+          willChange: on ? 'auto' : 'transform',
         }}
+        
       />
     </div>
   )

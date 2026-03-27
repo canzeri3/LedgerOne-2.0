@@ -16,6 +16,7 @@ type ClusterSpec = {
   radiusX: number
   radiusY: number
   rotation?: number
+  driftMultiplier?: number
   minDots: number
   maxDots: number
   linkDistance: number
@@ -38,9 +39,7 @@ type NodePoint = {
 }
 
 type BackdropCache = {
-  topGlow: CanvasGradient
-  heroGlow: CanvasGradient
-  nightWash: CanvasGradient
+  bitmap: HTMLCanvasElement
 }
 
 type ParticlePerformanceProfile = {
@@ -51,6 +50,8 @@ type ParticlePerformanceProfile = {
   lineShadowBlur: number
 }
 
+type SpatialBucketMap = Map<string, NodePoint[]>
+
 const DEFAULT_PROFILE: ParticlePerformanceProfile = {
   lowPower: false,
   maxDpr: 1.5,
@@ -58,6 +59,14 @@ const DEFAULT_PROFILE: ParticlePerformanceProfile = {
   densityMultiplier: 1,
   lineShadowBlur: 2,
 }
+
+const CONNECTION_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [-1, 1],
+]
 
 function getParticlePerformanceProfile(): ParticlePerformanceProfile {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -86,16 +95,16 @@ function clamp(value: number, min: number, max: number) {
 
 const CLUSTER_LAYOUT: ClusterSpec[] = [
   {
-    id: 'top-left',
+    id: 'Middle-right',
     kind: 'small',
-    centerX: 0.93,
-    centerY: 0.175,
-    radiusX: 0.025,
+    centerX: 0.9,
+    centerY: 0.40,
+    radiusX: 0.075,
     radiusY: 0.065,
-    rotation: 0,
-    minDots: 5,
-    maxDots: 10,
-    linkDistance: 78,
+    rotation: 0.7,
+    minDots: 15,
+    maxDots: 20,
+    linkDistance: 80,
   },
   {
     id: 'hero-big',
@@ -105,21 +114,23 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
     radiusX: 0.235,
     radiusY: 0.19,
     rotation: -0.06,
+driftMultiplier: 1.6,
     minDots: 40,
     maxDots: 60,
     linkDistance: 150,
   },
   {
-    id: 'top-right-tiny',
+    id: 'middle-right-tiny',
     kind: 'small',
-    centerX: 0.972,
-    centerY: 0.23,
+    centerX: 0.962,
+    centerY: 0.46,
     radiusX: 0.014,
-    radiusY: 0.008,
+    radiusY: 0.08,
+driftMultiplier: 1.6,
     rotation: 0,
-    minDots: 4,
-    maxDots: 6,
-    linkDistance: 20,
+    minDots: 0,
+    maxDots: 0,
+    linkDistance: 60,
   },
   {
     id: 'right-lower-card',
@@ -129,6 +140,7 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
     radiusX: 0.2,
     radiusY: 0.17,
     rotation: 0.22,
+driftMultiplier: 1.6,
     minDots: 45,
     maxDots: 50,
     linkDistance: 150,
@@ -202,17 +214,16 @@ function makeNode(spec: ClusterSpec, width: number, height: number, reducedMotio
   const minEdge = Math.min(width, height)
 
   const driftSpeed = reducedMotion ? 0.018 : 0.085
+  const driftMultiplier = spec.driftMultiplier ?? 1
   const angle = Math.random() * Math.PI * 2
   const isBig = spec.kind === 'big'
-
   return {
     x: sampled.x + (Math.random() - 0.5) * (isBig ? 9 : 5),
     y: sampled.y + (Math.random() - 0.5) * (isBig ? 9 : 5),
     homeX: sampled.x,
     homeY: sampled.y,
-    vx: Math.cos(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
-    vy: Math.sin(angle) * driftSpeed * (0.45 + Math.random() * 0.9),
-    pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
+    vx: Math.cos(angle) * driftSpeed * driftMultiplier * (0.45 + Math.random() * 0.9),
+    vy: Math.sin(angle) * driftSpeed * driftMultiplier * (0.45 + Math.random() * 0.9),    pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
     radius: isBig
       ? (minEdge < 420 ? 1.25 : 1.45) + Math.random() * 2.1
       : (minEdge < 420 ? 1.0 : 1.15) + Math.random() * 1.45,
@@ -234,8 +245,17 @@ function addNodeToClusterMap(map: Map<string, NodePoint[]>, node: NodePoint) {
   map.set(node.clusterId, [node])
 }
 
-function createBackdropCache(ctx: CanvasRenderingContext2D, width: number, height: number): BackdropCache {
-  const topGlow = ctx.createRadialGradient(
+function createBackdropCache(width: number, height: number): BackdropCache {
+  const bitmap = document.createElement('canvas')
+  bitmap.width = Math.max(1, Math.round(width))
+  bitmap.height = Math.max(1, Math.round(height))
+
+  const bitmapCtx = bitmap.getContext('2d')
+  if (!bitmapCtx) {
+    return { bitmap }
+  }
+
+  const topGlow = bitmapCtx.createRadialGradient(
     width * 0.56,
     height * 0.14,
     0,
@@ -248,7 +268,7 @@ function createBackdropCache(ctx: CanvasRenderingContext2D, width: number, heigh
   topGlow.addColorStop(0.52, 'rgba(15, 23, 42, 0.04)')
   topGlow.addColorStop(0.82, 'rgba(2, 6, 23, 0.00)')
 
-  const heroGlow = ctx.createRadialGradient(
+  const heroGlow = bitmapCtx.createRadialGradient(
     width * 0.6,
     height * 0.48,
     0,
@@ -260,13 +280,66 @@ function createBackdropCache(ctx: CanvasRenderingContext2D, width: number, heigh
   heroGlow.addColorStop(0.32, 'rgba(30, 41, 59, 0.04)')
   heroGlow.addColorStop(0.72, 'rgba(2, 6, 23, 0.00)')
 
-  const nightWash = ctx.createLinearGradient(0, 0, 0, height)
+  const nightWash = bitmapCtx.createLinearGradient(0, 0, 0, height)
   nightWash.addColorStop(0, 'rgba(2, 6, 23, 0.18)')
   nightWash.addColorStop(0.26, 'rgba(2, 6, 23, 0.08)')
   nightWash.addColorStop(0.72, 'rgba(2, 6, 23, 0.14)')
   nightWash.addColorStop(1, 'rgba(2, 6, 23, 0.3)')
 
-  return { topGlow, heroGlow, nightWash }
+  bitmapCtx.fillStyle = topGlow
+  bitmapCtx.fillRect(0, 0, width, height)
+
+  bitmapCtx.fillStyle = heroGlow
+  bitmapCtx.fillRect(0, 0, width, height)
+
+  bitmapCtx.fillStyle = nightWash
+  bitmapCtx.fillRect(0, 0, width, height)
+
+  return { bitmap }
+}
+
+function getBucketKey(col: number, row: number) {
+  return `${col}:${row}`
+}
+
+function buildSpatialBuckets(clusterNodes: NodePoint[], cellSize: number): SpatialBucketMap {
+  const buckets: SpatialBucketMap = new Map()
+
+  for (const node of clusterNodes) {
+    const col = Math.floor(node.x / cellSize)
+    const row = Math.floor(node.y / cellSize)
+    const key = getBucketKey(col, row)
+    const bucket = buckets.get(key)
+
+    if (bucket) {
+      bucket.push(node)
+    } else {
+      buckets.set(key, [node])
+    }
+  }
+
+  return buckets
+}
+
+function drawConnectionPair(ctx: CanvasRenderingContext2D, a: NodePoint, b: NodePoint) {
+  const dx = a.x - b.x
+  const dy = a.y - b.y
+  const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
+  const distanceLimitSq = distanceLimit * distanceLimit
+  const distanceSq = dx * dx + dy * dy
+
+  if (distanceSq > distanceLimitSq) return
+
+  const distance = Math.sqrt(distanceSq)
+  const linkStrength = 1 - distance / distanceLimit
+  const opacity = (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
+
+  ctx.beginPath()
+  ctx.moveTo(a.x, a.y)
+  ctx.lineTo(b.x, b.y)
+  ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
+  ctx.lineWidth = distance < distanceLimit * 0.42 ? 0.96 : 0.72
+  ctx.stroke()
 }
 
 export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBackgroundProps) {
@@ -312,7 +385,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     }
 
     const rebuildBackdropCache = () => {
-      backdropCache = createBackdropCache(ctx, width, height)
+      backdropCache = createBackdropCache(width, height)
     }
 
     const setCanvasSize = () => {
@@ -357,47 +430,48 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
 
     const drawBackdrop = () => {
       if (!backdropCache) return
-
-      ctx.fillStyle = backdropCache.topGlow
-      ctx.fillRect(0, 0, width, height)
-
-      ctx.fillStyle = backdropCache.heroGlow
-      ctx.fillRect(0, 0, width, height)
-
-      ctx.fillStyle = backdropCache.nightWash
-      ctx.fillRect(0, 0, width, height)
+      ctx.drawImage(backdropCache.bitmap, 0, 0, width, height)
     }
 
     const drawConnections = () => {
-      const lineShadowBlur = profile.lineShadowBlur
+      if (profile.lineShadowBlur > 0) {
+        ctx.shadowColor = 'rgba(96, 165, 250, 0.18)'
+        ctx.shadowBlur = profile.lineShadowBlur
+      } else {
+        ctx.shadowBlur = 0
+      }
 
       for (const clusterNodes of nodesByCluster.values()) {
-        for (let i = 0; i < clusterNodes.length; i += 1) {
-          const a = clusterNodes[i]
+        if (clusterNodes.length < 2) continue
 
-          for (let j = i + 1; j < clusterNodes.length; j += 1) {
-            const b = clusterNodes[j]
-            const dx = a.x - b.x
-            const dy = a.y - b.y
-            const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
-            const distanceLimitSq = distanceLimit * distanceLimit
-            const distanceSq = dx * dx + dy * dy
+        const cellSize = Math.max(18, clusterNodes[0]?.linkDistance || 18)
+        const buckets = buildSpatialBuckets(clusterNodes, cellSize)
 
-            if (distanceSq > distanceLimitSq) continue
+        for (const [key, bucket] of buckets) {
+          const [colText, rowText] = key.split(':')
+          const col = Number(colText)
+          const row = Number(rowText)
 
-            const distance = Math.sqrt(distanceSq)
-            const linkStrength = 1 - distance / distanceLimit
-            const opacity =
-              (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
+          for (const [offsetX, offsetY] of CONNECTION_NEIGHBOR_OFFSETS) {
+            const neighbor = buckets.get(getBucketKey(col + offsetX, row + offsetY))
+            if (!neighbor) continue
 
-            ctx.beginPath()
-            ctx.moveTo(a.x, a.y)
-            ctx.lineTo(b.x, b.y)
-            ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
-            ctx.lineWidth = distance < distanceLimit * 0.42 ? 0.96 : 0.72
-            ctx.shadowColor = 'rgba(96, 165, 250, 0.18)'
-            ctx.shadowBlur = lineShadowBlur
-            ctx.stroke()
+            if (offsetX === 0 && offsetY === 0) {
+              for (let i = 0; i < bucket.length; i += 1) {
+                const a = bucket[i]
+                for (let j = i + 1; j < bucket.length; j += 1) {
+                  drawConnectionPair(ctx, a, bucket[j])
+                }
+              }
+
+              continue
+            }
+
+            for (const a of bucket) {
+              for (const b of neighbor) {
+                drawConnectionPair(ctx, a, b)
+              }
+            }
           }
         }
       }

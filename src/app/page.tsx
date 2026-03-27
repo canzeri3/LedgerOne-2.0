@@ -413,7 +413,8 @@ function PanelHeader() {
 
 function SecurityDataSection() {
   return (
-    <section id="security" className="space-y-6">
+    <section id="security" className="space-y-6" style={DEFERRED_SECTION_STYLE}>
+
       <div className="mx-auto max-w-3xl space-y-2 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
           TRUST · SECURITY & DATA
@@ -468,10 +469,10 @@ const FAQ: FaqItem[] = [
     a: 'Most users can define a basic structure quickly, then refine over time. The goal is a repeatable process, not a perfect day-one configuration.',
   },
 ]
-
 function FAQSection() {
   return (
-    <section id="faq" className="space-y-6">
+    <section id="faq" className="space-y-6" style={DEFERRED_SECTION_STYLE}>
+
       <div className="mx-auto max-w-3xl space-y-2 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">FAQ · QUICK CLARITY</p>
         <h3 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
@@ -509,7 +510,8 @@ function LandingFooter() {
   const year = new Date().getFullYear()
 
   return (
-    <footer className="pb-5 pt-5">
+    <footer className="pb-5 pt-5" style={DEFERRED_SECTION_STYLE}>
+
       <div className="w-full border-t border-slate-800/60 pt-6">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -536,6 +538,7 @@ const [selectedPreview, setSelectedPreview] = useState<PreviewKey | null>(null)
 const [displayedPreview, setDisplayedPreview] = useState<PreviewKey | null>(null)
 const [previewVisible, setPreviewVisible] = useState(false)
 const [statsVisible, setStatsVisible] = useState(false)
+const [isDesktopStatsLayout, setIsDesktopStatsLayout] = useState(false)
 
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -544,6 +547,24 @@ const [statsVisible, setStatsVisible] = useState(false)
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+    const syncLayout = () => setIsDesktopStatsLayout(mediaQuery.matches)
+
+    syncLayout()
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncLayout)
+      return () => mediaQuery.removeEventListener('change', syncLayout)
+    }
+
+    mediaQuery.addListener(syncLayout)
+    return () => mediaQuery.removeListener(syncLayout)
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -629,6 +650,8 @@ const [statsVisible, setStatsVisible] = useState(false)
   }
 }
 
+const statsPanelVisible = !isDesktopStatsLayout || statsVisible
+
 const handleStatsToggle = () => {
   if (statsVisible) {
     closePreview()
@@ -690,16 +713,10 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 
     {/* HERO + PREVIEW */}
     <section id="overview" className="relative z-10 pt-16 sm:pt-[4.5rem] lg:pt-[5.5rem]">
-      <Parallax
-        className="pointer-events-none absolute left-1/2 top-3 h-44 w-[48rem] max-w-[92vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/8 to-sky-500/10 blur-3xl"
-        strengthY={28}
-        strengthX={10}
-        startAt={1.0}
-        endAt={0.2}
-      />
 
-<div className="relative z-20 mb-5 flex justify-end pr-4 sm:pr-6 lg:pr-10">
-    <button
+
+<div className="relative z-20 mb-5 hidden justify-end pr-4 sm:pr-6 lg:flex lg:pr-10">
+      <button
     type="button"
     onClick={handleStatsToggle}
     aria-pressed={statsVisible}
@@ -769,17 +786,18 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
   
 {/* PREVIEW */}
 <div
-  className={`min-w-0 transition-[opacity,transform] ${
+  className={`min-w-0 translate-y-0 scale-100 opacity-100 transition-[opacity,transform] ${
     statsVisible
-      ? 'translate-y-0 scale-100 opacity-100'
-      : 'pointer-events-none translate-y-2 scale-[0.985] opacity-0'
+      ? 'lg:translate-y-0 lg:scale-100 lg:opacity-100'
+      : 'lg:pointer-events-none lg:translate-y-2 lg:scale-[0.985] lg:opacity-0'
   }`}
   style={{
-    transitionDuration: '520ms',
+    transitionDuration: '2500ms',
     transitionTimingFunction: PREVIEW_EASE,
   }}
-  aria-hidden={!statsVisible}
+  aria-hidden={isDesktopStatsLayout ? !statsPanelVisible : false}
 >
+
   <Reveal className="relative -mx-10 -my-8 px-10 py-8" delayMs={120}>
     <Parallax
       className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-br from-indigo-500/[0.14] via-emerald-500/[0.09] to-sky-500/[0.12] blur-[30px]"
@@ -788,6 +806,7 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
       startAt={1.0}
       endAt={0.2}
     />
+
 
     <div className="relative z-10">
       <Panel
@@ -927,8 +946,8 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 </div>
 
 {/* VALUE PILLARS */}
-<section id="pillars" className="space-y-8">
-  <Reveal>
+<section id="pillars" className="space-y-8" style={DEFERRED_SECTION_STYLE}>
+    <Reveal>
     <Kicker
       label="LEDGERONE · PRINCIPLES"
       title="Built around clarity, discipline, and reporting."
@@ -961,8 +980,8 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 </section>
 
 {/* WORKFLOW */}
-<section id="planner" className="space-y-8">
-  <Reveal>
+<section id="planner" className="space-y-8" style={DEFERRED_SECTION_STYLE}>
+    <Reveal>
     <Kicker
       label="PRODUCT · WORKFLOW"
       title="A simple workflow that keeps your portfolio on-plan."
@@ -998,8 +1017,8 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 </section>
 
 {/* ABOUT */}
-<section id="about" className="relative overflow-visible">
-  <Reveal className="relative mx-auto max-w-3xl space-y-4 overflow-visible px-2 text-center">
+<section id="about" className="relative overflow-visible" style={DEFERRED_SECTION_STYLE}>
+    <Reveal className="relative mx-auto max-w-3xl space-y-4 overflow-visible px-2 text-center">
     <div className="flex justify-center">
       <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
         LEDGERONE · ABOUT
@@ -1028,8 +1047,8 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
 </section>
 
 {/* WHO IT'S FOR */}
-<section id="teams" className="space-y-8">
-  <Reveal>
+<section id="teams" className="space-y-8" style={DEFERRED_SECTION_STYLE}>
+    <Reveal>
     <Kicker
       label="RESOURCES · WHO IT’S FOR"
       title="Designed for investors who want structure."
@@ -1071,7 +1090,9 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
   <section
     id="pricing"
     className="relative overflow-hidden rounded-2xl border border-slate-800/60 bg-[#151618] px-6 py-6"
+    style={DEFERRED_SECTION_STYLE}
   >
+
     <Parallax
       className="pointer-events-none absolute -left-24 -top-20 h-40 w-64 rounded-full bg-gradient-to-r from-indigo-500/10 via-emerald-500/6 to-sky-500/10 blur-3xl"
       strengthY={22}
