@@ -15,6 +15,7 @@ import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 import * as React from 'react'
+import FullScreenPageLoader from '@/components/common/FullScreenPageLoader'
 
 /* ── SortSelect: wrapper owns the card chrome so shape/color match Search input ──
    - Background: rgb(42,43,44) (same as your Search input)
@@ -151,17 +152,301 @@ type TradeRow = {
 }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
 type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number | null }
+type Accent = 'pos' | 'neg' | 'neutral'
+
+// ── FIX: pure utility functions at module level — allocated once, never re-created on render ──
+
+function kpiAccent(n: number | null | undefined): Accent {
+  return n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
+}
+
+function annVol30dFromDaily(points: {t:number; p:number}[]): number | null {
+  if (!points || points.length < 31) return null
+  const rets: number[] = []
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i-1].p
+    const p1 = points[i].p
+    if (p0 && p1 && p0 > 0) rets.push(Math.log(p1 / p0))
+  }
+  if (rets.length < 20) return null
+  const mean = rets.reduce((a,b)=>a+b,0) / rets.length
+  const varSum = rets.reduce((a,b)=>a + (b-mean)*(b-mean), 0)
+  const stdev = Math.sqrt(varSum / Math.max(1, rets.length - 1))
+  return stdev * Math.sqrt(365)
+}
+
+function smaSd20(points: {t:number; p:number}[]) {
+  if (!points || points.length < 20) return { sma: null as number|null, sd: null as number|null }
+  const last20 = points.slice(-20)
+  const prices = last20.map(x => x.p).filter(p => typeof p === 'number') as number[]
+  if (prices.length < 20) return { sma: null, sd: null }
+  const sma = prices.reduce((a,b)=>a+b,0) / prices.length
+  const mean = sma
+  const varSum = prices.reduce((a,b)=>a+(b-mean)*(b-mean),0)
+  const sd = Math.sqrt(varSum / Math.max(1, prices.length - 1))
+  return { sma, sd }
+}
+
+function toLogReturns(points: { t: number; p: number }[]) {
+  const out: { t: number; r: number }[] = []
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1]?.p
+    const p1 = points[i]?.p
+    if (typeof p0 === 'number' && typeof p1 === 'number' && p0 > 0 && p1 > 0) {
+      const r = Math.log(p1 / p0)
+      if (Number.isFinite(r)) out.push({ t: points[i].t, r })
+    }
+  }
+  return out
+}
+
+function pearson(a: number[], b: number[]) {
+  const n = Math.min(a.length, b.length)
+  if (n === 0) return NaN
+  let sa = 0, sb = 0, sqa = 0, sqb = 0, sp = 0
+  for (let i = 0; i < n; i++) {
+    const x = a[i], y = b[i]
+    sa += x; sb += y; sqa += x*x; sqb += y*y; sp += x*y
+  }
+  const cov = sp / n - (sa / n) * (sb / n)
+  const va = sqa / n - (sa / n) * (sa / n)
+  const vb = sqb / n - (sb / n) * (sb / n)
+  if (va <= 0 || vb <= 0) return NaN
+  return cov / Math.sqrt(va * vb)
+}
+
+// FIX: corrToBTC accepts corrMap as explicit parameter — no closure over component state
+function corrToBTC(id: string, corrMap: Map<string, {t:number;p:number}[] | undefined>): number | null {
+  const btcPts = corrMap.get('bitcoin')
+  const tgtPts = corrMap.get(id)
+  if (!btcPts || !tgtPts) return null
+  const br = toLogReturns(btcPts)
+  const tr = toLogReturns(tgtPts)
+  if (br.length < 30 || tr.length < 30) return null
+  const map = new Map<number, number>()
+  for (const b of br) map.set(Math.floor(b.t / 86400000), b.r)
+  const paired: number[] = []
+  const pairedBTC: number[] = []
+  for (const x of tr) {
+    const key = Math.floor(x.t / 86400000)
+    const b = map.get(key)
+    if (typeof b === 'number') { paired.push(x.r); pairedBTC.push(b) }
+  }
+  if (paired.length < 25) return null
+  const c = pearson(paired, pairedBTC)
+  return Number.isFinite(c) ? c : null
+}
+
+// ── FIX: sub-components at module level — stable identity across renders, no DOM remount on price tick ──
+// StatCard's useState(showPct) also no longer resets every 15s as a result.
+
+const StatCard = ({
+  label,
+  value,
+  accent = 'neutral',
+  icon,
+  sub,
+  pctValue,
+  enablePctToggle = false,
+}: {
+  label: string
+  value: React.ReactNode
+  accent?: Accent
+  icon?: 'up' | 'down'
+  sub?: string
+  pctValue?: React.ReactNode
+  enablePctToggle?: boolean
+}) => {
+  const [showPct, setShowPct] = useState(false)
+
+  const text =
+    accent === 'pos'
+      ? 'text-emerald-400'
+      : accent === 'neg'
+        ? 'text-[rgba(189,45,50,1)]'
+        : 'text-slate-200'
+  const iconUpClass = 'h-4 w-4 text-emerald-400'
+  const iconDownClass = 'h-4 w-4 text-[rgba(189,45,50,1)]'
+
+  const displayValue =
+    enablePctToggle && showPct && pctValue != null
+      ? pctValue
+      : value
+
+  return (
+    <div className="relative h-full rounded-md bg-[rgb(28,29,31)]">
+      <div className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
+          {icon === 'up' && <TrendingUp className={iconUpClass} />}
+          {icon === 'down' && <TrendingDown className={iconDownClass} />}
+        </div>
+        <div className={`mt-2 text-xl md:text-2xl font-semibold tabular-nums ${text}`}>
+          {displayValue}
+        </div>
+        {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+      </div>
+
+      {enablePctToggle && pctValue != null && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowPct((prev) => !prev)
+          }}
+          className="absolute bottom-1.5 right-2 text-[10px] text-slate-500 hover:text-slate-200"
+          aria-label="Toggle between $ and % view"
+        >
+          %
+        </button>
+      )}
+    </div>
+  )
+}
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (!active || !payload || !payload.length) return null
+  const p = payload[0]
+  const d = p?.payload as { full: string; name: string; value: number; pct: number }
+  return (
+    <div className="rounded-md bg-[rgb(24,25,27)] text-slate-100 shadow-xl border border-[rgb(42,43,45)] px-3 py-2 min-w-[180px]">
+      {/* Primary line: Name + % */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="font-semibold text-sm leading-tight truncate">{d.full ?? d.name}</div>
+        <div className="font-bold tabular-nums text-base">{fmtPct(d.pct)}</div>
+      </div>
+
+      {/* Secondary info: value and symbol */}
+      <div className="mt-1 text-[11px] text-slate-300 flex items-center justify-between">
+        <span className="tabular-nums">{fmtCurrency(d.value)}</span>
+        <span className="uppercase tracking-wide">{d.name}</span>
+      </div>
+    </div>
+  )
+}
+
+const LegendRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  <div className="flex items-center justify-between text-sm">
+    <span className="text-slate-300">{label}</span>
+    <span className="tabular-nums">{value}</span>
+  </div>
+)
+
+const CardFooter = ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
+  <div className="border-t border-[rgb(42,43,45)] pt-3 flex items-center justify-between">
+    <div className="text-xs">{left}</div>
+    <div className="text-[11px] text-slate-400">{right}</div>
+  </div>
+)
+
+const LevelBadge = ({ title, level, value }: { title: string; level: 'Low'|'Moderate'|'High'|'Very High'; value: string }) => {
+  const accent =
+    level === 'Low' ? 'text-emerald-400'
+    : level === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
+    : level === 'High' ? 'text-[rgba(189,120,45,1)]'
+    : 'text-[rgba(189,45,50,1)]'
+  return (
+    <div className="text-xs">
+      <span className="text-slate-400 mr-2">{title}</span>
+      <span className={`font-semibold tabular-nums capitalize ${accent}`}>{level}</span>
+      {value !== '' && (
+        <>
+          <span className="text-slate-400"> · </span>
+          <span className="tabular-nums">{value}</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+const RiskBadge = ({ score, label }: { score: number; label: 'Low'|'Moderate'|'High' }) => {
+  const accent =
+    label === 'Low' ? 'text-emerald-400'
+    : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
+    : 'text-[rgba(189,45,50,1)]'
+  return (
+    <div className="text-xs">
+      <span className="text-slate-400 mr-2">Structure</span>
+      <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
+      <span className="text-slate-400"> · </span>
+      <span className="tabular-nums">{score}</span>
+    </div>
+  )
+}
+
+const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={[
+      'px-2 py-1 rounded-md text-xs',
+      active ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+    ].join(' ')}
+  >
+    {children}
+  </button>
+)
+
+function StatTile({
+  label,
+  value,
+  rightHint,
+  footer,
+  className = '',
+}: {
+  label: string
+  value: React.ReactNode
+  rightHint?: React.ReactNode
+  footer?: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={
+        "rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgb(28,29,31)]/60 p-3 sm:p-4 shadow-sm " +
+        "flex flex-col gap-2 min-h-[108px] " + className
+      }
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-wide text-[rgba(255,255,255,0.55)]">
+          {label}
+        </div>
+        {rightHint ? (
+          <div className="text-[11px] text-[rgba(255,255,255,0.45)] whitespace-nowrap">
+            {rightHint}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-lg sm:text-xl font-semibold tabular-nums">
+          {value}
+        </div>
+      </div>
+
+      {footer ? (
+        <div className="pt-1">
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 export default function PortfolioPage() {
-  const { user } = useUser()
+  const { user, loading: userLoading } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
-  // Default-locked until entitlements load (prevents any Tier 0 “flash”)
+  // Default-locked until entitlements load (prevents any Tier 0 "flash")
   const canViewPortfolioRisk = !entLoading && (entitlements?.tier ?? 'FREE') !== 'FREE'
 
   const router = useRouter()
 
-  const { data: trades } = useSWR<TradeRow[]>(
+  const { data: trades, isLoading: tradesLoading } = useSWR<TradeRow[]>(
     user ? ['/portfolio/trades', user.id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -179,16 +464,18 @@ export default function PortfolioPage() {
         trade_time: t.trade_time,
         sell_planner_id: t.sell_planner_id ?? null,
       }))
-    }
+    },
+    { revalidateOnFocus: false, keepPreviousData: true }
   )
 
-  const { data: coins } = useSWR<CoinMeta[]>(
+  const { data: coins, isLoading: coinsLoading } = useSWR<CoinMeta[]>(
     user ? ['/portfolio/coins'] : null,
     async () => {
       const res = await fetch('/api/coins')
       const j = await res.json()
       return (j ?? []) as CoinMeta[]
-    }
+    },
+    { revalidateOnFocus: false, keepPreviousData: true }
   )
 
   const tradesByCoin = useMemo(() => {
@@ -204,41 +491,41 @@ export default function PortfolioPage() {
   const coinKey = useMemo(() => [...coinIds].sort().join(','), [coinIds])
 
   const [frozen, setFrozen] = useState<FrozenPlanner[]>([])
-  const frozenKey = useMemo(() => [...frozen.map(f => f.id)].sort().join(','), [frozen])
+  const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
 
+  // Single combined effect: eliminates the serial waterfall (2 effects → 1 effect, 2 DB round-trips
+  // remain sequential by necessity but we save one full React render cycle between them)
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!user || coinIds.length === 0) { setFrozen([]); return }
+      if (!user || coinIds.length === 0) { setFrozen([]); setFrozenSells([]); return }
+
       const { data: planners } = await supabaseBrowser
         .from('sell_planners')
         .select('id,coingecko_id,avg_lock_price,is_active')
         .eq('user_id', user.id)
         .in('coingecko_id', coinIds)
         .eq('is_active', false)
+      if (cancelled) return
+
       const x = (planners ?? []).map(p => ({
         id: p.id,
         coingecko_id: p.coingecko_id,
         avg_lock_price: p.avg_lock_price,
       }))
-      if (!cancelled) setFrozen(x)
-    })()
-    return () => { cancelled = true }
-  }, [user, coinKey])
+      setFrozen(x)
 
-  const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (!user || frozen.length === 0) { setFrozenSells([]); return }
-      const ids = frozen.map(f => f.id)
+      if (x.length === 0) { setFrozenSells([]); return }
+
       const { data } = await supabaseBrowser
         .from('trades')
         .select('coingecko_id,side,price,quantity,fee,trade_time,sell_planner_id')
         .eq('user_id', user.id)
         .eq('side', 'sell')
-        .in('sell_planner_id', ids)
-      const rows: TradeRow[] = (data ?? []).map(t => ({
+        .in('sell_planner_id', x.map(f => f.id))
+      if (cancelled) return
+
+      setFrozenSells((data ?? []).map(t => ({
         coingecko_id: t.coingecko_id,
         side: t.side,
         price: Number(t.price),
@@ -246,18 +533,18 @@ export default function PortfolioPage() {
         fee: t.fee ?? 0,
         trade_time: t.trade_time,
         sell_planner_id: t.sell_planner_id ?? null,
-      }))
-      if (!cancelled) setFrozenSells(rows)
+      })))
     })()
     return () => { cancelled = true }
-  }, [user, frozenKey])
+  }, [user, coinKey])
 
   // Live snapshot pricing (new data core) for KPIs/table
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
+  const [pricesReady, setPricesReady] = useState(false)
 
   useEffect(() => {
-    if (coinIds.length === 0) { setPrices({}); setChg24hPctMap({}); return }
+    if (coinIds.length === 0) { setPrices({}); setChg24hPctMap({}); setPricesReady(false); return }
     let cancelled = false
 
     async function fetchAll() {
@@ -301,6 +588,7 @@ export default function PortfolioPage() {
         if (!cancelled) {
           setPrices(priceMap)
           setChg24hPctMap(pctMap)
+          setPricesReady(true)
         }
       } catch {
         if (!cancelled) {
@@ -315,11 +603,27 @@ export default function PortfolioPage() {
     return () => { cancelled = true; clearInterval(id) }
   }, [coinKey])
 
-  function coinMeta(cid: string): CoinMeta | undefined {
-    return coins?.find(c => c.coingecko_id === cid)
-  }
+  // FIX: O(1) coin metadata lookup — Map built once when coins loads, not O(N) find per coin per tick
+  const coinMetaMap = useMemo(
+    () => new Map((coins ?? []).map(c => [c.coingecko_id, c])),
+    [coins]
+  )
 
   const rows = useMemo(() => {
+    // FIX: pre-build lookup maps for frozen data — O(1) access replaces nested .filter() O(N²)
+    const frozenByCoin = new Map<string, FrozenPlanner[]>()
+    for (const f of frozen) {
+      if (!frozenByCoin.has(f.coingecko_id)) frozenByCoin.set(f.coingecko_id, [])
+      frozenByCoin.get(f.coingecko_id)!.push(f)
+    }
+    const frozenSellsById = new Map<string, TradeRow[]>()
+    for (const s of frozenSells) {
+      if (s.sell_planner_id) {
+        if (!frozenSellsById.has(s.sell_planner_id)) frozenSellsById.set(s.sell_planner_id, [])
+        frozenSellsById.get(s.sell_planner_id)!.push(s)
+      }
+    }
+
     return coinIds.map(cid => {
       const t = tradesByCoin.get(cid) ?? []
       const pnl = computePnl(t.map(x => ({
@@ -332,9 +636,9 @@ export default function PortfolioPage() {
       const costBasisRemaining = qty * avg
       const unrealUsd = value - costBasisRemaining
 
-      const frozenForCoin = frozen.filter(f => f.coingecko_id === cid)
+      const frozenForCoin = frozenByCoin.get(cid) ?? []
       const realizedUsd = frozenForCoin.reduce((acc, fp) => {
-        const sells = frozenSells.filter(s => s.sell_planner_id === fp.id)
+        const sells = frozenSellsById.get(fp.id) ?? []
         const locked = fp.avg_lock_price ?? 0
         const got = sells.reduce((a, s) => a + (s.quantity * s.price - (s.fee ?? 0)), 0)
         const spent = sells.reduce((a, s) => a + (s.quantity * locked), 0)
@@ -351,10 +655,11 @@ export default function PortfolioPage() {
         delta24Pct = prevVal > 0 ? (delta24Usd / prevVal) : null
       }
 
+      const meta = coinMetaMap.get(cid)
       return {
         cid,
-        symbol: coinMeta(cid)?.symbol?.toUpperCase() ?? cid,
-        name: coinMeta(cid)?.name ?? cid,
+        symbol: meta?.symbol?.toUpperCase() ?? cid,
+        name: meta?.name ?? cid,
         qty,
         avg,
         last,
@@ -367,7 +672,7 @@ export default function PortfolioPage() {
         delta24Pct,
       }
     }).sort((a,b) => b.value - a.value)
-  }, [coinIds, tradesByCoin, prices, coins, frozen, frozenSells, chg24hPctMap])
+  }, [coinIds, tradesByCoin, prices, coinMetaMap, frozen, frozenSells, chg24hPctMap])
 
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0)
@@ -415,75 +720,6 @@ export default function PortfolioPage() {
     () => (prisk?.l2?.riskContrib ?? {}) as Record<string, number>,
     [prisk]
   )
-
-    // ---------- StatCard ----------
-  type Accent = 'pos' | 'neg' | 'neutral'
-  const StatCard = ({
-    label,
-    value,
-    accent = 'neutral',
-    icon,
-    sub,
-    pctValue,
-    enablePctToggle = false,
-  }: {
-    label: string
-    value: React.ReactNode
-    accent?: Accent
-    icon?: 'up' | 'down'
-    sub?: string
-    pctValue?: React.ReactNode
-    enablePctToggle?: boolean
-  }) => {
-    const [showPct, setShowPct] = useState(false)
-
-    const text =
-      accent === 'pos'
-        ? 'text-emerald-400'
-        : accent === 'neg'
-          ? 'text-[rgba(189,45,50,1)]'
-          : 'text-slate-200'
-    const iconUpClass = 'h-4 w-4 text-emerald-400'
-    const iconDownClass = 'h-4 w-4 text-[rgba(189,45,50,1)]'
-
-    const displayValue =
-      enablePctToggle && showPct && pctValue != null
-        ? pctValue
-        : value
-
-    return (
-      <div className="relative h-full rounded-md bg-[rgb(28,29,31)]">
-        <div className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
-            {icon === 'up' && <TrendingUp className={iconUpClass} />}
-            {icon === 'down' && <TrendingDown className={iconDownClass} />}
-          </div>
-          <div className={`mt-2 text-xl md:text-2xl font-semibold tabular-nums ${text}`}>
-            {displayValue}
-          </div>
-          {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
-        </div>
-
-        {enablePctToggle && pctValue != null && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowPct((prev) => !prev)
-            }}
-            className="absolute bottom-1.5 right-2 text-[10px] text-slate-500 hover:text-slate-200"
-            aria-label="Toggle between $ and % view"
-          >
-            %
-          </button>
-        )}
-      </div>
-    )
-  }
-  const kpiAccent = (n: number | null | undefined): Accent =>
-    n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
-
 
    // ---------------- Holdings UI state (client-side) ------------------
   type SortKey = 'name' | 'qty' | 'avg' | 'value' | 'invested' | 'unreal' | 'realized' | 'total'
@@ -555,27 +791,6 @@ export default function PortfolioPage() {
     return { total, data: withMeta }
   }, [rows, coinColor])
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || !payload.length) return null
-    const p = payload[0]
-    const d = p?.payload as { full: string; name: string; value: number; pct: number }
-    return (
-      <div className="rounded-md bg-[rgb(24,25,27)] text-slate-100 shadow-xl border border-[rgb(42,43,45)] px-3 py-2 min-w-[180px]">
-        {/* Primary line: Name + % */}
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="font-semibold text-sm leading-tight truncate">{d.full ?? d.name}</div>
-          <div className="font-bold tabular-nums text-base">{fmtPct(d.pct)}</div>
-        </div>
-
-        {/* Secondary info: value and symbol */}
-        <div className="mt-1 text-[11px] text-slate-300 flex items-center justify-between">
-          <span className="tabular-nums">{fmtCurrency(d.value)}</span>
-          <span className="uppercase tracking-wide">{d.name}</span>
-        </div>
-      </div>
-    )
-  }
-
   // ---------------- Exposure & Risk card ----------------
   type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq'
   const [view, setView] = useState<ViewMode>('combined')
@@ -591,6 +806,7 @@ export default function PortfolioPage() {
     { revalidateOnFocus: true, dedupingInterval: 60_000 }
   )
 
+  // FIX: use snapshot?.rows directly as dep — no JSON.stringify serialization on every render
   const rankMap = useMemo(() => {
     const m = new Map<string, number>()
     for (const row of snapshot?.rows ?? []) {
@@ -598,9 +814,10 @@ export default function PortfolioPage() {
       if (row.id && (row.rank as any) === null) m.set(row.id, null as any)
     }
     return m
-  }, [JSON.stringify(snapshot?.rows ?? [])])
+  }, [snapshot?.rows])
 
   // Band aggregation + L1 structural factors
+  // FIX: use allocAll.data and rankMap directly as deps — no JSON.stringify
   const sectorAgg = useMemo(() => {
     const total = allocAll.total
     const weights = allocAll.data.map(d => ({
@@ -638,87 +855,10 @@ export default function PortfolioPage() {
       score <= 120 ? 'Low' : score <= 180 ? 'Moderate' : 'High'
 
     return { blue, large, medium, small, unranked, score, label, structuralSum }
-  }, [allocAll.total, JSON.stringify(allocAll.data), JSON.stringify([...rankMap.entries()])])
-
-  // Shared rows / badges
-  const LegendRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-slate-300">{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </div>
-  )
-
-  const CardFooter = ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
-    <div className="border-t border-[rgb(42,43,45)] pt-3 flex items-center justify-between">
-      <div className="text-xs">{left}</div>
-      <div className="text-[11px] text-slate-400">{right}</div>
-    </div>
-  )
-
-  const LevelBadge = ({ title, level, value }: { title: string; level: 'Low'|'Moderate'|'High'|'Very High'; value: string }) => {
-    const accent =
-      level === 'Low' ? 'text-emerald-400'
-      : level === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
-      : level === 'High' ? 'text-[rgba(189,120,45,1)]'
-      : 'text-[rgba(189,45,50,1)]'
-    return (
-      <div className="text-xs">
-        <span className="text-slate-400 mr-2">{title}</span>
-        <span className={`font-semibold tabular-nums capitalize ${accent}`}>{level}</span>
-        {value !== '' && (
-          <>
-            <span className="text-slate-400"> · </span>
-            <span className="tabular-nums">{value}</span>
-          </>
-        )}
-      </div>
-    )
-  }
-
-  const RiskBadge = ({ score, label }: { score: number; label: 'Low'|'Moderate'|'High' }) => {
-    const accent =
-      label === 'Low' ? 'text-emerald-400'
-      : label === 'Moderate' ? 'text-[rgba(207,180,45,1)]'
-      : 'text-[rgba(189,45,50,1)]'
-    return (
-      <div className="text-xs">
-        <span className="text-slate-400 mr-2">Structure</span>
-        <span className={`font-semibold tabular-nums ${accent}`}>{label}</span>
-        <span className="text-slate-400"> · </span>
-        <span className="tabular-nums">{score}</span>
-      </div>
-    )
-  }
+  }, [allocAll.total, allocAll.data, rankMap])
 
   // --------- LAYER 2 & 3 helpers (BTC proxy fallback) ----------
 const { points: btcDailyPts } = useHistory(canViewPortfolioRisk ? 'bitcoin' : null, 45, 'daily', 'USD')
-
-  function annVol30dFromDaily(points: {t:number; p:number}[]): number | null {
-    if (!points || points.length < 31) return null
-    const rets: number[] = []
-    for (let i = 1; i < points.length; i++) {
-      const p0 = points[i-1].p
-      const p1 = points[i].p
-      if (p0 && p1 && p0 > 0) rets.push(Math.log(p1 / p0))
-    }
-    if (rets.length < 20) return null
-    const mean = rets.reduce((a,b)=>a+b,0) / rets.length
-    const varSum = rets.reduce((a,b)=>a + (b-mean)*(b-mean), 0)
-    const stdev = Math.sqrt(varSum / Math.max(1, rets.length - 1))
-    return stdev * Math.sqrt(365)
-  }
-
-  function smaSd20(points: {t:number; p:number}[]) {
-    if (!points || points.length < 20) return { sma: null as number|null, sd: null as number|null }
-    const last20 = points.slice(-20)
-    const prices = last20.map(x => x.p).filter(p => typeof p === 'number') as number[]
-    if (prices.length < 20) return { sma: null, sd: null }
-    const sma = prices.reduce((a,b)=>a+b,0) / prices.length
-    const mean = sma
-    const varSum = prices.reduce((a,b)=>a+(b-mean)*(b-mean),0)
-    const sd = Math.sqrt(varSum / Math.max(1, prices.length - 1))
-    return { sma, sd }
-  }
 
   // Fallback proxy values
   const volAnn_proxy = annVol30dFromDaily(btcDailyPts)
@@ -747,6 +887,7 @@ const { points: btcDailyPts } = useHistory(canViewPortfolioRisk ? 'bitcoin' : nu
   const L3_factor = typeof prisk?.l3?.factor === 'number' ? prisk!.l3.factor : tailFactor_proxy
 
   // ---- LAYER 4: Correlation (90d vs BTC) & LAYER 5: Liquidity (rank-proxy) ----
+  // FIX: use allocAll.data directly as dep — no JSON.stringify
   const corrIds = useMemo(() => {
     const sorted = [...allocAll.data]
       .filter(r => r.cid !== 'bitcoin')
@@ -755,7 +896,7 @@ const { points: btcDailyPts } = useHistory(canViewPortfolioRisk ? 'bitcoin' : nu
     const picked: string[] = sorted.slice(0, 8)
     while (picked.length < 8) picked.push('bitcoin')
     return picked
-  }, [JSON.stringify(allocAll.data)])
+  }, [allocAll.data])
 
   // CONSTANT number of hooks (9): one for BTC anchor + 8 slots
 const hBTC = useHistory(canViewPortfolioRisk ? 'bitcoin' : null, 95, 'daily', 'USD')
@@ -790,54 +931,8 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     ...corrIds
   ])
 
-  function toLogReturns(points: { t: number; p: number }[]) {
-    const out: { t: number; r: number }[] = []
-    for (let i = 1; i < points.length; i++) {
-      const p0 = points[i - 1]?.p
-      const p1 = points[i]?.p
-      if (typeof p0 === 'number' && typeof p1 === 'number' && p0 > 0 && p1 > 0) {
-        const r = Math.log(p1 / p0)
-        if (Number.isFinite(r)) out.push({ t: points[i].t, r })
-      }
-    }
-    return out
-  }
-  function pearson(a: number[], b: number[]) {
-    const n = Math.min(a.length, b.length)
-    if (n === 0) return NaN
-    let sa = 0, sb = 0, sqa = 0, sqb = 0, sp = 0
-    for (let i = 0; i < n; i++) {
-      const x = a[i], y = b[i]
-      sa += x; sb += y; sqa += x*x; sqb += y*y; sp += x*y
-    }
-    const cov = sp / n - (sa / n) * (sb / n)
-    const va = sqa / n - (sa / n) * (sa / n)
-    const vb = sqb / n - (sb / n) * (sb / n)
-    if (va <= 0 || vb <= 0) return NaN
-    return cov / Math.sqrt(va * vb)
-  }
-
-  function corrToBTC(id: string): number | null {
-    const btcPts = corrMap.get('bitcoin')
-    const tgtPts = corrMap.get(id)
-    if (!btcPts || !tgtPts) return null
-    const br = toLogReturns(btcPts)
-    const tr = toLogReturns(tgtPts)
-    if (br.length < 30 || tr.length < 30) return null
-    const map = new Map<number, number>()
-    for (const b of br) map.set(Math.floor(b.t / 86400000), b.r)
-    const paired: number[] = []
-    const pairedBTC: number[] = []
-    for (const x of tr) {
-      const key = Math.floor(x.t / 86400000)
-      const b = map.get(key)
-      if (typeof b === 'number') { paired.push(x.r); pairedBTC.push(b) }
-    }
-    if (paired.length < 25) return null
-    const c = pearson(paired, pairedBTC)
-    return Number.isFinite(c) ? c : null
-  }
-
+  // FIX: corrToBTC now takes corrMap as argument (module-level pure fn); use allocAll.data and
+  // corrIds as direct deps — no JSON.stringify, no ...spread in deps array
   const corrAgg = useMemo(() => {
     const total = allocAll.total || 1
     const weights = allocAll.data.reduce<Record<string, number>>((m, r) => {
@@ -847,7 +942,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     let wsum = 0, acc = 0
     for (const id of corrIds) {
       if (id === 'bitcoin') continue
-      const c = corrToBTC(id)
+      const c = corrToBTC(id, corrMap)
       const w = weights[id] ?? 0
       if (c != null && w > 0) { acc += c * w; wsum += w }
     }
@@ -860,9 +955,9 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     else if (avg < 0.85) { factor = 1.15; level = 'BTC-beta' }
     else { factor = 1.30; level = 'Ultra-beta' }
     return { avg, factor, level }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(allocAll.data), ...corrIds, hBTC.points, hC0.points, hC1.points, hC2.points, hC3.points, hC4.points, hC5.points, hC6.points, hC7.points])
+  }, [allocAll.data, allocAll.total, corrIds, corrMap])
 
+  // FIX: use allocAll.data and rankMap directly as deps — no JSON.stringify
   const liquidityAgg = useMemo(() => {
     const total = allocAll.total || 1
     let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
@@ -878,12 +973,12 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     }
     const factor = (blue * 1.00) + (large * 1.20) + (medium * 1.40) + ((small + unranked) * 1.80)
     const level =
-      factor <= 1.05 ? ('High' as const)
+      factor <= 1.05 ? ('Low' as const)
       : factor <= 1.25 ? ('Moderate' as const)
       : factor <= 1.55 ? ('High' as const)
       : ('Very High' as const)
     return { factor, bands: { blue, large, medium, small, unranked }, level }
-  }, [JSON.stringify(allocAll.data), JSON.stringify(Array.from(rankMap.entries()))])
+  }, [allocAll.data, rankMap])
 
   // ---- Helpers for levels/visuals (no logic change to calculations) ----
   const structuralLevel: 'Low'|'Moderate'|'High' =
@@ -921,72 +1016,20 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     : 'Very High'
 
   // Visual meter (presentational)
-  const clamp = (n:number, min:number, max:number) => Math.max(min, Math.min(max, n))
   const meterMin = 0.90, meterMax = 3.20
   const meterPct = ((clamp(combinedScore, meterMin, meterMax) - meterMin) / (meterMax - meterMin)) * 100
 
-  // Pills (tabs)
-  const Pill = ({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        'px-2 py-1 rounded-md text-xs',
-        active ? 'bg-white/10 text-white' : 'bg-white/5 text-slate-300 hover:bg-white/10'
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  )
+  // Hold the existing FullScreenPageLoader until all critical data has resolved:
+  //  - user auth confirmed (not still checking session)
+  //  - trades + coins SWR calls settled
+  //  - first price tick received (or portfolio is empty)
+  const pageReady =
+    !userLoading &&
+    !tradesLoading &&
+    !coinsLoading &&
+    (coinIds.length === 0 || pricesReady)
 
-  // ────────────────────────────────────────────────────────────────────────────────
-  // Compact stat tile for bottom 5 boxes in Combined view — now with footer slot
-  function StatTile({
-    label,
-    value,
-    rightHint,
-    footer,
-    className = '',
-  }: {
-    label: string
-    value: React.ReactNode
-    rightHint?: React.ReactNode
-    footer?: React.ReactNode
-    className?: string
-  }) {
-    return (
-      <div
-        className={
-          "rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgb(28,29,31)]/60 p-3 sm:p-4 shadow-sm " +
-          "flex flex-col gap-2 min-h-[108px] " + className
-        }
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-[11px] uppercase tracking-wide text-[rgba(255,255,255,0.55)]">
-            {label}
-          </div>
-          {rightHint ? (
-            <div className="text-[11px] text-[rgba(255,255,255,0.45)] whitespace-nowrap">
-              {rightHint}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="text-lg sm:text-xl font-semibold tabular-nums">
-            {value}
-          </div>
-        </div>
-
-        {footer ? (
-          <div className="pt-1">
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-  // ────────────────────────────────────────────────────────────────────────────────
+  if (!pageReady) return <FullScreenPageLoader />
 
   return (
     <div data-portfolio-page className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
