@@ -1,11 +1,13 @@
 'use client'
 
+import { mutate as globalMutate } from 'swr'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { usePrice } from '@/lib/dataCore'
 import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
-import { supabaseBrowser } from '@/lib/supabaseClient'
+import { deleteSellPlannerWithAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
+import { supabaseBrowser } from '@/lib/supabaseClient'
 
 type Props = {
   title?: string
@@ -35,6 +37,8 @@ export default function SellPlannerCombinedCard({
   const activeRootRef = useRef<HTMLDivElement | null>(null)
   const historyRootRef = useRef<HTMLDivElement | null>(null)
   const [activeHasAlert, setActiveHasAlert] = useState(false)
+  const [activePlannerId, setActivePlannerId] = useState<string | null>(null)
+
 
 
   const { user } = useUser()
@@ -46,7 +50,11 @@ export default function SellPlannerCombinedCard({
     const read = () => {
       const el = root.querySelector<HTMLElement>('[data-has-alert]')
       const flag = el?.getAttribute('data-has-alert')
+      const plannerId =
+        root.querySelector<HTMLElement>('[data-active-id]')?.getAttribute('data-active-id')?.trim() || null
+
       setActiveHasAlert(flag === '1' || flag === 'true')
+      setActivePlannerId(plannerId)
     }
 
     const mo = new MutationObserver(read)
@@ -54,12 +62,13 @@ export default function SellPlannerCombinedCard({
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-has-alert'],
+      attributeFilter: ['data-has-alert', 'data-active-id'],
     })
 
     read()
     return () => mo.disconnect()
   }, [])
+
 
   useEffect(() => {
     const root = historyRootRef.current
@@ -117,7 +126,10 @@ export default function SellPlannerCombinedCard({
     return newestFirst ? (N - label + 1) : label
   }, [selected, historyLength, newestFirst])
 
+  const canDeleteSelected = selected === 'active' ? !!activePlannerId : !!nthIndex
+
   useEffect(() => {
+
     const root = historyRootRef.current
     if (!root) return
     const all = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
@@ -218,7 +230,7 @@ export default function SellPlannerCombinedCard({
             </div>
           </div>
 
-          {selected !== 'active' && (
+          {canDeleteSelected && (
             <div className="flex justify-end pt-3 pb-1">
               <button
                 type="button"
@@ -236,7 +248,7 @@ export default function SellPlannerCombinedCard({
                 </span>
               </button>
             </div>
-          )}
+            )}
         </div>
       </Card>
 
@@ -310,17 +322,34 @@ export default function SellPlannerCombinedCard({
   )
 
   async function handleDeleteSelected() {
-    if (selected === 'active') return
-    const idx = nthIndex
-    if (!idx) return
-    const root = historyRootRef.current
+    const deletingActive = selected === 'active'
+    const root = deletingActive ? activeRootRef.current : historyRootRef.current
     if (!root) return
-    const list = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
-    const target = list[idx - 1]
-    if (!target) return
-    const id = target.getAttribute('data-history-id')
+
+    let id: string | null = null
+    let idx: number | null = null
+    let target: HTMLElement | null = null
+
+    if (deletingActive) {
+      id =
+        root.querySelector<HTMLElement>('[data-active-id]')?.getAttribute('data-active-id')?.trim() ||
+        activePlannerId
+    } else {
+      idx = nthIndex
+      if (!idx) return
+      const list = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
+      target = list[idx - 1] ?? null
+      if (!target) return
+      id = target.getAttribute('data-history-id')
+    }
+
     if (!id) return
-    const ok = confirm('Delete this frozen planner version permanently? This cannot be undone.')
+
+    const ok = confirm(
+      deletingActive
+        ? 'Delete this live planner permanently? This cannot be undone.'
+        : 'Delete this frozen planner version permanently? This cannot be undone.'
+    )
     if (!ok) return
 
     try {
@@ -329,12 +358,17 @@ export default function SellPlannerCombinedCard({
         return
       }
 
-      const { error } = await supabaseBrowser
+      let query = supabaseBrowser
         .from('sell_planners')
         .delete()
         .eq('id', id)
         .eq('user_id', user.id)
-        .eq('is_active', false)
+
+      if (!deletingActive) {
+        query = query.eq('is_active', false)
+      }
+
+      const { error } = await query
 
       if (error) {
         console.error('[sell_planner delete] error', error)
@@ -342,10 +376,22 @@ export default function SellPlannerCombinedCard({
         return
       }
 
-      target.remove()
-      const remaining = root.querySelectorAll('[data-history-id]').length
-      if (remaining === 0) setSelected('active')
-      else setSelected(Math.min(idx, remaining))
+      if (deletingActive) {
+        setActivePlannerId(null)
+        setActiveHasAlert(false)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('sellPlannerUpdated', {
+              detail: { coinId: coinId ?? coinIdFromPath },
+            })
+          )
+        }
+      } else if (target && idx) {
+        target.remove()
+        const remaining = root.querySelectorAll('[data-history-id]').length
+        if (remaining === 0) setSelected('active')
+        else setSelected(Math.min(idx, remaining))
+      }
     } catch (e: any) {
       console.error('[sell_planner delete] exception', e)
       alert('Delete failed: ' + (e?.message || String(e)))

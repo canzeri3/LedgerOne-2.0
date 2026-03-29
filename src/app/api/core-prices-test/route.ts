@@ -8,6 +8,9 @@ import { getConsensusPrices } from "../../../server/services/priceService"; // r
 export const revalidate = 0;
 
 export async function GET(req: Request) {
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 })
+  }
   try {
     const u = new URL(req.url);
     const ids = (u.searchParams.get("ids") || "bitcoin,ethereum,trx")

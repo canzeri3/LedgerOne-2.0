@@ -1,5 +1,7 @@
 // src/app/api/portfolio-risk/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
 /**
  * Portfolio Risk API
@@ -30,6 +32,9 @@ type SnapshotPayload = { rows?: SnapshotRow[] }
 const DEFAULT_DAYS = 90
 const DEFAULT_INTERVAL = 'daily'
 const DEFAULT_CURRENCY = 'USD'
+const MAX_PORTFOLIO_IDS = 20
+const MAX_DAYS = 730
+const COIN_ID_RE = /^[a-z0-9][a-z0-9\-]{0,99}$/
 const ANN_FACTOR_BY_INTERVAL: Record<string, number> = {
   daily: 365,
   hourly: 24 * 365,
@@ -39,6 +44,38 @@ const IMPL_ID = 'portfolio-risk Σ+Tail+Corr+Liq vC1.2'
 const BTC_ID = 'bitcoin'
 
 const baseUrl = () => (process.env.INTERNAL_BASE_URL?.trim() || 'http://localhost:3000')
+
+// ── Auth helper ──────────────────────────────────────────────────────────────
+// portfolio-risk triggers expensive server computation (covariance matrix +
+// multiple price-history fetches). Requiring auth limits abuse to registered
+// users and ensures the endpoint isn't hammered by anonymous crawlers.
+async function getAuthedUser(): Promise<{ id: string; email?: string } | null> {
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get: (name) => cookieStore.get(name)?.value,
+          set: () => {},    // read-only in route handlers
+          remove: () => {},
+        },
+      }
+    )
+    const { data } = await supabase.auth.getUser()
+    return data?.user ?? null
+  } catch {
+    return null
+  }
+}
+
+function isAdminUser(email: string | undefined): boolean {
+  if (!email) return false
+  const raw = process.env.LEDGERONE_ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? ''
+  const allowlist = new Set(raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean))
+  return allowlist.has(email.toLowerCase())
+}
 
 async function fetchHistory(id: string, days: number, interval: string, currency: string): Promise<HistoryPayload | null> {
   const url = `${baseUrl()}/api/price-history?id=${encodeURIComponent(id)}&days=${encodeURIComponent(String(days))}&interval=${encodeURIComponent(interval)}&currency=${encodeURIComponent(currency)}`
@@ -261,20 +298,49 @@ async function getAlignedWithFallback(
 }
 
 export async function GET(req: NextRequest) {
+  // ── Auth guard ───────────────────────────────────────────────────────────────
+  // portfolio-risk is compute-heavy (covariance matrix + multiple history fetches).
+  // Require a valid session to prevent anonymous abuse / crawling.
+  const user = await getAuthedUser()
+  if (!user) {
+    return NextResponse.json(
+      { status: { ok: false, message: 'Authentication required' }, meta: { impl: IMPL_ID } },
+      { status: 401 }
+    )
+  }
+
   const url = new URL(req.url)
   const idsParam = (url.searchParams.get('ids') || '').trim()
+  // debug=1 exposes internal computation state (weights, covariance, factor breakdown).
+  // Restrict to admin users only — regular authenticated users get no debug output.
   const valuesParam = (url.searchParams.get('values') || '').trim()
-  const daysReq = Number(url.searchParams.get('days') || DEFAULT_DAYS)
+  // Clamp days to prevent fetching years of history on each request
+  const daysReq = Math.min(MAX_DAYS, Math.max(1, Number(url.searchParams.get('days') || DEFAULT_DAYS)))
   const interval = url.searchParams.get('interval') || DEFAULT_INTERVAL
   const currency = url.searchParams.get('currency') || DEFAULT_CURRENCY
   const annFactor = ANN_FACTOR_BY_INTERVAL[interval] ?? ANN_FACTOR_BY_INTERVAL.daily
-  const debug = url.searchParams.get('debug') === '1'
+  const debug = url.searchParams.get('debug') === '1' && isAdminUser(user.email)
 
-  const ids = idsParam ? idsParam.split(',').map(s => s.trim()).filter(Boolean) : []
+  const ids = idsParam ? idsParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : []
   const values = valuesParam ? valuesParam.split(',').map(s => Number(s.trim())) : []
 
   if (ids.length === 0 || ids.length !== values.length) {
     return NextResponse.json({ status: { ok: false, message: 'ids and values must be provided with equal lengths' }, meta: { impl: IMPL_ID } }, { status: 400 })
+  }
+
+  // ── Input validation ────────────────────────────────────────
+  if (ids.length > MAX_PORTFOLIO_IDS) {
+    return NextResponse.json(
+      { status: { ok: false, message: `Too many IDs — max ${MAX_PORTFOLIO_IDS} per request` }, meta: { impl: IMPL_ID } },
+      { status: 400 }
+    )
+  }
+  const invalidId = ids.find((id) => !COIN_ID_RE.test(id))
+  if (invalidId) {
+    return NextResponse.json(
+      { status: { ok: false, message: `Invalid coin ID: "${invalidId}"` }, meta: { impl: IMPL_ID } },
+      { status: 400 }
+    )
   }
 
   // Normalize value weights (refinement stays)

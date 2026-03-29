@@ -1,9 +1,10 @@
 'use client'
 
-import useSWR from 'swr'
+import useSWR, { mutate as mutateGlobal } from 'swr'
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
+import { restoreSellPlannerFromAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
 
 type LogRow = {
@@ -129,11 +130,80 @@ function summarizeDetails(details: any): string {
   return first.length ? `fields: ${first.join(', ')}${keys.length > 3 ? '…' : ''}` : '—'
 }
 
+type RestoreTarget = {
+  entity: 'buy_planner' | 'sell_planner'
+  plannerId: string
+  coinId: string | null
+}
+
+function getRestoreTarget(row: LogRow): RestoreTarget | null {
+  if (row.entity !== 'buy_planner' && row.entity !== 'sell_planner') return null
+
+  const action = (row.action ?? '').trim().toLowerCase()
+  const looksDeleted = [
+    'delete',
+    'deleted',
+    'remove',
+    'removed',
+    'deactivate',
+    'deactivated',
+    'archive',
+    'archived',
+  ].some((token) => action.includes(token))
+
+  if (!looksDeleted) return null
+
+  const details = row.details && typeof row.details === 'object' ? row.details : {}
+
+  const plannerId =
+    typeof (details as any).planner_id === 'string'
+      ? (details as any).planner_id
+      : typeof (details as any).plannerId === 'string'
+        ? (details as any).plannerId
+        : typeof (details as any).buy_planner_id === 'string'
+          ? (details as any).buy_planner_id
+          : typeof (details as any).buyPlannerId === 'string'
+            ? (details as any).buyPlannerId
+            : typeof (details as any).sell_planner_id === 'string'
+              ? (details as any).sell_planner_id
+              : typeof (details as any).sellPlannerId === 'string'
+                ? (details as any).sellPlannerId
+                : typeof (details as any).id === 'string'
+                  ? (details as any).id
+                  : null
+
+  if (!plannerId) return null
+
+  const coinId =
+    row.coingecko_id ??
+    (typeof (details as any).coingecko_id === 'string'
+      ? (details as any).coingecko_id
+      : typeof (details as any).coinId === 'string'
+        ? (details as any).coinId
+        : null)
+
+  return {
+    entity: row.entity,
+    plannerId,
+    coinId,
+  }
+}
+function canRestoreFromAudit(row: LogRow): boolean {
+  if (row.action !== 'deleted') return false
+  if (row.entity !== 'sell_planner') return false
+
+  const details = row.details ?? {}
+  const snapshot = details?.snapshot ?? {}
+  const planner = snapshot?.planner ?? {}
+
+  return !!details?.undo_available && !details?.restored_at && !!planner?.id
+}
+
 export default function AuditPage() {
   const { user } = useUser()
 
-  const { data, error } = useSWR<LogRow[]>(
-    user ? ['/audit', user.id] : null,
+  const { data, error, mutate } = useSWR<LogRow[]>(
+        user ? ['/audit', user.id] : null,
     async () => {
       const { data, error } = await supabaseBrowser
         .from('audit_logs')
@@ -151,6 +221,9 @@ export default function AuditPage() {
   const [entity, setEntity] = useState<'all' | LogRow['entity']>('all')
   const [coin, setCoin] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null)
+  const [restoreErr, setRestoreErr] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const rows = data ?? []
@@ -184,7 +257,107 @@ export default function AuditPage() {
     })
   }
 
+  const restorePlannerFromLog = async (row: LogRow) => {
+    if (!user) {
+      setRestoreErr('Not signed in.')
+      return
+    }
+
+    const target = getRestoreTarget(row)
+    if (!target) return
+
+    const table =
+      target.entity === 'buy_planner' ? 'buy_planners' : 'sell_planners'
+
+    setRestoreErr(null)
+    setRestoreMsg(null)
+    setRestoringId(row.id)
+
+    try {
+      const { data: plannerRow, error: plannerError } = await supabaseBrowser
+        .from(table)
+        .select('id,coingecko_id,is_active')
+        .eq('id', target.plannerId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (plannerError) throw plannerError
+
+      if (!plannerRow) {
+        throw new Error(
+          'Planner could not be found. It may already have been permanently removed.'
+        )
+      }
+
+      const plannerCoinId = plannerRow.coingecko_id ?? target.coinId
+
+      if (plannerRow.is_active) {
+        setRestoreMsg('This planner is already active.')
+        return
+      }
+
+      if (plannerCoinId) {
+        const { data: conflictingActive, error: conflictError } = await supabaseBrowser
+          .from(table)
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('coingecko_id', plannerCoinId)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle()
+
+        if (conflictError && (conflictError as any).code !== 'PGRST116') {
+          throw conflictError
+        }
+
+        if (conflictingActive?.id && conflictingActive.id !== target.plannerId) {
+          throw new Error(
+            'Delete the current active planner for this coin before restoring this version.'
+          )
+        }
+      }
+
+      const { error: restoreError } = await supabaseBrowser
+        .from(table)
+        .update({ is_active: true })
+        .eq('id', target.plannerId)
+        .eq('user_id', user.id)
+
+      if (restoreError) throw restoreError
+
+      setRestoreMsg(
+        `${target.entity === 'buy_planner' ? 'Buy' : 'Sell'} planner restored.`
+      )
+
+      await mutate()
+
+      if (typeof window !== 'undefined' && plannerCoinId) {
+        window.dispatchEvent(
+          new CustomEvent(
+            target.entity === 'buy_planner'
+              ? 'buyPlannerUpdated'
+              : 'sellPlannerUpdated',
+            { detail: { coinId: plannerCoinId } }
+          )
+        )
+      }
+    } catch (e: any) {
+      setRestoreErr(e?.message ?? 'Restore failed.')
+    } finally {
+      setRestoringId(null)
+    }
+  }
+
+  // Aliases used in JSX — map old names to the actual state/function above
+  const restoreBusyId = restoringId
+  const onRestore = restorePlannerFromLog
+  const restoreStatus: { type: 'success' | 'error'; text: string } | null =
+    restoreMsg ? { type: 'success', text: restoreMsg } :
+    restoreErr ? { type: 'error', text: restoreErr } :
+    null
+
   const total = data?.length ?? 0
+
   const shown = filtered.length
 
   return (
@@ -272,13 +445,37 @@ export default function AuditPage() {
 
         {/* Body */}
         <div className="p-2 sm:p-2.5 md:p-3">
-          {error && (
+          {restoreErr ? (
+            <div className="mb-3 rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200">
+              {restoreErr}
+            </div>
+          ) : null}
+
+          {restoreMsg ? (
+            <div className="mb-3 rounded-md bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/25 px-4 py-3 text-[13px] text-emerald-200">
+              {restoreMsg}
+            </div>
+          ) : null}      
+              {error && (
             <div className="rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200">
               Error loading logs.
             </div>
           )}
 
+          {restoreStatus && (
+            <div
+              className={
+                restoreStatus.type === 'success'
+                  ? 'mb-3 rounded-md bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/25 px-4 py-3 text-[13px] text-emerald-200'
+                  : 'mb-3 rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200'
+              }
+            >
+              {restoreStatus.text}
+            </div>
+          )}
+
           {!data && !error && (
+
             <div className="rounded-md bg-[rgb(21,22,24)]/35 ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-4 py-3 text-[13px] text-slate-200">
               Loading…
             </div>
@@ -298,6 +495,7 @@ export default function AuditPage() {
               {filtered.map((row) => {
                 const isOpen = expanded.has(row.id)
                 const safeDetails = sanitizeAuditDetails(row.details ?? {})
+                const restoreTarget = getRestoreTarget(row)
 
                 return (
                   <div
@@ -341,14 +539,41 @@ export default function AuditPage() {
                             )}
                           </div>
 
-                          <div className="text-[13px] sm:text-[14px] text-slate-100 font-medium tracking-tight break-words">
-                            {row.action}
+                            <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            {restoreTarget ? (
+                              <button
+                                type="button"
+                                onClick={() => restorePlannerFromLog(row)}
+                                disabled={restoringId === row.id}
+                                className="inline-flex items-center rounded-lg bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-2.5 py-1 text-[12px] text-slate-100 hover:bg-[rgb(18,19,21)]/80 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {restoringId === row.id ? 'Restoring…' : 'Restore'}
+                              </button>
+                            ) : null}
+
+                            <div className="text-[13px] sm:text-[14px] text-slate-100 font-medium tracking-tight break-words">
+                              {row.action}
+                            </div>
+                          </div>
+                          
+                            {canRestoreFromAudit(row) && (
+                              <button
+                                type="button"
+                                onClick={() => onRestore(row)}
+                                disabled={restoreBusyId === row.id}
+                                className="inline-flex items-center rounded-lg border border-[rgb(58,60,66)]/70 bg-[rgb(18,19,21)]/60 px-2.5 py-1 text-[12px] text-slate-100 hover:bg-[rgb(18,19,21)]/85 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {restoreBusyId === row.id ? 'Restoring…' : 'Restore'}
+                              </button>
+                            )}
                           </div>
                         </div>
 
                         <div className="mt-1 text-[12px] leading-relaxed text-[rgb(176,176,178)] break-words">
                           {summarizeDetails(safeDetails)}
                         </div>
+
 
                         {isOpen && (
                           <div className="mt-3 rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-2.5 sm:p-3">
@@ -371,7 +596,7 @@ export default function AuditPage() {
       </section>
 
       <p className="text-[12px] text-[rgb(120,120,121)]">
-        Edits, freezes, and reassignment events are logged automatically. Only you can see your own logs (RLS owner-only).
+        Edits, freezes, deletes, and restoration events are logged automatically. Only you can see your own logs (RLS owner-only).
       </p>
     </div>
   )

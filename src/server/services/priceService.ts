@@ -16,6 +16,7 @@ import { robustJsonFetch } from "@/server/lib/http";
 import { cacheGet, cacheSet } from "@/server/ttlCache";
 import { getMappings } from "@/server/db/coinRegistry";
 import { count, recordError } from "@/server/obs";
+import "@/server/lib/validateEnv"; // validates required env vars on cold start
 
 // ---------- Types ----------
 

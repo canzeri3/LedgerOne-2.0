@@ -15,8 +15,8 @@ export async function GET(
   const id = (rawId || '').toLowerCase()
 
 
-  // Log adapter usage (see dev terminal or Vercel logs)
-  logInfo("adapter_price_hit", { id });
+  // Log adapter usage — no coin id in the log (reveals portfolio composition)
+  logInfo("adapter_price_hit", {});
 
   // Use env-configurable internal base (works in dev/CI/prod)
   const BASE = process.env.INTERNAL_BASE_URL || "http://localhost:3000";

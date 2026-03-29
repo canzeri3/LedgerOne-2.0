@@ -15,10 +15,13 @@ function envOrThrow(name: string) {
 }
 
 function getAdminEmailAllowlist(): Set<string> {
+  // SECURITY: Never use NEXT_PUBLIC_* vars for sensitive access control.
+  // NEXT_PUBLIC_ vars are embedded into the client-side JS bundle at build time,
+  // meaning every browser that loads the app can read admin email addresses.
+  // Use server-only env vars (LEDGERONE_ADMIN_EMAILS or ADMIN_EMAILS) only.
   const raw =
     process.env.LEDGERONE_ADMIN_EMAILS ??
     process.env.ADMIN_EMAILS ??
-    process.env.NEXT_PUBLIC_ADMIN_EMAILS ??
     ''
 
   const emails = raw

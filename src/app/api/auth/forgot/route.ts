@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkRateLimit, getClientIp } from '@/server/lib/rateLimit'
 
 export async function POST(req: Request) {
   try {
@@ -9,18 +10,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
     }
 
+    // ── Rate limiting ──────────────────────────────────────────────────────
+    // Two independent limits protect against:
+    //   IP limit  — burst attacks from one machine (e.g. credential stuffing)
+    //   Email limit — targeted harassment of a specific user's inbox
+    //
+    // Both return the same generic 429 so attackers can't distinguish which
+    // limit was hit (avoids leaking whether an email address exists).
+    const ip = getClientIp(req)
+
+    const ipCheck = await checkRateLimit(`rl:forgot:ip:${ip}`, 5, 15 * 60)
+    if (ipCheck.limited) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(ipCheck.resetInSec) },
+        }
+      )
+    }
+
+    const emailCheck = await checkRateLimit(
+      `rl:forgot:email:${email.trim().toLowerCase()}`,
+      3,
+      60 * 60
+    )
+    if (emailCheck.limited) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(emailCheck.resetInSec) },
+        }
+      )
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
     if (!url || !anon) {
-      return NextResponse.json({ error: 'Supabase not configured.' }, { status: 500 })
+      // Log server-side only — never expose config state to the client
+      console.error('[forgot] Supabase env vars not configured')
+      return NextResponse.json({ error: 'Service unavailable.' }, { status: 503 })
     }
 
     const supabase = createClient(url, anon)
 
-    // ── Compute the base URL for the reset link ────────────────────────────
-    // 1) Prefer NEXT_PUBLIC_SITE_URL (your live domain)
-    // 2) Else fall back to the incoming request's origin (dev / prod)
+    // ── Compute the redirect URL ───────────────────────────────────────────
     const rawEnvBase = (process.env.NEXT_PUBLIC_SITE_URL || '').trim()
     let base: string
 
@@ -33,19 +70,28 @@ export async function POST(req: Request) {
 
     const redirectTo = `${base}/auth/reset`
 
-    // Log once server-side so you can see what we're sending to Supabase
-    console.log('[forgot] redirectTo:', redirectTo)
-
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
 
     if (error) {
+      // Log full error server-side for debugging — never send to client.
+      // Supabase errors can contain table names, constraint names, or hints
+      // about whether the email exists.
       console.error('[forgot] Supabase error:', error.message)
-      return NextResponse.json({ error: error.message, redirectTo }, { status: 400 })
+
+      // Return a generic message regardless of whether the email exists.
+      // This prevents email enumeration: the client cannot distinguish
+      // "email not found" from "email found, reset sent".
+      return NextResponse.json(
+        { error: 'Unable to send reset email. Please check the address and try again.' },
+        { status: 400 }
+      )
     }
 
-    return NextResponse.json({ ok: true, redirectTo })
+    // Omit redirectTo from the success response — it's an internal detail
+    // the client doesn't need and shouldn't be able to inspect.
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('Error in /api/auth/forgot', err)
+    console.error('[forgot] Unexpected error:', err)
     return NextResponse.json({ error: 'Unexpected error.' }, { status: 500 })
   }
 }

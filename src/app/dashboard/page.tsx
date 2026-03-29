@@ -11,6 +11,7 @@ import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
+import FullScreenPageLoader from '@/components/common/FullScreenPageLoader'
 
 import {
   buildBuyLevels,
@@ -491,7 +492,7 @@ export default function Page() {
   }, [authLoading, user, router])
 
   // Trades (all-time) — fail-soft + consistent options
-  const { data: trades } = useSWR<TradeLite[]>(
+  const { data: trades, isLoading: tradesLoading } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
     async () => {
       try {
@@ -599,7 +600,7 @@ const tradesByCoin = useMemo(() => {
 
 const daysParam = useMemo(() => daysParamFor(tf, firstTradeMs), [tf, firstTradeMs])
 
-  const { data: historiesMap } = useSWR<Record<string, Point[]>>(
+  const { data: historiesMap, isLoading: historiesLoading } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParam] : null,
     () => fetchHistories(coinIds, daysParam),
     {
@@ -766,6 +767,16 @@ const { delta, pct } = useMemo(() => {
 
   const pctAbsText = Math.abs(pct).toFixed(2)
   const deltaDigitsOnly = Math.abs(delta).toFixed(2)
+
+  // Hold the loader until auth has resolved, trades are fetched, and history
+  // (if there are any coins) has arrived. This closes the gap where SWRRouteCover
+  // sees inFlight=0 (all SWR keys are null while authLoading=true) and dismisses
+  // before any real data has loaded.
+  const pageReady =
+    !authLoading &&
+    !tradesLoading &&
+    (coinIds.length === 0 || !historiesLoading)
+  if (!pageReady) return <FullScreenPageLoader />
 
 return (
     <div data-dashboard-page className="space-y-6">

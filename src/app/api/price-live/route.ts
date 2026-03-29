@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   const list = (repeated.length ? repeated : fromCsv).map(s => s.toLowerCase());
   const q = list.join(",");
 
-  // Log adapter usage (see dev terminal or Vercel logs)
-  logInfo("adapter_pricelive_hit", { ids: list });
+  // Log adapter usage — count only, never the ids (reveals portfolio composition)
+  logInfo("adapter_pricelive_hit", { count: list.length });
 
   // Use env-configurable internal base (works in dev/CI/prod)
   const BASE = process.env.INTERNAL_BASE_URL || "http://localhost:3000";

@@ -9,6 +9,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
 import PlanLimitModal from '@/components/billing/PlanLimitModal'
+import { deletePlannerWithAudit } from '@/lib/plannerAuditClient'
 
 import type { BuyPlannerRow } from '@/types/db'
 
@@ -545,15 +546,12 @@ if (!opts?.confirmed) {
 
     setBusy(true)
     try {
-      const { error } = await supabaseBrowser
-        .from('buy_planners')
-        .update({ is_active: false })
-        .eq('id', planner.id)
-        .eq('user_id', user.id)
+      await deletePlannerWithAudit({
+        entity: 'buy_planner',
+        plannerId: planner.id,
+      })
 
-      if (error) throw error
-
-      setMsg('Removed current Buy planner for this coin.')
+      setMsg('Removed current Buy planner for this coin. You can restore it from Audit Log.')
       await mutate()
 
       // Kick other planner-related SWR caches so UI updates immediately

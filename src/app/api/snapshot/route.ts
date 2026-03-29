@@ -229,6 +229,15 @@ export async function GET(req: Request) {
       .map(s => s.toLowerCase())
       .filter(Boolean);
 
+    // ── Input validation ────────────────────────────────────
+    const MAX_SNAPSHOT_IDS = 50;
+    if (requestedIds.length > MAX_SNAPSHOT_IDS) {
+      return NextResponse.json(
+        { error: `Too many IDs — max ${MAX_SNAPSHOT_IDS} per request` },
+        { status: 400 }
+      );
+    }
+
     const currency = (u.searchParams.get("currency") || "USD").toUpperCase();
 
     // Snapshot-level cache key: currency + sorted ids.

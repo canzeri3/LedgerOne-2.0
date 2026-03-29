@@ -15,10 +15,11 @@ function envOrThrow(name: string) {
 }
 
 function getAdminEmailAllowlist(): Set<string> {
+  // SECURITY: Never use NEXT_PUBLIC_* for access control — those vars are
+  // baked into the client JS bundle and visible to every browser.
   const raw =
     process.env.LEDGERONE_ADMIN_EMAILS ??
     process.env.ADMIN_EMAILS ??
-    process.env.NEXT_PUBLIC_ADMIN_EMAILS ??
     ''
 
   const emails = raw
@@ -92,17 +93,29 @@ export async function POST(req: NextRequest) {
     const userId = String(body?.userId ?? '').trim()
     if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
 
+    // ── Audit context: capture who, where, and why ─────────────────────────
+    // IP + User-Agent are embedded in the note so they're stored even if the
+    // admin_tier_overrides schema doesn't have dedicated audit columns.
+    const forwardedFor = req.headers.get('x-forwarded-for')
+    const ip = forwardedFor?.split(',')[0]?.trim()
+      ?? req.headers.get('x-real-ip')
+      ?? 'unknown'
+    const ua = (req.headers.get('user-agent') ?? 'unknown').slice(0, 150)
+
     const supabaseAdmin = getSupabaseAdminClient()
 
     // Clear override
     if (body?.clear === true) {
+      const clearNote = `Cleared by ${admin.email} [ip:${ip}] [ua:${ua}]`
+      console.info('[admin:grant] clear override', { adminId: admin.userId, userId, ip, ua })
+
       const { error } = await supabaseAdmin
         .from('admin_tier_overrides')
         .delete()
         .eq('user_id', userId)
 
       if (error) throw error
-      return NextResponse.json({ ok: true, userId, cleared: true }, { status: 200 })
+      return NextResponse.json({ ok: true, userId, cleared: true, _audit: clearNote }, { status: 200 })
     }
 
     // Set override
@@ -113,6 +126,29 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Require a meaningful reason — default 'Admin override' is no longer accepted.
+    const rawNote = String(body?.note ?? '').trim()
+    if (rawNote.length < 10) {
+      return NextResponse.json(
+        { error: 'A note of at least 10 characters is required to explain the override reason.' },
+        { status: 400 }
+      )
+    }
+
+    // Append audit metadata to the note so it's stored in the DB record.
+    const note = `${rawNote.slice(0, 440)} [ip:${ip}] [ua:${ua.slice(0, 80)}]`
+
+    // Server-side audit log (appears in Vercel function logs / your log pipeline)
+    console.info('[admin:grant] tier override', {
+      adminId: admin.userId,
+      adminEmail: admin.email,
+      targetUserId: userId,
+      tier,
+      ip,
+      ua,
+      note: rawNote,
+    })
 
     // Snapshot billed tier/status at time override is set
     let billedTierAtSet: Tier = 'FREE'
@@ -131,7 +167,6 @@ export async function POST(req: NextRequest) {
       billedStatusAtSet = 'none'
     }
 
-    const note = String(body?.note ?? 'Admin override').slice(0, 500)
     const now = new Date().toISOString()
 
     const { error: upErr } = await supabaseAdmin

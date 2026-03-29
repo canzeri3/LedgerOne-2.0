@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import {
   buildBuyLevels,
@@ -21,6 +22,28 @@ function env(name: string) {
 function canonId(id: string) {
   return (id || '').trim().toLowerCase()
 }
+
+// Timing-safe secret comparison: prevents timing attacks that could let an
+// attacker brute-force the CRON_SECRET one character at a time.
+function timingSafeEquals(a: string, b: string): boolean {
+  try {
+    const ab = Buffer.from(a, 'utf8')
+    const bb = Buffer.from(b, 'utf8')
+    // Buffers must be the same length for timingSafeEqual.
+    // If lengths differ we still run a dummy comparison to prevent length-based
+    // timing leaks, then return false.
+    if (ab.length !== bb.length) {
+      crypto.timingSafeEqual(ab, ab) // dummy — same length, always true
+      return false
+    }
+    return crypto.timingSafeEqual(ab, bb)
+  } catch {
+    return false
+  }
+}
+
+// Strict email format check: used to validate the testEmail query param.
+const TEST_EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
 
 function readCronSecret(req: NextRequest) {
   const url = new URL(req.url)
@@ -195,7 +218,8 @@ export async function GET(req: NextRequest) {
   try {
     const expected = env('CRON_SECRET')
     const provided = readCronSecret(req)
-    if (!expected || provided !== expected) {
+    // Use timing-safe comparison to prevent character-by-character brute force.
+    if (!expected || !timingSafeEquals(provided, expected)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -204,7 +228,14 @@ export async function GET(req: NextRequest) {
     const force = url.searchParams.get('force') === '1'
     const debug = url.searchParams.get('debug') === '1'
     const onlyUserId = (url.searchParams.get('userId') ?? '').trim() || null
-    const testEmail = (url.searchParams.get('testEmail') ?? '').trim() || null
+    const rawTestEmail = (url.searchParams.get('testEmail') ?? '').trim() || null
+
+    // Validate testEmail strictly: must be a well-formed address ≤ 254 chars.
+    // Prevents this endpoint from being used as an email relay if CRON_SECRET leaks.
+    if (rawTestEmail !== null && (rawTestEmail.length > 254 || !TEST_EMAIL_RE.test(rawTestEmail))) {
+      return NextResponse.json({ error: 'Invalid testEmail format' }, { status: 400 })
+    }
+    const testEmail = rawTestEmail
 
     if (testEmail) {
       const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'

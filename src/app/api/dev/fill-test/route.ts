@@ -4,6 +4,9 @@ import { computeBuyFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 export const runtime = 'nodejs'
 
 export async function GET() {
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 })
+  }
   const levels: BuyLevel[] = [
     { level: 1, drawdown_pct: 0,  price: 50, allocation: 500, est_tokens: 10 },
     { level: 2, drawdown_pct: 20, price: 40, allocation: 500, est_tokens: 12.5 },

@@ -1,11 +1,12 @@
 'use client'
 
+import { mutate as globalMutate } from 'swr'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePrice } from '@/lib/dataCore'
 import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
-import { supabaseBrowser } from '@/lib/supabaseClient'
+import { deleteSellPlannerWithAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
 
 type Props = {
@@ -74,8 +75,10 @@ export default function SellPlannerCombinedCardPlanner({
   const [historyLength, setHistoryLength] = useState(0)
   const [alertLabels, setAlertLabels] = useState<number[]>([])
   const [activeHasAlert, setActiveHasAlert] = useState(false)
+  const [activePlannerId, setActivePlannerId] = useState<string | null>(null)
   const activeRootRef = useRef<HTMLDivElement | null>(null)
   const historyRootRef = useRef<HTMLDivElement | null>(null)
+  
   // ── UI state: confirm “Delete” (Sell Planner) ─────────────────────────────
   const [confirmSellDeleteOpen, setConfirmSellDeleteOpen] = useState<boolean>(false)
   const confirmSellDeleteCancelRef = useRef<HTMLButtonElement | null>(null)
@@ -111,7 +114,11 @@ export default function SellPlannerCombinedCardPlanner({
     const read = () => {
       const el = root.querySelector<HTMLElement>('[data-has-alert]')
       const flag = el?.getAttribute('data-has-alert')
+      const plannerId =
+        root.querySelector<HTMLElement>('[data-active-id]')?.getAttribute('data-active-id')?.trim() || null
+
       setActiveHasAlert(flag === '1' || flag === 'true')
+      setActivePlannerId(plannerId)
     }
 
     const mo = new MutationObserver(read)
@@ -119,12 +126,13 @@ export default function SellPlannerCombinedCardPlanner({
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-has-alert'],
+      attributeFilter: ['data-has-alert', 'data-active-id'],
     })
 
     read()
     return () => mo.disconnect()
   }, [])
+
 
   // Track history length and keep selection valid
   useEffect(() => {
@@ -203,8 +211,11 @@ export default function SellPlannerCombinedCardPlanner({
     return newestFirst ? (N - label + 1) : label
   }, [selected, historyLength, newestFirst])
 
+  const canDeleteSelected = selected === 'active' ? !!activePlannerId : !!nthIndex
+
   // Show only the chosen history item when a frozen version is selected
   useEffect(() => {
+
     const root = historyRootRef.current
     if (!root) return
     const all = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
@@ -267,17 +278,22 @@ export default function SellPlannerCombinedCardPlanner({
                     Delete Sell Planner?
                   </h2>
                   <p className="mt-1 text-[12px] text-slate-400">
-                    This permanently removes the selected Sell Planner version from History.
+                    {selected === 'active'
+                      ? 'This removes the live Sell Planner for this coin. You can restore it later from Audit Log.'
+                      : 'This removes the selected frozen Sell Planner version. You can restore it later from Audit Log.'}
                   </p>
                 </div>
 
                 <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
-                  This permanently removes the selected Sell Planner version from History.
+                  {selected === 'active'
+                    ? 'Deleting the live planner removes the current ladder and stops live planner tracking for this coin.'
+                    : 'Deleting the selected frozen planner removes that saved version from History.'}{' '}
                   Any trades you already recorded under this planner will remain saved and visible in your history.
                   <span className="block mt-2 text-slate-200 font-medium">
-                    This action can’t be undone.
+                    You can restore it later from Audit Log.
                   </span>
                 </div>
+
 
                 <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
                   <button
@@ -395,31 +411,33 @@ export default function SellPlannerCombinedCardPlanner({
                   {ActiveView}
                 </div>
 
-                <div style={{ display: selected === 'active' ? 'none' : 'block', color: TEXT_RGB }}>
+                <div
+                  style={{ display: selected === 'active' ? 'none' : 'block', color: TEXT_RGB }}
+                >
                   <div ref={historyRootRef} className="space-y-3">
                     {HistoryView}
                   </div>
-
-                  {selected !== 'active' && (
-                    <div className="mt-3 flex justify-end pt-1">
-                      <button
-                        type="button"
-  onClick={() => openConfirmSellDelete(handleDeleteSelected)}
-                        className="sell-delete-btn"
-                      >
-                        <span className="button__text">Delete</span>
-                        <span className="button__icon" aria-hidden="true">
-                          <svg className="svg" viewBox="0 0 24 24" fill="none">
-                            <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="2"/>
-                            <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                          </svg>
-                        </span>
-                      </button>
-                    </div>
-                  )}
                 </div>
+
+                {canDeleteSelected && (
+                  <div className="mt-3 flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => openConfirmSellDelete(handleDeleteSelected)}
+                      className="sell-delete-btn"
+                    >
+                      <span className="button__text">Delete</span>
+                      <span className="button__icon" aria-hidden="true">
+                        <svg className="svg" viewBox="0 0 24 24" fill="none">
+                          <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="2" />
+                          <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Optional helper – now also uses the same text color */}
                 {hasLivePrice ? (
@@ -428,7 +446,7 @@ export default function SellPlannerCombinedCardPlanner({
                   </div>
                 ) : null}
               </div>
-            </div>
+                          </div>
           </div>
         </div>
       </Card>
@@ -495,18 +513,28 @@ export default function SellPlannerCombinedCardPlanner({
   )
 
   async function handleDeleteSelected() {
-    if (selected === 'active') return
-    const idx = nthIndex
-    if (!idx) return
-    const root = historyRootRef.current
+    const deletingActive = selected === 'active'
+    const root = deletingActive ? activeRootRef.current : historyRootRef.current
     if (!root) return
-    const list = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
-    const target = list[idx - 1]
-    if (!target) return
-    const id = target.getAttribute('data-history-id')
-    if (!id) return
-      // Confirmation handled by in-website modal (no native confirm).
 
+    let id: string | null = null
+    let idx: number | null = null
+    let target: HTMLElement | null = null
+
+    if (deletingActive) {
+      id =
+        root.querySelector<HTMLElement>('[data-active-id]')?.getAttribute('data-active-id')?.trim() ||
+        activePlannerId
+    } else {
+      idx = nthIndex
+      if (!idx) return
+      const list = Array.from(root.querySelectorAll<HTMLElement>('[data-history-id]'))
+      target = list[idx - 1] ?? null
+      if (!target) return
+      id = target.getAttribute('data-history-id')?.trim() || null
+    }
+
+    if (!id) return
 
     try {
       if (!user) {
@@ -514,25 +542,42 @@ export default function SellPlannerCombinedCardPlanner({
         return
       }
 
-      const { error } = await supabaseBrowser
-        .from('sell_planners')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .eq('is_active', false)
+      await deleteSellPlannerWithAudit(id)
 
-      if (error) {
-        console.error('[sell_planner delete] error', error)
-        alert('Delete failed: ' + (error.message || 'Unknown error'))
-        return
+      const cacheCoinId = coinId ?? coinIdFromPath
+      const refreshes: Promise<any>[] = [
+        globalMutate(['/alerts/sell-planners', user.id]),
+        globalMutate(['/alerts/sell-planners-history', user.id]),
+        globalMutate(['/audit', user.id]),
+      ]
+
+      if (cacheCoinId) {
+        refreshes.push(
+          globalMutate(['/sell-active', user.id, cacheCoinId]),
+          globalMutate(['/sell-history/planners', user.id, cacheCoinId]),
+          globalMutate(['/sell-history/levels', user.id, cacheCoinId]),
+          globalMutate(['/sell-history/sells', user.id, cacheCoinId])
+        )
       }
 
-      const targetEl = root.querySelector(`[data-history-id="${id}"]`) as HTMLElement | null
-      if (targetEl) targetEl.remove()
+      await Promise.all(refreshes)
 
-      const remaining = root.querySelectorAll('[data-history-id]').length
-      if (remaining === 0) setSelected('active')
-      else setSelected(Math.min(idx, remaining))
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('sellPlannerUpdated', {
+            detail: { coinId: cacheCoinId, plannerId: id },
+          })
+        )
+      }
+
+      if (!deletingActive && target && idx) {
+        target.remove()
+        const remaining = root.querySelectorAll('[data-history-id]').length
+        if (remaining === 0) setSelected('active')
+        else setSelected(Math.min(idx, remaining))
+      } else {
+        setSelected('active')
+      }
     } catch (e: any) {
       console.error('[sell_planner delete] exception', e)
       alert('Delete failed: ' + (e?.message || String(e)))

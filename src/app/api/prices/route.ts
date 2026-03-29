@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getConsensusPrices } from "../../../server/services/priceService";
 import { logInfo } from "../../../server/lib/metrics";
 
+// ── Input validation constants ───────────────────────────────
+const MAX_IDS = 50;
+// CoinGecko IDs: lowercase alphanumeric + hyphens, 1–100 chars
+const COIN_ID_RE = /^[a-z0-9][a-z0-9\-]{0,99}$/;
+
 // ─────────────────────────────────────────────────────────────
 // Simple in-memory cache for /api/prices
 // Dev terms: per-server Map keyed by (currency + ids) with TTL.
@@ -35,10 +40,27 @@ export async function GET(req: NextRequest) {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
 
+    // ── Input validation ─────────────────────────────────────
+    if (ids.length > MAX_IDS) {
+      return NextResponse.json(
+        { error: `Too many IDs — max ${MAX_IDS} per request` },
+        { status: 400 }
+      );
+    }
+    const invalidId = ids.find((id) => !COIN_ID_RE.test(id));
+    if (invalidId) {
+      return NextResponse.json(
+        { error: `Invalid coin ID: "${invalidId}"` },
+        { status: 400 }
+      );
+    }
+
     // ─────────────────────────────────────────────────────────
     // Cache lookup: try to serve from memory if still "fresh"
+    // Sort IDs so bitcoin,ethereum and ethereum,bitcoin share one cache entry.
     // ─────────────────────────────────────────────────────────
-    const cacheKey = `${currency}:${rawIds}`;
+    const sortedIds = [...ids].sort();
+    const cacheKey = `${currency}:${sortedIds.join(",")}`;
     const now = Date.now();
     const cached = PRICE_CACHE.get(cacheKey);
 
@@ -46,8 +68,8 @@ export async function GET(req: NextRequest) {
       const cachedPayload = cached.payload;
 
       // Phase 10: minimal observability (cache hit)
+      // SECURITY: never log the ids array — it reveals which coins a user holds.
       logInfo("prices_served", {
-        ids,
         currency,
         count: cachedPayload.rows?.length ?? 0,
         stale_count: (cachedPayload.rows ?? []).filter(
@@ -76,8 +98,8 @@ export async function GET(req: NextRequest) {
     });
 
     // Phase 10: minimal observability (cache miss/refresh)
+    // SECURITY: never log the ids array — it reveals which coins a user holds.
     logInfo("prices_served", {
-      ids,
       currency,
       count: payload.rows?.length ?? 0,
       stale_count: (payload.rows ?? []).filter((r: any) => r.stale).length,

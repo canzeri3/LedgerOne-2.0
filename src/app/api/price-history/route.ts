@@ -1,10 +1,15 @@
 // src/app/api/price-history/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getConsensusPrices } from "../../../server/services/priceService";
 // map canonical id -> provider-specific id (e.g., trx -> tron for CoinGecko)
 import { mapToProvider /*, normalizeCoinId*/ } from "@/server/db/coinRegistry";
 import { cacheGet, cacheSet } from "@/server/ttlCache";
 import { aliasCoinId } from "@/lib/coinIdAliases";
+
+// ── Input validation constants ────────────────────────────────
+const COIN_ID_RE = /^[a-z0-9][a-z0-9\-]{0,99}$/;
+const MAX_DAYS = 1825; // 5 years max
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,36 +30,43 @@ const HISTORY_HOT_TTL_SEC = 300; // 5 minutes
 const HISTORY_LASTGOOD_TTL_SEC = 3600; // 1 hour
 
 // ─────────────────────────────────────────────────────────────
-// Supabase REST access for daily candles (coin_bars_daily)
+// Supabase client for daily candles (coin_bars_daily)
 // Phase 4B: DB-backed history layer for interval=daily
+//
+// SECURITY: Uses the Supabase JS client so the service-role key
+// is never placed in raw HTTP Authorization headers where it could
+// appear in proxy/WAF access logs.
 // ─────────────────────────────────────────────────────────────
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ??
-  process.env.SUPABASE_SERVICE_ROLE ??
-  process.env.SUPABASE_SERVICE_KEY ??
-  "";
-const HAS_SUPABASE_ADMIN = !!(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+function getSupabaseAdmin() {
+  const url =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE ??
+    process.env.SUPABASE_SERVICE_KEY ??
+    "";
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
 
-type DailyBarRow = {
-  id: string;
-  currency: string;
-  ts: string; // timestamptz
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string | null;
-};
+const HAS_SUPABASE_ADMIN = !!(
+  (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+  (process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE ??
+    process.env.SUPABASE_SERVICE_KEY)
+);
 
 /**
  * Fetch daily OHLC from coin_bars_daily for the last N days.
- * Returns [{t,p}] based on close, or null if DB is unavailable/empty.
- *
- * Dev: safe wrapper; never throws. If anything goes wrong, returns null and
- * caller falls back to existing CG + ttlCache logic.
+ * Returns [{t,p,o,h,l,c}] or null if DB is unavailable/empty.
+ * Caller falls back to CG + ttlCache on null.
  */
 async function fetchDailyFromDb(
   canonicalId: string,
@@ -62,38 +74,23 @@ async function fetchDailyFromDb(
   days: number
 ): Promise<Pt[] | null> {
   if (!HAS_SUPABASE_ADMIN) return null;
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
 
-  const now = new Date();
-  const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const fromIso = from.toISOString();
-
-  const url =
-    `${SUPABASE_URL}/rest/v1/coin_bars_daily` +
-    `?select=ts,open,high,low,close` +
-    `&id=eq.${encodeURIComponent(canonicalId)}` +
-    `&currency=eq.${encodeURIComponent(currency)}` +
-    `&ts=gte.${encodeURIComponent(fromIso)}` +
-    `&order=ts.asc`;
+  const fromIso = new Date(
+    Date.now() - days * 24 * 60 * 60 * 1000
+  ).toISOString();
 
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
+    const { data, error } = await supabase
+      .from("coin_bars_daily")
+      .select("ts,open,high,low,close")
+      .eq("id", canonicalId)
+      .eq("currency", currency)
+      .gte("ts", fromIso)
+      .order("ts", { ascending: true });
 
-    if (!res.ok) {
-      // Fail soft: no DB result, caller will fall back.
-      return null;
-    }
-
-    const data = (await res.json()) as DailyBarRow[];
-
-    if (!Array.isArray(data) || data.length < 2) return null;
+    if (error || !Array.isArray(data) || data.length < 2) return null;
 
     return data.map((row) => ({
       t: new Date(row.ts).getTime(),
@@ -104,31 +101,17 @@ async function fetchDailyFromDb(
       c: Number(row.close),
     }));
   } catch {
-    // Any network / JSON errors => treat as no data.
     return null;
   }
 }
 
-
-
 /**
- * Upsert daily bars into coin_bars_daily using Supabase REST.
- * We approximate OHLC = close for now (since CG daily gives one price per day).
- *
+ * Upsert daily bars into coin_bars_daily.
+ * We approximate OHLC = close for now (CG daily gives one price per day).
  * Dev: safe wrapper, never throws. Returns true on success, false on failure.
- * Plain English: after we ask Coingecko for a 30d daily report, we copy those
- * numbers into our own ledger so future calls can read from the DB first.
- */
-/**
- * Upsert daily bars into coin_bars_daily using Supabase REST.
- * We approximate OHLC = close for now (since CG daily gives one price per day).
  *
- * Dev: safe wrapper, never throws. Returns true on success, false on failure.
- * Plain English: after we ask Coingecko for a 30d daily report, we copy those
- * numbers into our own ledger so future calls can read from the DB first.
- *
- * IMPORTANT: Before inserting we fetch existing days and only insert NEW ones.
- * This avoids primary-key conflicts even if upsert/on_conflict isn’t behaving.
+ * IMPORTANT: Pre-fetches existing days and only inserts NEW ones to avoid
+ * primary-key conflicts.
  */
 async function upsertDailyBars(
   canonicalId: string,
@@ -138,100 +121,48 @@ async function upsertDailyBars(
   if (!HAS_SUPABASE_ADMIN) return false;
   if (!points.length) return true;
 
-  // Normalize each timestamp to UTC midnight for that day so (id,currency,ts)
-  // stays stable and matches your PRIMARY KEY.
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return false;
+
+  // Normalize each timestamp to UTC midnight so (id,currency,ts) stays stable.
   const normalizedRows = points.map((pt) => {
     const d = new Date(pt.t);
     const tsMidnight = new Date(
-      Date.UTC(
-        d.getUTCFullYear(),
-        d.getUTCMonth(),
-        d.getUTCDate(),
-        0,
-        0,
-        0,
-        0
-      )
+      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
     ).toISOString();
-
     const close = Number.isFinite(pt.c) ? Number(pt.c) : pt.p;
     const open = Number.isFinite(pt.o) ? Number(pt.o) : close;
     const high = Number.isFinite(pt.h) ? Number(pt.h) : close;
     const low = Number.isFinite(pt.l) ? Number(pt.l) : close;
-
-    return {
-      id: canonicalId,
-      currency,
-      ts: tsMidnight,
-      open,
-      high,
-      low,
-      close,
-      volume: null as number | null,
-    };
+    return { id: canonicalId, currency, ts: tsMidnight, open, high, low, close, volume: null as number | null };
   });
 
   try {
-    // 1) Fetch existing candles for this id/currency so we can avoid
-    // inserting duplicate (id,currency,ts) rows that would violate the PK.
-    const existingUrl =
-      `${SUPABASE_URL}/rest/v1/coin_bars_daily` +
-      `?select=ts` +
-      `&id=eq.${encodeURIComponent(canonicalId)}` +
-      `&currency=eq.${encodeURIComponent(currency)}`;
+    // 1) Fetch existing timestamps to avoid PK conflicts on insert.
+    const { data: existingData } = await supabase
+      .from("coin_bars_daily")
+      .select("ts")
+      .eq("id", canonicalId)
+      .eq("currency", currency);
 
-    const existingRes = await fetch(existingUrl, {
-      method: "GET",
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
+    const existingIsoSet = new Set<string>(
+      (existingData ?? []).map((row: { ts: string }) =>
+        new Date(row.ts).toISOString()
+      )
+    );
 
-    let existingIsoSet = new Set<string>();
-    if (existingRes.ok) {
-      const existingData = (await existingRes.json()) as { ts: string }[];
-      if (Array.isArray(existingData)) {
-        existingIsoSet = new Set(
-          existingData.map((row) => new Date(row.ts).toISOString())
-        );
-      }
-    }
-
-    // 2) Filter out rows whose ts already exists in the DB, so we only
-    // insert NEW days and never hit a primary-key conflict.
+    // 2) Only insert rows that don’t already exist.
     const rowsToInsert = normalizedRows.filter(
       (row) => !existingIsoSet.has(row.ts)
     );
+    if (rowsToInsert.length === 0) return true;
 
-    if (rowsToInsert.length === 0) {
-      // Nothing new to write; treat as success.
-      return true;
-    }
+    // 3) Insert new rows.
+    const { error } = await supabase
+      .from("coin_bars_daily")
+      .insert(rowsToInsert);
 
-    // 3) Insert only new rows (no on_conflict needed since we pre-filtered).
-    const insertUrl = `${SUPABASE_URL}/rest/v1/coin_bars_daily`;
-    const res = await fetch(insertUrl, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-        // return=minimal avoids sending back the inserted rows
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify(rowsToInsert),
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      // We don't throw: just fail-soft and let the caller use CG data.
-      return false;
-    }
-
-    return true;
+    return !error;
   } catch {
     return false;
   }
@@ -458,8 +389,17 @@ export async function GET(req: NextRequest) {
   const currency = (u.searchParams.get("currency") || "USD").toUpperCase();
   const debug = u.searchParams.get("debug") === "1";
 
+  // ── Input validation ──────────────────────────────────────
+  if (!canonicalId || !COIN_ID_RE.test(canonicalId)) {
+    return NextResponse.json(
+      { id: canonicalId, currency, points: [], error: "invalid_id" },
+      { status: 400 }
+    );
+  }
+
   // Default handling: if days >= 20 and no interval specified, assume 'daily'
-  const days = Math.max(1, Number(daysParam || "30"));
+  // Clamp to MAX_DAYS to prevent excessively large upstream requests.
+  const days = Math.max(1, Math.min(MAX_DAYS, Number(daysParam || "30")));
   const interval: "minute" | "hourly" | "daily" =
     intervalParam === "minute" ||
     intervalParam === "hourly" ||

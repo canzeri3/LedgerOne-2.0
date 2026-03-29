@@ -58,9 +58,22 @@ export async function getRedis(): Promise<Redisish> {
   try {
     const real = await createRealRedis();
     cached.client = real;
-  } catch {
-    // Fallback is intentional for dev/migration
-    console.warn("[redis] using in-memory fallback (no REDIS_URL or connection issue)");
+  } catch (err: any) {
+    if (process.env.NODE_ENV === "production") {
+      // In production this is a serious operational problem:
+      //   - Rate limiting (auth routes) will not be shared across instances
+      //   - Price/history caches will be per-instance and non-durable
+      //   - TTLs reset on every cold start
+      // Set REDIS_URL immediately to restore correct behaviour.
+      console.error(
+        "[redis] CRITICAL: Redis unavailable in production — falling back to in-memory store. " +
+        "Rate limiting and shared caching are DISABLED. Set REDIS_URL in your environment. " +
+        `Reason: ${err?.message ?? err}`
+      );
+    } else {
+      // In development the in-memory fallback is intentional and expected.
+      console.warn("[redis] using in-memory fallback (no REDIS_URL or connection issue)");
+    }
     cached.client = createMemoryFallback();
   }
   (globalThis as any).__lg1_redis__ = cached;

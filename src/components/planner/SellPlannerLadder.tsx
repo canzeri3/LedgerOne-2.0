@@ -3,7 +3,7 @@
 import { useMemo, useEffect } from 'react'
 import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
 
-import useSWR, { mutate as globalMutate } from 'swr'
+import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
@@ -60,6 +60,8 @@ const SELL_TOLERANCE = 0.0005 // strict for active
 
 export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
+  const { mutate: mutateGlobal } = useSWRConfig()
+
 
   // NEW: robust live price via data core
   const { row: priceRow } = usePrice(coingeckoId, 'USD', {
@@ -123,6 +125,70 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     },
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
+
+  // Live delete bridge from the planner shell
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const onAction = (e: Event) => {
+      const ce = e as CustomEvent<{ action?: 'remove'; confirmed?: boolean }>
+      if (ce.detail?.action !== 'remove') return
+
+      void (async () => {
+        if (!user) {
+          alert('Please sign in first.')
+          return
+        }
+
+        if (!active?.id) {
+          alert('No active Sell Planner to delete.')
+          return
+        }
+
+        if (!ce.detail?.confirmed) {
+          const ok = window.confirm(
+            'Remove the current Sell Planner for this asset? This will move it out of Active, keep its history intact, and allow it to be restored later from Audit.'
+          )
+          if (!ok) return
+        }
+
+        try {
+          const { error } = await supabaseBrowser
+            .from('sell_planners')
+            .update({ is_active: false })
+            .eq('id', active.id)
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+
+          if (error) throw error
+
+          await Promise.all([
+            mutateGlobal(['/sell-active', user.id, coingeckoId]),
+            mutateGlobal(['/sell-planner/active', user.id, coingeckoId]),
+            mutateGlobal(['/sell-levels', user.id, coingeckoId, active.id]),
+            mutateGlobal(['/sells', user.id, coingeckoId, active.id]),
+            mutateGlobal(['/sell-history/planners', user.id, coingeckoId]),
+            mutateGlobal(['/sell-history/levels', user.id, coingeckoId]),
+            mutateGlobal(['/sell-history/sells', user.id, coingeckoId]),
+          ])
+
+          window.dispatchEvent(
+            new CustomEvent('sellPlannerUpdated', {
+              detail: { coinId: coingeckoId },
+            })
+          )
+        } catch (err: any) {
+          console.error('[sell_planner live delete] exception', err)
+          alert('Delete failed: ' + (err?.message || String(err)))
+        }
+      })()
+    }
+
+    window.addEventListener('sellplanner:action', onAction as EventListener)
+    return () => {
+      window.removeEventListener('sellplanner:action', onAction as EventListener)
+    }
+  }, [user?.id, coingeckoId, active?.id, mutateGlobal])
 
   // Refresh on planner updates
   useEffect(() => {
@@ -232,8 +298,12 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
   }, [hasLive, rows, livePrice])
 
   return (
-    <div className="w-full h-full flex flex-col" data-has-alert={activeHasAlert ? '1' : '0'}>
-      {actionableNow.alertRows > 0 && (
+    <div
+      className="w-full h-full flex flex-col"
+      data-has-alert={activeHasAlert ? '1' : '0'}
+      data-active-id={active?.id ?? ''}
+    >     
+     {actionableNow.alertRows > 0 && (
         <div className="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
             <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
