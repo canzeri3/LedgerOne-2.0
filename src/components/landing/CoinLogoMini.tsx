@@ -8,6 +8,7 @@ type Props = {
   sizePx?: number
   className?: string
   fallbackText?: string
+  loading?: 'eager' | 'lazy'
 }
 
 /**
@@ -19,7 +20,7 @@ type Props = {
  *
  * NOTE: To truly “always load the logo”, you must bundle the icons you display (step 1).
  */
-export function CoinLogoMini({ symbol, name, sizePx = 20, className = '', fallbackText }: Props) {
+export function CoinLogoMini({ symbol, name, sizePx = 20, className = '', fallbackText, loading = 'eager' }: Props) {
   const sym = (symbol || '').toLowerCase().trim()
 
   const alias = (s: string) => {
@@ -105,7 +106,7 @@ export function CoinLogoMini({ symbol, name, sizePx = 20, className = '', fallba
         // (keeps it crisp on dark UI, but not a badge)
         filter: 'drop-shadow(0 1px 6px rgba(0,0,0,0.45))',
       }}
-      loading="eager"
+      loading={loading}
       decoding="async"
       referrerPolicy="no-referrer"
       onError={() => {

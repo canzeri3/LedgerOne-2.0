@@ -50,7 +50,8 @@ type ParticlePerformanceProfile = {
   lineShadowBlur: number
 }
 
-type SpatialBucketMap = Map<string, NodePoint[]>
+// FIX 2: Numeric keys eliminate per-frame string allocation from Map<string, …>
+type SpatialBucketMap = Map<number, NodePoint[]>
 
 const DEFAULT_PROFILE: ParticlePerformanceProfile = {
   lowPower: false,
@@ -67,6 +68,31 @@ const CONNECTION_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [1, 1],
   [-1, 1],
 ]
+
+// FIX 3: Connection batching — 16 opacity levels × 2 line widths = 32 buckets
+// Connections are accumulated into flat number[] buffers (x1,y1,x2,y2,…)
+// then flushed with one ctx.stroke() per non-empty bucket instead of one per connection.
+const OPACITY_LEVELS = 16
+const CONN_OPACITY_MIN = 0.024   // minimum reachable connection opacity
+const CONN_OPACITY_RANGE = 0.186 // max (0.21) − min (0.024)
+const SEGMENT_BUCKET_COUNT = OPACITY_LEVELS * 2 // thin buckets [0..15], wide [16..31]
+
+// FIX 2: Integer spatial bucket key — avoids `${col}:${row}` string per node per frame.
+// offset=100 safely handles nodes that drift up to 100 cells off-canvas edge.
+const BUCKET_KEY_STRIDE = 65536
+const BUCKET_KEY_OFFSET = 100
+
+function getBucketKey(col: number, row: number): number {
+  return (col + BUCKET_KEY_OFFSET) * BUCKET_KEY_STRIDE + (row + BUCKET_KEY_OFFSET)
+}
+
+function decodeBucketCol(key: number): number {
+  return Math.floor(key / BUCKET_KEY_STRIDE) - BUCKET_KEY_OFFSET
+}
+
+function decodeBucketRow(key: number): number {
+  return (key % BUCKET_KEY_STRIDE) - BUCKET_KEY_OFFSET
+}
 
 function getParticlePerformanceProfile(): ParticlePerformanceProfile {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -114,7 +140,7 @@ const CLUSTER_LAYOUT: ClusterSpec[] = [
     radiusX: 0.235,
     radiusY: 0.19,
     rotation: -0.06,
-driftMultiplier: 1.6,
+    driftMultiplier: 1.6,
     minDots: 40,
     maxDots: 60,
     linkDistance: 150,
@@ -126,7 +152,7 @@ driftMultiplier: 1.6,
     centerY: 0.46,
     radiusX: 0.014,
     radiusY: 0.08,
-driftMultiplier: 1.6,
+    driftMultiplier: 1.6,
     rotation: 0,
     minDots: 0,
     maxDots: 0,
@@ -140,7 +166,7 @@ driftMultiplier: 1.6,
     radiusX: 0.2,
     radiusY: 0.17,
     rotation: 0.22,
-driftMultiplier: 1.6,
+    driftMultiplier: 1.6,
     minDots: 45,
     maxDots: 50,
     linkDistance: 150,
@@ -223,7 +249,8 @@ function makeNode(spec: ClusterSpec, width: number, height: number, reducedMotio
     homeX: sampled.x,
     homeY: sampled.y,
     vx: Math.cos(angle) * driftSpeed * driftMultiplier * (0.45 + Math.random() * 0.9),
-    vy: Math.sin(angle) * driftSpeed * driftMultiplier * (0.45 + Math.random() * 0.9),    pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
+    vy: Math.sin(angle) * driftSpeed * driftMultiplier * (0.45 + Math.random() * 0.9),
+    pull: isBig ? 0.0036 + Math.random() * 0.0014 : 0.0048 + Math.random() * 0.0022,
     radius: isBig
       ? (minEdge < 420 ? 1.25 : 1.45) + Math.random() * 2.1
       : (minEdge < 420 ? 1.0 : 1.15) + Math.random() * 1.45,
@@ -298,10 +325,7 @@ function createBackdropCache(width: number, height: number): BackdropCache {
   return { bitmap }
 }
 
-function getBucketKey(col: number, row: number) {
-  return `${col}:${row}`
-}
-
+// FIX 2: buildSpatialBuckets now uses numeric keys (no string allocation)
 function buildSpatialBuckets(clusterNodes: NodePoint[], cellSize: number): SpatialBucketMap {
   const buckets: SpatialBucketMap = new Map()
 
@@ -319,27 +343,6 @@ function buildSpatialBuckets(clusterNodes: NodePoint[], cellSize: number): Spati
   }
 
   return buckets
-}
-
-function drawConnectionPair(ctx: CanvasRenderingContext2D, a: NodePoint, b: NodePoint) {
-  const dx = a.x - b.x
-  const dy = a.y - b.y
-  const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
-  const distanceLimitSq = distanceLimit * distanceLimit
-  const distanceSq = dx * dx + dy * dy
-
-  if (distanceSq > distanceLimitSq) return
-
-  const distance = Math.sqrt(distanceSq)
-  const linkStrength = 1 - distance / distanceLimit
-  const opacity = (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
-
-  ctx.beginPath()
-  ctx.moveTo(a.x, a.y)
-  ctx.lineTo(b.x, b.y)
-  ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
-  ctx.lineWidth = distance < distanceLimit * 0.42 ? 0.96 : 0.72
-  ctx.stroke()
 }
 
 export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBackgroundProps) {
@@ -370,6 +373,38 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     let frameMs = 1000 / profile.targetFps
     let sceneInView = true
     let destroyed = false
+
+    // FIX 3: Pre-allocated segment buffers (flat x1,y1,x2,y2 arrays), reused every frame.
+    // Index [0..OPACITY_LEVELS-1] = thin lines (0.72px), [OPACITY_LEVELS..31] = wide (0.96px).
+    const segBuckets: number[][] = Array.from({ length: SEGMENT_BUCKET_COUNT }, () => [])
+
+    // FIX 3: Replaces drawConnectionPair — pushes segment coords into the right bucket
+    // instead of issuing an immediate ctx.stroke() per connection.
+    const accumulateConnection = (a: NodePoint, b: NodePoint) => {
+      const dx = a.x - b.x
+      const dy = a.y - b.y
+      const distanceLimit = Math.min(a.linkDistance, b.linkDistance)
+      const distanceLimitSq = distanceLimit * distanceLimit
+      const distanceSq = dx * dx + dy * dy
+
+      if (distanceSq > distanceLimitSq) return
+
+      const distance = Math.sqrt(distanceSq)
+      const linkStrength = 1 - distance / distanceLimit
+      const opacity =
+        (0.03 + Math.pow(linkStrength, 1.45) * 0.18) * Math.min(a.lineAlphaScale, b.lineAlphaScale)
+
+      const opacIdx = clamp(
+        Math.floor(((opacity - CONN_OPACITY_MIN) / CONN_OPACITY_RANGE) * OPACITY_LEVELS),
+        0,
+        OPACITY_LEVELS - 1,
+      )
+      const isWide = distance < distanceLimit * 0.42
+      const bucketIdx = isWide ? OPACITY_LEVELS + opacIdx : opacIdx
+
+      const seg = segBuckets[bucketIdx]
+      seg.push(a.x, a.y, b.x, b.y)
+    }
 
     const shouldAnimate = () => !destroyed && sceneInView && !document.hidden
 
@@ -434,6 +469,9 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
     }
 
     const drawConnections = () => {
+      // Clear segment buckets (reuse allocated arrays, avoid GC)
+      for (let i = 0; i < SEGMENT_BUCKET_COUNT; i++) segBuckets[i].length = 0
+
       if (profile.lineShadowBlur > 0) {
         ctx.shadowColor = 'rgba(96, 165, 250, 0.18)'
         ctx.shadowBlur = profile.lineShadowBlur
@@ -441,6 +479,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
         ctx.shadowBlur = 0
       }
 
+      // Accumulate all connection segments into opacity/width buckets
       for (const clusterNodes of nodesByCluster.values()) {
         if (clusterNodes.length < 2) continue
 
@@ -448,9 +487,9 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
         const buckets = buildSpatialBuckets(clusterNodes, cellSize)
 
         for (const [key, bucket] of buckets) {
-          const [colText, rowText] = key.split(':')
-          const col = Number(colText)
-          const row = Number(rowText)
+          // FIX 2: decode integer key instead of key.split(':')
+          const col = decodeBucketCol(key)
+          const row = decodeBucketRow(key)
 
           for (const [offsetX, offsetY] of CONNECTION_NEIGHBOR_OFFSETS) {
             const neighbor = buckets.get(getBucketKey(col + offsetX, row + offsetY))
@@ -460,7 +499,7 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
               for (let i = 0; i < bucket.length; i += 1) {
                 const a = bucket[i]
                 for (let j = i + 1; j < bucket.length; j += 1) {
-                  drawConnectionPair(ctx, a, bucket[j])
+                  accumulateConnection(a, bucket[j])
                 }
               }
 
@@ -469,31 +508,56 @@ export function ParticleNetworkBackground({ className = '' }: ParticleNetworkBac
 
             for (const a of bucket) {
               for (const b of neighbor) {
-                drawConnectionPair(ctx, a, b)
+                accumulateConnection(a, b)
               }
             }
           }
         }
       }
 
+      // FIX 3: Flush — one ctx.stroke() per non-empty bucket (≤32 calls/frame vs. 300-500)
+      for (let bi = 0; bi < SEGMENT_BUCKET_COUNT; bi++) {
+        const segs = segBuckets[bi]
+        if (segs.length === 0) continue
+
+        const isWide = bi >= OPACITY_LEVELS
+        const opacIdx = isWide ? bi - OPACITY_LEVELS : bi
+        const opacity = CONN_OPACITY_MIN + (opacIdx / (OPACITY_LEVELS - 1)) * CONN_OPACITY_RANGE
+
+        ctx.lineWidth = isWide ? 0.96 : 0.72
+        ctx.strokeStyle = `rgba(219, 234, 254, ${opacity.toFixed(4)})`
+        ctx.beginPath()
+        for (let i = 0; i < segs.length; i += 4) {
+          ctx.moveTo(segs[i], segs[i + 1])
+          ctx.lineTo(segs[i + 2], segs[i + 3])
+        }
+        ctx.stroke()
+      }
+
       ctx.shadowBlur = 0
     }
 
+    // FIX 1: Two-pass node drawing — shadowColor set once, shadowBlur=0 set once,
+    // inner-dot fillStyle set once. Eliminates N redundant GPU state writes per frame.
     const drawNodes = () => {
+      // Pass 1: outer glowing circles
+      ctx.shadowColor = 'rgba(96, 165, 250, 0.92)'
       for (const node of nodes) {
         if (node.alpha <= 0.02) continue
-
         ctx.beginPath()
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
         ctx.fillStyle = `rgba(239, 246, 255, ${node.alpha.toFixed(4)})`
-        ctx.shadowColor = 'rgba(96, 165, 250, 0.92)'
         ctx.shadowBlur = node.glow
         ctx.fill()
+      }
 
+      // Pass 2: inner bright dots — shadow off, fillStyle constant
+      ctx.shadowBlur = 0
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.82)'
+      for (const node of nodes) {
+        if (node.alpha <= 0.02) continue
         ctx.beginPath()
         ctx.arc(node.x, node.y, Math.max(1, node.radius * 0.42), 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.82)'
-        ctx.shadowBlur = 0
         ctx.fill()
       }
     }

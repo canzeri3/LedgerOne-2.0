@@ -792,7 +792,7 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
       : 'lg:pointer-events-none lg:translate-y-2 lg:scale-[0.985] lg:opacity-0'
   }`}
   style={{
-    transitionDuration: '2500ms',
+    transitionDuration: '500ms',
     transitionTimingFunction: PREVIEW_EASE,
   }}
   aria-hidden={isDesktopStatsLayout ? !statsPanelVisible : false}
@@ -888,7 +888,7 @@ const renderExpandedPreviewPills = (current: PreviewKey | null) => {
                       className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-slate-800/40 px-3 py-2 text-[11px] text-slate-200 last:border-b-0 hover:bg-slate-900/25"
                     >
                       <div className="flex items-center gap-2">
-                        <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" />
+                        <CoinLogoMini symbol={row.symbol} name={row.name} sizePx={20} className="h-5 w-5" loading={statsPanelVisible ? 'eager' : 'lazy'} />
 
                         <div className="flex flex-col leading-tight">
                           <span className="text-[11px] font-semibold text-slate-100">{row.symbol}</span>

@@ -1,35 +1,10 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion'
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n))
-}
-
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('matchMedia' in window)) return
-
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(Boolean(mq.matches))
-    onChange()
-
-    // Safari <14
-    // eslint-disable-next-line deprecation/deprecation
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    }
-
-    // eslint-disable-next-line deprecation/deprecation
-    mq.addListener(onChange)
-    // eslint-disable-next-line deprecation/deprecation
-    return () => mq.removeListener(onChange)
-  }, [])
-
-  return reduced
 }
 
 type FrameSubscriber = () => void
@@ -417,6 +392,7 @@ export function Parallax({
     if (reducedMotion) {
       activeRef.current = false
       lastTransformRef.current = { x: 0, y: 0 }
+      el.style.willChange = 'auto'
       el.style.transform = 'translate3d(0px, 0px, 0px)'
       return
     }
@@ -426,7 +402,9 @@ export function Parallax({
     if (typeof IntersectionObserver !== 'undefined') {
       io = new IntersectionObserver(
         (entries) => {
-          activeRef.current = Boolean(entries[0]?.isIntersecting)
+          const isIntersecting = Boolean(entries[0]?.isIntersecting)
+          activeRef.current = isIntersecting
+          el.style.willChange = isIntersecting ? 'transform' : 'auto'
         },
         {
           threshold: 0,
@@ -471,7 +449,6 @@ export function Parallax({
       className={className}
       style={{
         transform: 'translate3d(0px, 0px, 0px)',
-        willChange: 'transform',
       }}
     >
       {children}

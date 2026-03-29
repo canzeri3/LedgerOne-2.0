@@ -301,16 +301,6 @@ body {
   -moz-appearance: textfield; /* Firefox */
 }
 
-/* Remove spinner arrows on specific number inputs inside Add Trade */
-.add-trade-card input.no-spinner::-webkit-outer-spin-button,
-.add-trade-card input.no-spinner::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.add-trade-card input.no-spinner[type="number"] {
-  -moz-appearance: textfield; /* Firefox */
-}
-
 /* ============================== */
 /* Coins page tighter corners     */
 /* ============================== */
