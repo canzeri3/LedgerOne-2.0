@@ -127,18 +127,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Require a meaningful reason — default 'Admin override' is no longer accepted.
-    const rawNote = String(body?.note ?? '').trim()
-    if (rawNote.length < 10) {
-      return NextResponse.json(
-        { error: 'A note of at least 10 characters is required to explain the override reason.' },
-        { status: 400 }
-      )
-    }
+    // Allow admins to set an override at any time.
+    // If a note is provided, keep it. If not, generate a server-side audit note.
+    const rawNoteInput = String(body?.note ?? '').trim()
+    const rawNote =
+      rawNoteInput.length > 0
+        ? rawNoteInput
+        : `Admin override set by ${admin.email}`
 
     // Append audit metadata to the note so it's stored in the DB record.
     const note = `${rawNote.slice(0, 440)} [ip:${ip}] [ua:${ua.slice(0, 80)}]`
 
+    
     // Server-side audit log (appears in Vercel function logs / your log pipeline)
     console.info('[admin:grant] tier override', {
       adminId: admin.userId,

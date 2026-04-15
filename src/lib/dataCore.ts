@@ -77,7 +77,16 @@ function isServer() {
 function baseUrl(): string {
   // Server: prefer INTERNAL_BASE_URL to support dev/CI/prod
   // Client: empty string → relative path
-  if (isServer()) return process.env.INTERNAL_BASE_URL || "http://localhost:3000";
+  if (isServer()) {
+    const base = process.env.INTERNAL_BASE_URL;
+    if (!base) {
+      console.warn(
+        "[dataCore] INTERNAL_BASE_URL is not set — falling back to http://localhost:3000." +
+        " Set this env var in production or server-side data fetches will fail silently."
+      );
+    }
+    return base || "http://localhost:3000";
+  }
   return "";
 }
 

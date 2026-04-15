@@ -20,12 +20,22 @@ type PricesCacheEntry = {
 };
 
 const PRICE_CACHE = new Map<string, PricesCacheEntry>();
+const PRICE_CACHE_MAX_SIZE = 500; // prevent unbounded memory growth
 
 // How long a cached price set is considered "fresh" (in ms).
 // 10_000ms = 10 seconds.
 // Dev: safe, short TTL that dramatically cuts vendor calls.
 // Plain English: we reuse the same answer for up to ~10 seconds.
 const PRICE_CACHE_TTL_MS = 10_000;
+
+function priceCacheSet(key: string, entry: PricesCacheEntry) {
+  if (PRICE_CACHE.size >= PRICE_CACHE_MAX_SIZE && !PRICE_CACHE.has(key)) {
+    // evict the oldest (first inserted) entry
+    const firstKey = PRICE_CACHE.keys().next().value;
+    if (firstKey !== undefined) PRICE_CACHE.delete(firstKey);
+  }
+  PRICE_CACHE.set(key, entry);
+}
 
 export const dynamic = "force-dynamic"; // avoid stale edge caching in dev
 
@@ -92,7 +102,7 @@ export async function GET(req: NextRequest) {
     const payload = await getConsensusPrices(ids, currency);
 
     // Store fresh payload in the in-memory cache
-    PRICE_CACHE.set(cacheKey, {
+    priceCacheSet(cacheKey, {
       payload,
       expiresAt: now + PRICE_CACHE_TTL_MS,
     });

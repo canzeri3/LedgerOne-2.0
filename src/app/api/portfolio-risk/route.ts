@@ -362,7 +362,7 @@ export async function GET(req: NextRequest) {
       cov: { ids: [], window: { days: daysReq, interval } },
       updatedAt: new Date().toISOString(),
       meta: { impl: IMPL_ID }
-    }, { status: 200 })
+    }, { status: 422 })
   }
 
   const { ids: alignedIds, prices, ts } = aligned
@@ -377,7 +377,7 @@ export async function GET(req: NextRequest) {
       cov: { ids: alignedIds, window: { days: usedDays ?? daysReq, interval } },
       updatedAt: new Date().toISOString(),
       meta: { impl: IMPL_ID }
-    }, { status: 200 })
+    }, { status: 422 })
   }
 
   // Map original weights to aligned ids and renormalize (portfolio assets only)
@@ -414,7 +414,7 @@ export async function GET(req: NextRequest) {
       cov: { ids: alignedIds, window: { days: usedDays ?? daysReq, interval } },
       updatedAt: new Date().toISOString(),
       meta: { impl: IMPL_ID, debug: { alignedPoints: returns[0]?.length ?? 0, weightsUsed: w, triedDays, usedDays } }
-    }, { status: 200 })
+    }, { status: 500 })
   }
 
   // Diversification ratio (annualized)
@@ -633,7 +633,7 @@ export async function GET(req: NextRequest) {
       cov: resp.cov,
       updatedAt: resp.updatedAt,
       meta: { impl: IMPL_ID, debug: resp.meta.debug }
-    }, { status: 200 })
+    }, { status: 500 })
   }
 
   return NextResponse.json(resp, { status: 200 })

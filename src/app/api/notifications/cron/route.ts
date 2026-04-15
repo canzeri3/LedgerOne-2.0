@@ -68,6 +68,19 @@ function getSupabaseAdmin() {
   })
 }
 
+// Returns the internal base URL, with a warning when the env var is missing so
+// misconfigured Vercel deployments are visible in logs immediately.
+function internalBase(): string {
+  const base = env('INTERNAL_BASE_URL')
+  if (!base) {
+    console.warn(
+      '[cron] INTERNAL_BASE_URL is not set — falling back to http://localhost:3000.' +
+      ' Set this env var in production or server-to-server calls will fail silently.'
+    )
+  }
+  return base || 'http://localhost:3000'
+}
+
 // Uses NEW data core endpoint (server-to-server) with INTERNAL_BASE_URL.
 type PricesPayload = { rows: Array<{ id: string; price: number | null }> }
 
@@ -75,7 +88,7 @@ async function getCorePrices(ids: string[], currency: string): Promise<Record<st
   const clean = Array.from(new Set(ids.map(canonId).filter(Boolean)))
   if (!clean.length) return {}
 
-  const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
+  const base = internalBase()
   const url =
     `${base}/api/prices?ids=` +
     encodeURIComponent(clean.join(',')) +
@@ -238,7 +251,7 @@ export async function GET(req: NextRequest) {
     const testEmail = rawTestEmail
 
     if (testEmail) {
-      const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
+      const base = internalBase()
       const subject = 'LedgerOne · Test Alert'
       const reviewUrl = `${base}/dashboard`
       const newAlerts: AlertEntry[] = [{ side: 'Buy', coin: 'bitcoin' }]
@@ -515,7 +528,7 @@ export async function GET(req: NextRequest) {
         }
 
         if (shouldSend && !dry) {
-          const base = env('INTERNAL_BASE_URL') || 'http://localhost:3000'
+          const base = internalBase()
           const sendKeys = force && !hasNew ? currentKeys : newKeys
           const newAlerts = keysToAlertEntries(sendKeys)
           const allAlerts = keysToAlertEntries(currentKeys)

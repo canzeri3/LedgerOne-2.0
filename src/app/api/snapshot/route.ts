@@ -41,6 +41,7 @@ function topCacheSet(rows: RankRow[]) {
 type LkgItem = { row: RankRow; savedAt: number };
 const LKG: Map<string, LkgItem> = new Map();
 const LKG_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const LKG_MAX_SIZE = 2_000; // prevent unbounded memory growth on serverless instances
 
 function lkgGet(providerId: string): RankRow | null {
   const v = LKG.get(providerId);
@@ -50,6 +51,11 @@ function lkgGet(providerId: string): RankRow | null {
 }
 function lkgSet(providerId: string, row: RankRow) {
   if (row.rank == null && row.market_cap == null) return; // don't store empties
+  if (LKG.size >= LKG_MAX_SIZE && !LKG.has(providerId)) {
+    // Evict the oldest (first-inserted) entry to keep the map bounded.
+    const firstKey = LKG.keys().next().value;
+    if (firstKey !== undefined) LKG.delete(firstKey);
+  }
   LKG.set(providerId, { row, savedAt: Date.now() });
 }
 
@@ -351,11 +357,11 @@ export async function GET(req: Request) {
         currency: "USD",
         prices: [],
         rows: [] as RankRow[],
-        error: String(err?.message || err),
+        error: "Snapshot unavailable",
       },
-      { status: 200 }
+      { status: 500 }
     );
-    res.headers.set("Cache-Control", "public, s-maxage=2, stale-while-revalidate=15");
+    res.headers.set("Cache-Control", "no-store");
     return res;
   }
 }

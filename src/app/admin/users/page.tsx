@@ -17,7 +17,6 @@ function getAdminEmailAllowlist(): Set<string> {
   const raw =
     process.env.LEDGERONE_ADMIN_EMAILS ??
     process.env.ADMIN_EMAILS ??
-    process.env.NEXT_PUBLIC_ADMIN_EMAILS ??
     ''
 
   const emails = raw
