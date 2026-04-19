@@ -99,11 +99,11 @@ export default function PortfolioHoldingsTable({ coinIds, historiesMapLive, trad
   }
 
   return (
-    <div className="w-full overflow-hidden">
+    <div className="w-full overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch]">
       {/* Fixed layout + precise colgroup to center Allocation (no whitespace in colgroup!) */}
-      <table className="w-full text-left border-collapse table-fixed text-[14px]">
+      <table className="w-full min-w-[860px] text-left border-collapse table-fixed text-[14px]">
         <colgroup><col style={{width:'22ch'}}/><col style={{width:'16ch'}}/><col/><col style={{width:'16ch'}}/><col style={{width:'22ch'}}/></colgroup>
-
+        
         <thead className="border-y border-y-[rgb(41,42,45)] bg-[rgb(32,33,35)]">
           <tr className="text-slate-300 text-[12px] uppercase tracking-wide">
             <th className="px-3 py-2 font-medium">Asset</th>

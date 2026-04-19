@@ -600,7 +600,7 @@ const tradesByCoin = useMemo(() => {
 
 const daysParam = useMemo(() => daysParamFor(tf, firstTradeMs), [tf, firstTradeMs])
 
-  const { data: historiesMap, isLoading: historiesLoading } = useSWR<Record<string, Point[]>>(
+  const { data: historiesMap, isValidating: historiesValidating } = useSWR<Record<string, Point[]>>(
     coinIds.length ? ['portfolio-histories', coinIds.join(','), daysParam] : null,
     () => fetchHistories(coinIds, daysParam),
     {
@@ -768,15 +768,23 @@ const { delta, pct } = useMemo(() => {
   const pctAbsText = Math.abs(pct).toFixed(2)
   const deltaDigitsOnly = Math.abs(delta).toFixed(2)
 
-  // Hold the loader until auth has resolved, trades are fetched, and history
-  // (if there are any coins) has arrived. This closes the gap where SWRRouteCover
-  // sees inFlight=0 (all SWR keys are null while authLoading=true) and dismisses
-  // before any real data has loaded.
-  const pageReady =
+  // Hold the full-screen loader only for the initial page bootstrap.
+  // After the first successful chart load, timeframe switches should stay scoped
+  // to the chart area and must not bounce the entire dashboard through a page loader.
+  const initialPageReady =
     !authLoading &&
     !tradesLoading &&
-    (coinIds.length === 0 || !historiesLoading)
-  if (!pageReady) return <FullScreenPageLoader />
+    (coinIds.length === 0 || !!historiesMap)
+
+  const [hasBootstrapped, setHasBootstrapped] = useState(false)
+
+  useEffect(() => {
+    if (initialPageReady) setHasBootstrapped(true)
+  }, [initialPageReady])
+
+  if (!hasBootstrapped && !initialPageReady) return <FullScreenPageLoader />
+
+  const chartRefreshing = coinIds.length > 0 && !!historiesMap && historiesValidating
 
 return (
     <div data-dashboard-page className="space-y-6">
@@ -888,6 +896,11 @@ title="Toggle Total P&L (realized + unrealized vs your cost basis)"
             {coinIds.length > 0 && !historiesMap && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
                 Loading portfolio history…
+              </div>
+            )}
+            {chartRefreshing && (
+              <div className="pointer-events-none absolute right-4 top-3 z-10 rounded-full border border-slate-700/60 bg-[rgb(18,19,21)]/90 px-2.5 py-1 text-[11px] font-medium text-slate-400">
+                Updating chart…
               </div>
             )}
 {tf === 'Max' && chartSeries.length === 0 ? (
