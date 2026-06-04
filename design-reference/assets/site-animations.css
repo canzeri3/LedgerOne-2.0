@@ -1,0 +1,171 @@
+/* ===================================================================
+   LedgerOne · Motion
+   -------------------------------------------------------------------
+   Restrained, professional motion. CSS-only — driven by intersection
+   classes added by site-animations.js. All non-essential motion is
+   suppressed when prefers-reduced-motion: reduce is set.
+   =================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+
+  /* -------- Hero entrance (pure CSS, runs on load) -------- */
+  .l1-hero-inner > * {
+    opacity: 0;
+    transform: translateY(14px);
+    animation: l1-fade-rise 900ms cubic-bezier(0.2, 0.65, 0.2, 1) forwards;
+    will-change: opacity, transform;
+  }
+  .l1-hero-inner > *:nth-child(1) { animation-delay: 80ms; }
+  .l1-hero-inner > *:nth-child(2) { animation-delay: 220ms; }
+  .l1-hero-inner > *:nth-child(3) { animation-delay: 360ms; }
+  .l1-hero-inner > *:nth-child(4) { animation-delay: 500ms; }
+  .l1-hero-inner > *:nth-child(5) { animation-delay: 640ms; }
+
+  .l1-hero > .l1-laptop {
+    opacity: 0;
+    transform: translateY(28px);
+    animation: l1-fade-rise 1100ms cubic-bezier(0.2, 0.65, 0.2, 1) 560ms forwards;
+    will-change: opacity, transform;
+  }
+
+  .l1-hero-aurora,
+  .l1-hero-aurora2,
+  .l1-pageheader-aurora {
+    opacity: 0;
+    animation: l1-fade-in 1600ms ease-out 200ms forwards;
+  }
+
+  /* Page-header entrance for sub-pages */
+  .l1-pageheader-inner > * > * {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: l1-fade-rise 850ms cubic-bezier(0.2, 0.65, 0.2, 1) forwards;
+  }
+  .l1-pageheader-inner > *:nth-child(1) > *:nth-child(1) { animation-delay: 120ms; }
+  .l1-pageheader-inner > *:nth-child(1) > *:nth-child(2) { animation-delay: 260ms; }
+  .l1-pageheader-inner > *:nth-child(2) > *                 { animation-delay: 400ms; }
+
+  @keyframes l1-fade-rise {
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes l1-fade-in {
+    to { opacity: 1; }
+  }
+
+  /* -------- Scroll reveal (class applied by JS only to off-screen els) -------- */
+  .l1-reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+      opacity 800ms cubic-bezier(0.2, 0.65, 0.2, 1),
+      transform 800ms cubic-bezier(0.2, 0.65, 0.2, 1);
+    will-change: opacity, transform;
+  }
+  .l1-reveal.is-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* -------- Hover lifts on cards -------- */
+  .l1-feat,
+  .l1-flow-step,
+  .l1-case,
+  .l1-trust-cell,
+  .l1-spec,
+  .l1-cases-card {
+    transition:
+      transform 380ms cubic-bezier(0.2, 0.65, 0.2, 1),
+      border-color 380ms ease,
+      background-color 380ms ease,
+      box-shadow 380ms ease;
+  }
+  .l1-feat:hover,
+  .l1-flow-step:hover,
+  .l1-case:hover,
+  .l1-trust-cell:hover,
+  .l1-spec:hover,
+  .l1-cases-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(155, 140, 255, 0.22);
+  }
+
+  /* Subtle icon lift inside feature cards on hover */
+  .l1-feat .l1-feat-icon,
+  .l1-trust-cell .ic {
+    transition: transform 380ms cubic-bezier(0.2, 0.65, 0.2, 1),
+                color 380ms ease;
+  }
+  .l1-feat:hover .l1-feat-icon,
+  .l1-trust-cell:hover .ic {
+    transform: translateY(-2px);
+  }
+
+  /* -------- Buttons -------- */
+  .l1-btn {
+    transition:
+      transform 240ms cubic-bezier(0.2, 0.65, 0.2, 1),
+      background 240ms ease,
+      border-color 240ms ease,
+      color 240ms ease,
+      box-shadow 240ms ease;
+  }
+  .l1-btn:hover {
+    transform: translateY(-1px);
+  }
+  .l1-btn:active {
+    transform: translateY(0);
+    transition-duration: 90ms;
+  }
+  /* Move the arrow icon a hair on hover */
+  .l1-btn svg {
+    transition: transform 240ms cubic-bezier(0.2, 0.65, 0.2, 1);
+  }
+  .l1-btn:hover svg {
+    transform: translateX(2px);
+  }
+
+  /* -------- Nav link underline grow -------- */
+  .l1-nav-link::after {
+    transition: transform 280ms cubic-bezier(0.2, 0.65, 0.2, 1),
+                opacity 280ms ease;
+  }
+}
+
+/* Honor reduced-motion: kill non-essential motion, keep state visible. */
+@media (prefers-reduced-motion: reduce) {
+  .l1-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ===================================================================
+   Snap-lock scrolling (home / landing page only — opt-in via .l1-snap)
+   -------------------------------------------------------------------
+   The JS controller (site-animations.js) drives all scrolling once
+   it's ready, and tags <html> with `.l1-snap-js`. We turn CSS snap
+   OFF whenever that's present so the browser's snap pull and the
+   JS easing never fight (which produced a back-and-forth stutter).
+   CSS snap is kept as a no-JS fallback only.
+   =================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(body.l1-snap) {
+    scroll-padding-top: 72px;
+  }
+  /* Fallback snap when JS hasn't initialised */
+  html:has(body.l1-snap):not(.l1-snap-js) {
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+  }
+  html:has(body.l1-snap):not(.l1-snap-js) #root > section,
+  html:has(body.l1-snap):not(.l1-snap-js) #root > .l1-wrap[data-screen-label] {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+  }
+  /* JS is in charge — disable browser smooth-scroll/snap entirely so
+     it doesn't tug against the eased animation. */
+  html.l1-snap-js {
+    scroll-snap-type: none !important;
+    scroll-behavior: auto !important;
+  }
+}

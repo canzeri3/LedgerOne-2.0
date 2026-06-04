@@ -13,8 +13,8 @@ function normalizeCurrency(value: string | null, fallback: string) {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
-    const from = normalizeCurrency(url.searchParams.get('from'), 'USD')
-    const to = normalizeCurrency(url.searchParams.get('to'), 'CAD')
+    const from = normalizeCurrency(url.searchParams.get('from'), 'CAD')
+    const to = normalizeCurrency(url.searchParams.get('to'), 'USD')
 
     if (from === to) {
       const res = NextResponse.json({ ok: true, from, to, rate: 1, source: 'identity' })

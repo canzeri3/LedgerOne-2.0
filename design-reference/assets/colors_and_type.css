@@ -1,0 +1,192 @@
+/* ============================================================
+   LedgerOne — Design Tokens
+   Single source of truth for color, type, spacing, radii.
+   Imported by every preview card, UI kit, and slide.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ---------- Surfaces ---------- */
+  --color-bg-base:         #0D0E14;
+  --color-bg-surface:      #242427;
+  --color-bg-elevated:     #34343A;
+  --color-border:          #22243A;
+  --color-border-strong:   #2E3050;
+
+  /* ---------- Accent (single-accent system) ---------- */
+  --color-accent-purple:        #5E54C0;
+  --color-accent-purple-hover:  #7E6FFF;
+  --color-accent-purple-muted:  #3D3680;
+  --color-accent-glow:          rgba(107, 91, 239, 0.18);
+  --color-accent-tint:          rgba(107, 91, 239, 0.12);
+
+  /* ---------- Text ---------- */
+  --color-text-primary:    #FFFFFF;
+  --color-text-secondary:  #9899B0;
+  --color-text-muted:      #4E5070;
+
+  /* ---------- Semantic ---------- */
+  --color-success:         #3ECFA4;
+  --color-warning:         #EFC435;
+  --color-danger:          #E05B5B;
+
+  /* ---------- Charting ---------- */
+  --color-chart-line:      #7C6FF7;
+  --color-chart-fill:      rgba(124, 111, 247, 0.08);
+  --color-chart-grid:      rgba(34, 36, 58, 0.6);
+
+  /* ---------- Fonts ---------- */
+  --font-display: 'Sora', system-ui, -apple-system, sans-serif;
+  --font-ui:      'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* ---------- Type scale ---------- */
+  --text-hero-size:    72px;
+  --text-hero-lh:      1.05;
+  --text-hero-track:   -0.03em;
+
+  --text-h1-size:      48px;
+  --text-h1-lh:        1.1;
+  --text-h1-track:     -0.02em;
+
+  --text-h2-size:      32px;
+  --text-h2-lh:        1.2;
+  --text-h2-track:     -0.015em;
+
+  --text-h3-size:      22px;
+  --text-h3-lh:        1.3;
+
+  --text-body-size:    16px;
+  --text-body-lh:      1.6;
+
+  --text-small-size:   13px;
+  --text-small-lh:     1.5;
+
+  --text-mono-size:    14px;
+  --text-mono-lh:      1.4;
+
+  /* ---------- Spacing ---------- */
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   16px;
+  --space-lg:   24px;
+  --space-xl:   40px;
+  --space-2xl:  64px;
+  --space-3xl:  96px;
+  --space-hero: 160px;
+
+  /* ---------- Radii ---------- */
+  --radius-sm:   2px;
+  --radius-md:   2px;
+  --radius-lg:   2px;
+  --radius-xl:   3px;
+  --radius-pill: 999px;
+
+  /* ---------- Layout ---------- */
+  --max-width:        1280px;
+  --gutter-mobile:    24px;
+  --gutter-desktop:   48px;
+
+  /* ---------- Effects ---------- */
+  --glow-cta:     0 0 20px rgba(107, 91, 239, 0.4);
+  --glow-card:    0 0 0 1px rgba(107, 91, 239, 0.30);
+  --glow-hero:    0 0 240px rgba(107, 91, 239, 0.22);
+  --ring-focus:   0 0 0 2px rgba(107, 91, 239, 0.55);
+
+  /* ---------- Motion ---------- */
+  --ease-out:     cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast:     120ms;
+  --dur-base:     200ms;
+  --dur-slow:     400ms;
+}
+
+/* ============================================================
+   Semantic element styles — use these classes anywhere.
+   ============================================================ */
+
+.text-hero {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-hero-size);
+  line-height: var(--text-hero-lh);
+  letter-spacing: var(--text-hero-track);
+  color: var(--color-text-primary);
+}
+
+.text-h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-lh);
+  letter-spacing: var(--text-h1-track);
+  color: var(--color-text-primary);
+}
+
+.text-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-h2-size);
+  line-height: var(--text-h2-lh);
+  letter-spacing: var(--text-h2-track);
+  color: var(--color-text-primary);
+}
+
+.text-h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-lh);
+  color: var(--color-text-primary);
+}
+
+.text-body {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-lh);
+  color: var(--color-text-secondary);
+}
+
+.text-small {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: var(--text-small-size);
+  line-height: var(--text-small-lh);
+  color: var(--color-text-secondary);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-mono-size);
+  line-height: var(--text-mono-lh);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.text-label {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   Reset helpers used by preview cards
+   ============================================================ */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+* { box-sizing: border-box; }
