@@ -2125,7 +2125,7 @@ body {
   .l1-hero-title { font-size: 34px; }
   .l1-section-head h2 { font-size: 26px; }
   .l1-close h2 { font-size: 26px; }
-  .l1-laptop-scaler { height: 170px; margin-top: 16px; margin-bottom: 12px; }
+  .l1-laptop-scaler { display: block; height: 170px; margin-top: 16px; margin-bottom: 12px; }
   .l1-laptop {
     width: 1100px;
     transform: scale(0.26);
@@ -2158,6 +2158,7 @@ body {
 
   /* Laptop mockup — force full desktop layout width then scale to fit phone */
   .l1-laptop-scaler {
+    display: block;           /* override display:contents from base */
     width: 100%;
     overflow: hidden;
     margin-top: 20px;
