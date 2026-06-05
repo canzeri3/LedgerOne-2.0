@@ -2166,8 +2166,8 @@ body {
     /* height = full laptop height × scale factor ≈ 600px × 0.30 */
     height: 200px;
   }
-  /* Pull strip up to sit just below laptop */
-  .l1-strip { padding: 16px 0 !important; }
+  /* Strip — small gap below laptop */
+  .l1-strip { padding: 16px 0 !important; margin-top: 24px; }
   .l1-laptop {
     width: 1100px;
     zoom: unset;
