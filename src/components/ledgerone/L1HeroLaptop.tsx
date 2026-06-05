@@ -240,20 +240,22 @@ function useLaptopOpenAnimation() {
 export function L1HeroLaptop() {
   useLaptopOpenAnimation()
   return (
-    <div className="l1-laptop" aria-hidden="true">
-      <div className="l1-laptop-glow"/>
-      <div className="l1-laptop-lid">
-        <div className="l1-laptop-screen">
-          <div className="l1-laptop-notch"/>
-          <div className="l1-laptop-display">
-            <PortfolioSnapshot/>
+    <div className="l1-laptop-scaler">
+      <div className="l1-laptop" aria-hidden="true">
+        <div className="l1-laptop-glow"/>
+        <div className="l1-laptop-lid">
+          <div className="l1-laptop-screen">
+            <div className="l1-laptop-notch"/>
+            <div className="l1-laptop-display">
+              <PortfolioSnapshot/>
+            </div>
           </div>
         </div>
-      </div>
-      <div className="l1-laptop-hinge"/>
-      <div className="l1-laptop-base">
-        <div className="l1-laptop-base-shadow"/>
-        <div className="l1-laptop-base-slot"/>
+        <div className="l1-laptop-hinge"/>
+        <div className="l1-laptop-base">
+          <div className="l1-laptop-base-shadow"/>
+          <div className="l1-laptop-base-slot"/>
+        </div>
       </div>
     </div>
   )

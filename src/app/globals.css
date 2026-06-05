@@ -790,6 +790,9 @@ body {
 }
 
 /* ---- Laptop chassis ---- */
+/* Wrapper used on mobile to clip the scaled laptop */
+.l1-laptop-scaler { display: contents; }
+
 .l1-laptop {
   position: relative; z-index: 1;
   margin: 90px auto 0;
@@ -2122,7 +2125,13 @@ body {
   .l1-hero-title { font-size: 34px; }
   .l1-section-head h2 { font-size: 26px; }
   .l1-close h2 { font-size: 26px; }
-  .l1-laptop { zoom: 0.36; }
+  .l1-laptop-scaler { height: 170px; }
+  .l1-laptop {
+    width: 1100px;
+    transform: scale(0.26);
+    transform-origin: top left;
+    margin-left: calc(50% - 1100px * 0.26 / 2);
+  }
 }
 
 /* ================================================================
@@ -2147,9 +2156,23 @@ body {
   .l1-strip-row { flex-direction: column; gap: 16px; align-items: flex-start; }
   .l1-strip-marks { gap: 20px; flex-wrap: wrap; font-size: 14px; }
 
-  /* Laptop mockup — scale entire thing down to fit phone width */
-  .l1-laptop { zoom: 0.44; margin-top: 0; padding: 0; }
-  .l1-laptop-base { max-width: 100%; }
+  /* Laptop mockup — force full desktop layout width then scale to fit phone */
+  .l1-laptop-scaler {
+    width: 100%;
+    overflow: hidden;
+    margin-top: 48px;
+    /* height = full laptop height × scale factor ≈ 600px × 0.30 */
+    height: 200px;
+  }
+  .l1-laptop {
+    width: 1100px;
+    zoom: unset;
+    margin: 0;
+    padding: 0;
+    transform: scale(0.30);
+    transform-origin: top left;
+    margin-left: calc(50% - 1100px * 0.30 / 2);
+  }
 
   /* Sections */
   .l1-section { padding: 44px 0; }
