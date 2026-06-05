@@ -2,8 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
-import { Settings as SettingsIcon, ChevronDown, Eye, EyeOff, Menu, X } from 'lucide-react'
+import { Settings as SettingsIcon, Eye, EyeOff, Menu, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import AuthButton from '@/components/auth/AuthButton'
 // TS NOTE: Sidebar is default-exported at runtime but TS complains about the default export.
@@ -17,8 +16,10 @@ import HeaderCurrencyConverter from '@/components/common/HeaderCurrencyConverter
 import SWRRouteCover from '@/components/common/SWRRouteCover'
 
 
-// Deep page background (rich-black, very deep blue)
+// Deep page background (rich-black, very deep blue) — in-app routes
 const PAGE_BG = 'rgb(19,20,21)'
+// Marketing page background — matches design token --color-bg-base: #0D0E14
+const MARKETING_BG = '#0D0E14'
 // Semi-opaque surfaces
 const SIDEBAR_BG = 'rgb(31,32,33)'
 const HEADER_BG = 'rgb(19,20,21)'
@@ -26,18 +27,6 @@ const HEADER_BG = 'rgb(19,20,21)'
 const BORDER_SCROLL = 'rgb(43,44,45)'
 // Glow tone (downward only) when scrolled — very dark
 const GLOW_SCROLL = 'rgb(20,21,22)'
-
-  // Logo sizing knobs (adjust these only)
-  const LOGO_W = 320;         // px width of the logo slot (base)
-  const LOGO_W_SM = 380;      // px width on sm+
-  const LOGO_H = 56;          // px height (base)
-  const LOGO_H_SM = 64;       // px height on sm+
-  // Logo sizing knob: increase to make logo bigger WITHOUT changing the container/border size
-   const LOGO_SCALE = 5.2
-  // Logo horizontal nudge (px). Negative moves LEFT; does not change slot/border sizes.
-  const LOGO_SHIFT_X_PX = -60
-  // Logo vertical nudge (px). Positive moves DOWN; does not change slot/border sizes.
-  const LOGO_SHIFT_Y_PX = 7
 
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -59,8 +48,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [])
 
    const pathname = usePathname()
-  const isLanding = pathname === '/' || pathname === '/pricing'
-  const isMergedLanding = pathname === '/'
+  const MARKETING_ROUTES = new Set(['/', '/platform', '/use-cases', '/pricing', '/contact'])
+  const isLanding = MARKETING_ROUTES.has(pathname)
+  const isMergedLanding = isLanding
   const toggleAmountsHidden = () => {
     const next = !amountsHidden
     setAmountsHidden(next)
@@ -76,7 +66,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const threshold = isMergedLanding ? 24 : 0
+    const threshold = isLanding ? 24 : 0
     let raf = 0
     let last = -1
 
@@ -281,7 +271,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [isMobileNavOpen])
 
   return (
-    <div className="min-h-screen text-slate-100" style={{ backgroundColor: PAGE_BG }}>
+    <div className="min-h-screen text-slate-100" style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}>
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
 
@@ -369,139 +359,88 @@ export default function AppShell({ children }: { children: ReactNode }) {
              <header
             className={[
               'sticky top-0 z-40 border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out will-change-auto',
-              isMergedLanding ? '-mb-20 sm:-mb-[88px]' : 'backdrop-blur-md',
-              isMergedLanding && scrolled ? 'backdrop-blur-md' : '',
+              isLanding ? `l1-nav${scrolled ? ' scrolled' : ''}` : 'backdrop-blur-md',
             ].join(' ')}
             style={{
-              backgroundColor: isMergedLanding ? (scrolled ? 'rgba(19,20,21,0.78)' : 'transparent') : HEADER_BG,
-              borderColor: scrolled ? BORDER_SCROLL : 'rgba(43,44,45,0)',
-              // One touch longer (offset 9px, blur 14px), same darkness, stacked x4
-              boxShadow: scrolled
-                ? `0 9px 14px -10px ${GLOW_SCROLL},
-                   0 9px 14px -10px ${GLOW_SCROLL},
-                   0 9px 14px -10px ${GLOW_SCROLL},
-                   0 9px 14px -10px ${GLOW_SCROLL}`
-                : 'none',
+              backgroundColor: isLanding
+                ? (scrolled ? 'rgba(255,255,255,0.03)' : 'transparent')
+                : HEADER_BG,
+              borderColor: isLanding
+                ? (scrolled ? 'rgba(255,255,255,0.08)' : 'transparent')
+                : (scrolled ? BORDER_SCROLL : 'rgba(43,44,45,0)'),
+              backdropFilter: isLanding
+                ? (scrolled ? 'blur(28px) saturate(170%)' : 'none')
+                : undefined,
+              WebkitBackdropFilter: isLanding
+                ? (scrolled ? 'blur(28px) saturate(170%)' : 'none')
+                : undefined,
+              boxShadow: isLanding
+                ? (scrolled ? '0 12px 32px -20px rgba(0,0,0,0.5)' : 'none')
+                : (scrolled
+                    ? `0 9px 14px -10px ${GLOW_SCROLL},
+                       0 9px 14px -10px ${GLOW_SCROLL},
+                       0 9px 14px -10px ${GLOW_SCROLL},
+                       0 9px 14px -10px ${GLOW_SCROLL}`
+                    : 'none'),
             }}
           >
             {isLanding ? (
               // Landing-page header (no sidebar, marketing style)
-              <div className="flex w-full items-center gap-8 px-4 py-4">
-                {/* Left: Logo (pinned to far left) */}
-<div className="flex flex-1 items-center -ml-4">
-                  <Link href="/" className="flex items-center gap-2" aria-label="LedgerOne home">
-               {/* Base */}
-<div className="relative h-12 w-full max-w-[420px] overflow-hidden sm:h-14 sm:hidden">
-  <Image
-    src="/lg1-logo.png"
-    alt="LedgerOne"
-    fill
-    priority
-    sizes="420px"
-    style={{
-      objectFit: 'cover',
-      objectPosition: 'left center',
-transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
-      transformOrigin: 'left center',
-    }}
-  />
-</div>
-
-
-{/* sm+ */}
-<div
-  className="relative hidden overflow-hidden sm:block"
-  style={{ width: LOGO_W_SM, height: LOGO_H_SM }}
->
-  <Image
-    src="/lg1-logo.png"
-    alt="LedgerOne"
-    fill
-    sizes={`${LOGO_W_SM}px`}
-    priority
-    style={{
-      objectFit: 'contain',
-      objectPosition: 'left center',
-transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
-      transformOrigin: 'left center',
-    }}
-  />
-</div>
-
-
-
-
+              <div className="l1-nav-inner px-4">
+                {/* Left: Logo */}
+                <div className="flex flex-1 items-center" style={{ paddingLeft: 24 }}>
+                  <Link href="/" className="l1-nav-brand" aria-label="LedgerOne home">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/ledgerone-logo.png"
+                      alt="LedgerOne"
+                      style={{ height: 92, width: 'auto', display: 'block' }}
+                    />
 
                   </Link>
                 </div>
 
-                {/* Center: Product / Resources / Price (dropdowns with clickable rows) */}
-                <nav className="hidden md:flex flex-none items-center justify-center gap-8 text-sm md:text-base font-medium text-slate-200">
-                  <LandingNavGroup
-                    label="Product"
-                    items={[
-                      {
-                        label: 'Overview',
-                        href: '/#overview',
-                        description: 'How the workspace is structured end-to-end.',
-                      },
-                      {
-                        label: 'Planner engine',
-                        href: '/#planner',
-                        description: 'Encode buy & sell bands into a programmable plan.',
-                      },
-                      {
-                        label: 'Risk metrics',
-                        href: '/#risk',
-                        description: 'Track structural, vol, and tail risk on one card.',
-                      },
-                    ]}
-                  />
-                  <LandingNavGroup
-                    label="Resources"
-                    items={[
-                      {
-                        label: 'How it works',
-                        href: '/how-to',
-                        description: 'Step-by-step walkthrough of a full trade cycle.',
-                      },
-                      {
-                        label: 'Methodology',
-                        href: '/#methodology',
-                        description: 'Principles behind the planning and risk framework.',
-                      },
-                      {
-                        label: 'Support',
-                        href: '/#support',
-                        description: 'Get help configuring your workspace and flows.',
-                      },
-                    ]}
-                  />
-                  <LandingNavGroup
-                    label="Price"
-                    items={[
-                      {
-  label: 'Plans & access',
-  href: '/pricing',
-  description: 'How access and quota are structured.',
-},
-
-                      {
-                        label: 'Desks & teams',
-                        href: '/#teams',
-                        description: 'Run LedgerOne across multiple traders and books.',
-                      },
-                      {
-                        label: 'Custom',
-                        href: '/#contact',
-                        description: 'Discuss institutional setups and integrations.',
-                      },
-                    ]}
-                  />
+                {/* Center: flat marketing nav */}
+                <nav className="hidden md:flex flex-none items-center justify-center gap-8">
+                  {([
+                    { href: '/', label: 'Home' },
+                    { href: '/platform', label: 'Platform' },
+                    { href: '/use-cases', label: 'Use cases' },
+                    { href: '/contact', label: 'Contact' },
+                  ] as const).map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className="relative py-1.5 text-[16px] font-medium transition-colors"
+                      style={{
+                        color: pathname === href ? '#fff' : '#9899B0',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {label}
+                      {pathname === href && (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute',
+                            bottom: -2,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: 4,
+                            height: 4,
+                            borderRadius: 999,
+                            background: '#5E54C0',
+                            boxShadow: '0 0 8px #5E54C0',
+                            display: 'block',
+                          }}
+                        />
+                      )}
+                    </Link>
+                  ))}
                 </nav>
 
                 {/* Right: Auth (pinned to far right) */}
-                <div className="flex flex-1 items-center justify-end">
+                <div className="flex flex-1 items-center justify-end" style={{ paddingRight: 24 }}>
                   {/* @ts-ignore */}
                   <AuthButton loggedOutVariant="pill" />
                 </div>
@@ -587,8 +526,8 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
                  {/* Scrollable page content */}
           <main
             className={
-              isMergedLanding
-                ? 'flex-1 mx-auto w-full px-4 md:px-6 pb-4 pt-0'
+              isLanding
+                ? 'flex-1 w-full p-0'
                 : 'flex-1 mx-auto w-full px-4 md:px-6 py-4'
             }
           >
@@ -604,67 +543,3 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_X_PX / LOGO_SCALE}px, ${
   )
 }
 
-type LandingNavItem = {
-  label: string
-  href: string
-  description?: string
-}
-
-function LandingNavGroup({ label, items }: { label: string; items: LandingNavItem[] }) {
-  return (
-    <div className="relative group">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm md:text-base font-medium text-slate-200 hover:text-slate-50"
-      >
-        <span>{label}</span>
-        <ChevronDown className="h-3 w-3 opacity-70" />
-      </button>
-
-      {/* Popout container: covers the vertical gap with padding so hover never "drops" */}
-      <div
-        className="
-          pointer-events-none
-          invisible
-          opacity-0
-          absolute
-          left-1/2
-          top-full
-          z-40
-          w-72
-          -translate-x-1/2
-          pt-2
-          transition
-          duration-150
-          group-hover:visible
-          group-hover:opacity-100
-          group-hover:pointer-events-auto
-          group-focus-within:visible
-          group-focus-within:opacity-100
-          group-focus-within:pointer-events-auto
-        "
-      >
-        <div className="rounded-2xl border border-slate-800/80 bg-[#151618] p-2 shadow-xl shadow-black/60">
-          {items.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="block rounded-xl px-3 py-2 text-left hover:bg-slate-900/80"
-            >
-              <div className="flex flex-col">
-                <span className="text-[11px] font-medium text-slate-50">
-                  {item.label}
-                </span>
-                {item.description && (
-                  <span className="mt-0.5 text-[11px] text-slate-400">
-                    {item.description}
-                  </span>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
