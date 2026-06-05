@@ -35,6 +35,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [showPageLoader, setShowPageLoader] = useState(false)
   const [amountsHidden, setAmountsHidden] = useState(false)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [isMobileMarketingMenuOpen, setIsMobileMarketingMenuOpen] = useState(false)
 
   // Init from localStorage AFTER mount (avoids hydration issues)
   useEffect(() => {
@@ -243,6 +244,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setIsMobileNavOpen(false)
+    setIsMobileMarketingMenuOpen(false)
   }, [pathname])
 
   useEffect(() => {
@@ -386,65 +388,115 @@ export default function AppShell({ children }: { children: ReactNode }) {
           >
             {isLanding ? (
               // Landing-page header (no sidebar, marketing style)
-              <div className="l1-nav-inner px-4">
-                {/* Left: Logo */}
-                <div className="flex flex-1 items-center" style={{ paddingLeft: 24 }}>
-                  <Link href="/" className="l1-nav-brand" aria-label="LedgerOne home">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src="/ledgerone-logo.png"
-                      alt="LedgerOne"
-                      style={{ height: 92, width: 'auto', display: 'block' }}
-                    />
-
-                  </Link>
-                </div>
-
-                {/* Center: flat marketing nav */}
-                <nav className="hidden md:flex flex-none items-center justify-center gap-8">
-                  {([
-                    { href: '/', label: 'Home' },
-                    { href: '/platform', label: 'Platform' },
-                    { href: '/use-cases', label: 'Use cases' },
-                    { href: '/contact', label: 'Contact' },
-                  ] as const).map(({ href, label }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      className="relative py-1.5 text-[16px] font-medium transition-colors"
-                      style={{
-                        color: pathname === href ? '#fff' : '#9899B0',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {label}
-                      {pathname === href && (
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: 'absolute',
-                            bottom: -2,
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            width: 4,
-                            height: 4,
-                            borderRadius: 999,
-                            background: '#5E54C0',
-                            boxShadow: '0 0 8px #5E54C0',
-                            display: 'block',
-                          }}
-                        />
-                      )}
+              <>
+                <div className="l1-nav-inner px-4">
+                  {/* Left: Logo */}
+                  <div className="flex flex-1 items-center" style={{ paddingLeft: 24 }}>
+                    <Link href="/" className="l1-nav-brand" aria-label="LedgerOne home">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/ledgerone-logo.png"
+                        alt="LedgerOne"
+                        style={{ height: 92, width: 'auto', display: 'block' }}
+                      />
                     </Link>
-                  ))}
-                </nav>
+                  </div>
 
-                {/* Right: Auth (pinned to far right) */}
-                <div className="flex flex-1 items-center justify-end" style={{ paddingRight: 24 }}>
-                  {/* @ts-ignore */}
-                  <AuthButton loggedOutVariant="pill" />
+                  {/* Center: flat marketing nav (desktop only) */}
+                  <nav className="hidden md:flex flex-none items-center justify-center gap-8">
+                    {([
+                      { href: '/', label: 'Home' },
+                      { href: '/platform', label: 'Platform' },
+                      { href: '/use-cases', label: 'Use cases' },
+                      { href: '/contact', label: 'Contact' },
+                    ] as const).map(({ href, label }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="relative py-1.5 text-[16px] font-medium transition-colors"
+                        style={{
+                          color: pathname === href ? '#fff' : '#9899B0',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {label}
+                        {pathname === href && (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: 'absolute',
+                              bottom: -2,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              width: 4,
+                              height: 4,
+                              borderRadius: 999,
+                              background: '#5E54C0',
+                              boxShadow: '0 0 8px #5E54C0',
+                              display: 'block',
+                            }}
+                          />
+                        )}
+                      </Link>
+                    ))}
+                  </nav>
+
+                  {/* Right: Auth + mobile hamburger */}
+                  <div className="flex flex-1 items-center justify-end gap-3" style={{ paddingRight: 24 }}>
+                    {/* @ts-ignore */}
+                    <AuthButton loggedOutVariant="pill" />
+                    {/* Hamburger — mobile only */}
+                    <button
+                      type="button"
+                      className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-200 transition-colors hover:bg-white/10"
+                      aria-label="Toggle menu"
+                      onClick={() => setIsMobileMarketingMenuOpen(o => !o)}
+                    >
+                      {isMobileMarketingMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {/* Mobile dropdown menu */}
+                {isMobileMarketingMenuOpen && (
+                  <div
+                    className="md:hidden"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: 'rgba(13,14,20,0.97)',
+                      backdropFilter: 'blur(24px)',
+                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      zIndex: 50,
+                      padding: '12px 0 20px',
+                    }}
+                  >
+                    {([
+                      { href: '/', label: 'Home' },
+                      { href: '/platform', label: 'Platform' },
+                      { href: '/use-cases', label: 'Use cases' },
+                      { href: '/contact', label: 'Contact' },
+                    ] as const).map(({ href, label }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        style={{
+                          display: 'block',
+                          padding: '12px 28px',
+                          fontSize: 17,
+                          fontWeight: 500,
+                          color: pathname === href ? '#fff' : '#9899B0',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               // Default in-app header (logo left, alerts + settings + auth right)
               <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">

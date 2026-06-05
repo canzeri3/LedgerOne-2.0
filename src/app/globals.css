@@ -2124,3 +2124,72 @@ body {
   .l1-close h2 { font-size: 26px; }
   .l1-laptop { padding: 0 4px; }
 }
+
+/* ================================================================
+   MOBILE — comprehensive phone fixes (≤600px)
+   ================================================================ */
+@media (max-width: 600px) {
+  /* Nav */
+  .l1-nav-inner { min-height: 64px !important; padding: 0 8px; position: relative; }
+  .l1-nav-brand img { height: 52px !important; }
+  .l1-nav.scrolled .l1-nav-brand img { height: 36px !important; }
+
+  /* Hero */
+  .l1-hero { padding: 16px 0 0; }
+  .l1-hero-inner { padding: 24px 0 0; text-align: center; }
+  .l1-hero-title { font-size: 36px; line-height: 1.08; letter-spacing: -0.02em; margin-bottom: 20px; }
+  .l1-hero-sub { font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+  .l1-hero-cta { flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+  .l1-hero-cta .l1-btn { width: 100%; max-width: 300px; justify-content: center; }
+
+  /* Logo strip */
+  .l1-strip { padding: 28px 0; }
+  .l1-strip-row { flex-direction: column; gap: 16px; align-items: flex-start; }
+  .l1-strip-marks { gap: 20px; flex-wrap: wrap; font-size: 14px; }
+
+  /* Laptop mockup — hide sidebar, show screen only */
+  .lp-side { display: none; }
+  .l1-laptop-screen { border-radius: 6px; }
+
+  /* Sections */
+  .l1-section { padding: 44px 0; }
+  .l1-wrap { padding: 0 16px; }
+  .l1-section-head { margin-bottom: 28px; }
+  .l1-section-head h2 { font-size: 28px; }
+  .l1-section-head p { font-size: 14px; }
+
+  /* Feature cards */
+  .l1-feat-grid { grid-template-columns: 1fr; gap: 10px; }
+  .l1-feat { padding: 18px; min-height: auto; gap: 12px; }
+  .l1-feat h3 { font-size: 17px; }
+
+  /* Use-case cards */
+  .l1-cases { grid-template-columns: 1fr; gap: 10px; }
+  .l1-case { padding: 20px; min-height: auto; }
+
+  /* How it works */
+  .l1-flow-step { padding: 20px 0 20px 52px; }
+  .l1-flow-step .seal { width: 36px; height: 36px; font-size: 13px; }
+
+  /* Agent block */
+  .l1-agent-block { grid-template-columns: 1fr; gap: 28px; }
+
+  /* Trust */
+  .l1-trust-grid { grid-template-columns: 1fr; gap: 12px; }
+  .l1-trust-grid > .l1-trust-cell:nth-child(1),
+  .l1-trust-grid > .l1-trust-cell:nth-child(2) { margin-top: 0; }
+
+  /* Closing CTA */
+  .l1-close { padding: 20px 16px; margin: 0 0 32px; }
+  .l1-close h2 { font-size: 26px; margin-bottom: 14px; }
+  .l1-close p { font-size: 14px; margin-bottom: 20px; }
+  .l1-close-cta { flex-direction: column; width: 100%; max-width: 280px; margin: 0 auto; gap: 10px; }
+  .l1-close-cta .l1-btn { width: 100%; justify-content: center; }
+
+  /* Footer */
+  .l1-footer { padding: 24px 0 16px; }
+  .l1-footer-grid { grid-template-columns: 1fr; gap: 20px; }
+  .l1-footer-grid > :first-child { grid-column: 1; text-align: center; }
+  .l1-footer-grid > :first-child img { margin-left: auto; margin-right: auto; }
+  .l1-footer-fine { flex-direction: column; gap: 8px; align-items: flex-start; font-size: 10px; }
+}
