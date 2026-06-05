@@ -29,7 +29,9 @@ export function L1Nightsky() {
       return x - Math.floor(x)
     }
 
-    const CLUSTERS = 16
+    const isMobile = w <= 600
+    const CLUSTERS = isMobile ? 5 : 16
+    const SCATTERED = isMobile ? 15 : 70
     const nodes: {
       x: number; y: number; rad: number; vx: number; vy: number
       tw: number; tws: number; clustered: boolean
@@ -56,7 +58,7 @@ export function L1Nightsky() {
         nid++
       }
     }
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < SCATTERED; i++) {
       nodes.push({
         x: seed(nid + 901) * w, y: seed(nid + 1009) * h,
         rad: 0.5 + seed(nid + 1103) * 0.7,

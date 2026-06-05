@@ -2122,7 +2122,7 @@ body {
   .l1-hero-title { font-size: 34px; }
   .l1-section-head h2 { font-size: 26px; }
   .l1-close h2 { font-size: 26px; }
-  .l1-laptop { padding: 0 4px; }
+  .l1-laptop { zoom: 0.36; }
 }
 
 /* ================================================================
@@ -2147,9 +2147,9 @@ body {
   .l1-strip-row { flex-direction: column; gap: 16px; align-items: flex-start; }
   .l1-strip-marks { gap: 20px; flex-wrap: wrap; font-size: 14px; }
 
-  /* Laptop mockup — hide sidebar, show screen only */
-  .lp-side { display: none; }
-  .l1-laptop-screen { border-radius: 6px; }
+  /* Laptop mockup — scale entire thing down to fit phone width */
+  .l1-laptop { zoom: 0.44; margin-top: 0; padding: 0; }
+  .l1-laptop-base { max-width: 100%; }
 
   /* Sections */
   .l1-section { padding: 44px 0; }
