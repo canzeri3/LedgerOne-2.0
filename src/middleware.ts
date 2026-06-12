@@ -41,28 +41,36 @@ export async function middleware(req: NextRequest) {
 
   const res = NextResponse.next()
 
-  // Create a Supabase server client for the middleware runtime
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
-    {
-      cookies: {
-        get(name: string) {
-          return req.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          // Next 15: set via response so the cookie is forwarded downstream
-          res.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          res.cookies.set({ name, value: '', ...options, maxAge: 0 })
-        },
-      },
-    }
-  )
+  // Only refresh the session when the request actually carries Supabase auth
+  // cookies (all named `sb-*`). Anonymous traffic (marketing pages, public
+  // APIs) has no session to refresh, so skipping avoids a wasted auth
+  // round-trip on every request. Authenticated requests behave exactly as before.
+  const hasAuthCookies = req.cookies.getAll().some((c) => c.name.startsWith('sb-'))
 
-  // Refresh session on each request so server routes see a valid session
-  await supabase.auth.getSession()
+  if (hasAuthCookies) {
+    // Create a Supabase server client for the middleware runtime
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+      {
+        cookies: {
+          get(name: string) {
+            return req.cookies.get(name)?.value
+          },
+          set(name: string, value: string, options: any) {
+            // Next 15: set via response so the cookie is forwarded downstream
+            res.cookies.set({ name, value, ...options })
+          },
+          remove(name: string, options: any) {
+            res.cookies.set({ name, value: '', ...options, maxAge: 0 })
+          },
+        },
+      }
+    )
+
+    // Refresh session on each request so server routes see a valid session
+    await supabase.auth.getSession()
+  }
 
   // Apply CORS headers to actual API responses (not just preflights)
   if (isApi) applyCors(req, res)
