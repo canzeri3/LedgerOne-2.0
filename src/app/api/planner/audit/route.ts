@@ -8,9 +8,11 @@ export const dynamic = 'force-dynamic'
 
 type JsonObject = Record<string, any>
 
+type PlannerEntity = 'sell_planner' | 'buy_planner'
+
 type DeleteBody = {
   op: 'delete'
-  entity: 'sell_planner'
+  entity: PlannerEntity
   plannerId: string
 }
 
@@ -75,12 +77,13 @@ async function insertAuditLog(
     coingeckoId: string | null
     action: 'deleted' | 'restored'
     details: JsonObject
+    entity?: PlannerEntity
   }
 ) {
   const { error } = await db.from('audit_logs').insert({
     user_id: args.userId,
     coingecko_id: args.coingeckoId,
-    entity: 'sell_planner',
+    entity: args.entity ?? 'sell_planner',
     action: args.action,
     details: args.details,
   })
@@ -116,13 +119,70 @@ async function restoreSellSnapshot(db: SupabaseClient, userId: string, snapshot:
   }
 }
 
+/**
+ * Buy planners are soft-deleted (is_active -> false) rather than hard-deleted:
+ * `trades` rows reference buy_planners.id, and the delete UX promises past trades
+ * and history stay intact. The Audit Log restore path flips is_active back to true,
+ * so the row must survive the delete.
+ */
+async function handleBuyPlannerDelete(db: SupabaseClient, userId: string, plannerId: string) {
+  const { data: planner, error: plannerError } = await db
+    .from('buy_planners')
+    .select('id,coingecko_id,is_active')
+    .eq('id', plannerId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (plannerError) return jsonError(plannerError.message, 500)
+  if (!planner) return jsonError('Buy planner not found.', 404)
+
+  const { error: deactivateError } = await db
+    .from('buy_planners')
+    .update({ is_active: false })
+    .eq('id', plannerId)
+    .eq('user_id', userId)
+
+  if (deactivateError) return jsonError(deactivateError.message, 500)
+
+  try {
+    await insertAuditLog(db, {
+      userId,
+      entity: 'buy_planner',
+      coingeckoId: planner.coingecko_id ?? null,
+      action: 'deleted',
+      details: {
+        message: 'Buy planner deleted.',
+        planner_id: planner.id,
+        planner_state: planner.is_active ? 'active' : 'frozen',
+        delete_mode: 'soft',
+        undo_available: true,
+      },
+    })
+  } catch (auditError: any) {
+    // Roll back the soft delete so the planner isn't silently lost without an undo entry.
+    await db
+      .from('buy_planners')
+      .update({ is_active: planner.is_active })
+      .eq('id', plannerId)
+      .eq('user_id', userId)
+
+    return jsonError(auditError?.message ?? 'Failed to write buy planner audit log.', 500)
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
 async function handleDelete(db: SupabaseClient, userId: string, body: DeleteBody) {
-  if (body.entity !== 'sell_planner') {
+  if (body.entity !== 'sell_planner' && body.entity !== 'buy_planner') {
     return jsonError('Unsupported entity.')
   }
 
   const plannerId = String(body.plannerId || '').trim()
   if (!plannerId) return jsonError('Missing plannerId.')
+
+  if (body.entity === 'buy_planner') {
+    return handleBuyPlannerDelete(db, userId, plannerId)
+  }
 
   const { data: planner, error: plannerError } = await db
     .from('sell_planners')

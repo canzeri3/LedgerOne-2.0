@@ -12,29 +12,35 @@ function SectionHead({ eyebrow, title }: { eyebrow: string; title: string }) {
   )
 }
 
-function ChromeDivider() {
-  return (
-    <div className="l1-wrap" style={{ position: 'relative', zIndex: 1 }}>
-      <div className="l1-chrome" />
-    </div>
-  )
-}
-
 function ContactHeader() {
   return (
-    <section className="l1-pageheader">
+    <section className="l1-pageheader cx-head">
       <div className="l1-pageheader-aurora" />
       <div className="l1-wrap">
-        <div className="l1-pageheader-inner" style={{ gridTemplateColumns: '1fr' }}>
+        <div className="l1-pageheader-inner">
           <div>
-            <div className="l1-pageheader-eyebrow">Contact · operations 24/7</div>
+            <div className="l1-pageheader-eyebrow">Contact</div>
             <h1>Talk to the desk.</h1>
           </div>
           <p className="lead">
             Walkthroughs, onboarding, migrations, and serious questions about
-            the engine and the framework. We answer all of them. We don&apos;t do
-            mass mail.
+            the engine and the framework. We answer every one — and we don&apos;t
+            do mass mail.
           </p>
+        </div>
+        <div className="cx-headmeta">
+          <div className="cell">
+            <span className="k">Response time</span>
+            <span className="v">Within one business day</span>
+          </div>
+          <div className="cell">
+            <span className="k">Coverage</span>
+            <span className="v"><span className="dot" />24h · 5 days · pager on weekends</span>
+          </div>
+          <div className="cell">
+            <span className="k">Desks</span>
+            <span className="v">Montreal, Canada</span>
+          </div>
         </div>
       </div>
     </section>
@@ -47,6 +53,7 @@ function ContactForm() {
   const [sent, setSent] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [org, setOrg] = useState('')
   const [note, setNote] = useState('')
 
   const submit = (e: React.FormEvent) => {
@@ -56,17 +63,15 @@ function ContactForm() {
 
   if (sent) {
     return (
-      <div className="l1-form" style={{ minHeight: 460, justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-        <div style={{ width: 56, height: 56, border: '1px solid var(--color-accent-purple)', borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent-purple)', marginBottom: 8 }}>
-          <L1Icon name="check" size={28} />
-        </div>
-        <h3 style={{ margin: 0 }}>Your message is in the queue.</h3>
-        <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 14, maxWidth: 340 }}>
+      <div className="cx-sent">
+        <div className="seal"><L1Icon name="check" size={28} /></div>
+        <h3>Your message is in the queue.</h3>
+        <p>
           We respond within one business day. Walkthroughs are typically
-          scheduled inside 48 hours. We&apos;ll bring the framework ready to map
-          to your risk profile and capital.
+          scheduled inside 48 hours — we&apos;ll arrive with the framework ready
+          to map to your risk profile and capital.
         </p>
-        <button onClick={() => { setSent(false); setName(''); setEmail(''); setNote('') }} className="l1-btn l1-btn-ghost" style={{ marginTop: 12 }}>
+        <button className="reset" onClick={() => { setSent(false); setName(''); setEmail(''); setOrg(''); setNote('') }}>
           Send another <L1Icon name="arrowRight" size={14} />
         </button>
       </div>
@@ -74,144 +79,138 @@ function ContactForm() {
   }
 
   return (
-    <form className="l1-form" onSubmit={submit}>
-      <h3>Send a note</h3>
-      <div className="l1-field">
-        <label>I&apos;m here for</label>
-        <div className="l1-pill-row">
-          {[
-            { id: 'walkthrough', l: 'A platform walkthrough' },
-            { id: 'migration', l: 'Migration help' },
-            { id: 'enterprise', l: 'Enterprise / SOC 2' },
-            { id: 'media', l: 'Media or research' },
-            { id: 'other', l: 'Something else' },
-          ].map((p) => (
-            <span key={p.id} className={'l1-pill ' + (topic === p.id ? 'on' : '')} onClick={() => setTopic(p.id)}>{p.l}</span>
-          ))}
+    <form className="cx-form" onSubmit={submit}>
+      <div className="cx-row">
+        <div className="cx-field">
+          <label>Reason for contact</label>
+          <select value={topic} onChange={(e) => setTopic(e.target.value)}>
+            <option value="walkthrough">A platform walkthrough</option>
+            <option value="migration">Migration help</option>
+            <option value="enterprise">Enterprise / SOC&nbsp;2</option>
+            <option value="media">Media or research</option>
+            <option value="other">Something else</option>
+          </select>
+        </div>
+        <div className="cx-field">
+          <label>Investor type</label>
+          <select value={size} onChange={(e) => setSize(e.target.value)}>
+            <option value="individual">Individual / long-term</option>
+            <option value="hnw">Active investor / HNW</option>
+            <option value="office">Family office · advisor</option>
+            <option value="treasury">New allocator</option>
+            <option value="fund">Fund / RIA</option>
+          </select>
         </div>
       </div>
-      <div className="l1-field">
-        <label>Investor type</label>
-        <div className="l1-pill-row">
-          {[
-            { id: 'individual', l: 'Individual / long-term' },
-            { id: 'hnw', l: 'Active investor / HNW' },
-            { id: 'office', l: 'Family office · advisor' },
-            { id: 'treasury', l: 'New allocator' },
-            { id: 'fund', l: 'Fund / RIA' },
-          ].map((p) => (
-            <span key={p.id} className={'l1-pill ' + (size === p.id ? 'on' : '')} onClick={() => setSize(p.id)}>{p.l}</span>
-          ))}
-        </div>
-      </div>
-      <div className="row">
-        <div className="l1-field">
+
+      <div className="cx-row">
+        <div className="cx-field">
           <label>Your name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="Full name" required />
         </div>
-        <div className="l1-field">
+        <div className="cx-field">
           <label>Email</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@domain.com" required />
         </div>
       </div>
-      <div className="l1-field">
+
+      <div className="cx-field">
+        <label>Organization <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--color-text-muted)' }}>(optional)</span></label>
+        <input value={org} onChange={(e) => setOrg(e.target.value)} type="text" placeholder="Firm, fund, or family office" />
+      </div>
+
+      <div className="cx-field">
         <label>Tell us a little</label>
         <textarea
           value={note} onChange={(e) => setNote(e.target.value)}
-          rows={5}
           placeholder="Time horizon, sleeve structure, custody you use today, what you're hoping the platform replaces…"
           required
         />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginTop: 4 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
-          We reply within one business day · No mass mail
-        </div>
-        <button type="submit" className="l1-btn l1-btn-primary">
-          Send <L1Icon name="arrowRight" size={14} />
+
+      <div className="cx-form-foot">
+        <div className="note"><span className="dot" />Replied to within one business day · No mass mail</div>
+        <button type="submit" className="cx-submit">
+          Send message <L1Icon name="arrowRight" size={15} />
         </button>
       </div>
     </form>
   )
 }
 
-function ContactSidebar() {
+function ContactInfo() {
+  const channels: { ic: 'mail' | 'shield'; addr: string; purpose: string }[] = [
+    { ic: 'mail', addr: 'info@ledgerone.app', purpose: 'General · Onboarding · Accounts' },
+    { ic: 'shield', addr: 'support@ledgerone.app', purpose: 'Platform · Custody · API' },
+  ]
+  const status = ['Core platform', 'Custody read-only ingest', 'Reporting & exports', 'Agent · v4']
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="l1-side-card">
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--color-accent-purple)', textTransform: 'uppercase' }}>Direct lines</div>
-        <h4>The desk, by channel.</h4>
-        <div style={{ display: 'grid', gap: 12, marginTop: 4 }}>
-          <a style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 12, alignItems: 'center', color: 'var(--color-text-primary)', textDecoration: 'none', padding: '12px 14px', border: '1px solid var(--color-border)' }} href="mailto:info@ledgerone.app">
-            <L1Icon name="mail" size={18} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 14 }}>info@ledgerone.app</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>General · Onboarding · Accounts</div>
-            </div>
-          </a>
-          <a style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 12, alignItems: 'center', color: 'var(--color-text-primary)', textDecoration: 'none', padding: '12px 14px', border: '1px solid var(--color-border)' }} href="mailto:support@ledgerone.app">
-            <L1Icon name="shield" size={18} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 14 }}>support@ledgerone.app</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>How to · Custody · API</div>
-            </div>
-          </a>
-          <a style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 12, alignItems: 'center', color: 'var(--color-text-primary)', textDecoration: 'none', padding: '12px 14px', border: '1px solid var(--color-border)' }} href="mailto:alerts@ledgerone.app">
-            <L1Icon name="globe" size={18} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 14 }}>alerts@ledgerone.app</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>Receive · Alert · Emails</div>
-            </div>
-          </a>
-        </div>
-      </div>
-      <div className="l1-side-card">
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--color-accent-purple)', textTransform: 'uppercase' }}>Offices</div>
-        <h4>Two cities. One operating window.</h4>
-        <div className="l1-offices">
-          <div className="l1-office">
-            <div className="city">New York</div>
-            <div className="addr">110 Wall Street, 4F<br />New York, NY 10005</div>
-            <div className="tz">GMT−05 · 09:00–18:00</div>
-          </div>
-          <div className="l1-office">
-            <div className="city">Singapore</div>
-            <div className="addr">8 Marina View, 27F<br />Asia Square · 018960</div>
-            <div className="tz">GMT+08 · 09:00–18:00</div>
-          </div>
-        </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-success)', boxShadow: '0 0 8px var(--color-success)' }} />
-          Operations cover · 24h · 5 days · pager on weekends
-        </div>
-      </div>
-      <div className="l1-side-card">
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--color-accent-purple)', textTransform: 'uppercase' }}>Status</div>
-        <h4>Platform operations.</h4>
-        <div style={{ display: 'grid', gap: 8 }}>
-          {[
-            { l: 'Core platform', s: 'Operational' },
-            { l: 'Custody read-only ingest', s: 'Operational' },
-            { l: 'Reporting & exports', s: 'Operational' },
-            { l: 'Agent · v4', s: 'Operational' },
-          ].map((r, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid var(--color-border)' }}>
-              <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{r.l}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-success)', letterSpacing: '0.06em', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-success)' }} />
-                {r.s}
+    <div className="cx-info-col">
+      <div className="cx-block">
+        <span className="cx-block-label">Direct channels</span>
+        <div className="cx-channels">
+          {channels.map((c) => (
+            <a key={c.addr} className="cx-channel" href={'mailto:' + c.addr}>
+              <span className="ic"><L1Icon name={c.ic} size={18} /></span>
+              <span className="cx-channel-text">
+                <span className="addr">{c.addr}</span>
+                <span className="purpose">{c.purpose}</span>
               </span>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div className="cx-block">
+        <span className="cx-block-label">Offices</span>
+        <div className="cx-offices">
+          <div className="cx-office">
+            <div>
+              <div className="city">Montreal</div>
+            </div>
+            <div className="tz">GMT−05<br />09:00–18:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="cx-block">
+        <span className="cx-block-label">System status</span>
+        <div className="cx-status">
+          {status.map((l) => (
+            <div key={l} className="cx-status-row">
+              <span className="l">{l}</span>
+              <span className="s"><span className="dot" />Operational</span>
             </div>
           ))}
         </div>
+        <a className="cx-status-link" href="#">status.ledgerone.app <L1Icon name="arrowRight" size={13} /></a>
       </div>
     </div>
   )
 }
 
+function ContactBody() {
+  return (
+    <section className="l1-wrap cx-body">
+      <div className="cx-desk">
+        <div className="cx-form-col">
+          <div className="cx-form-head">
+            <span className="cx-eyebrow">Send a note</span>
+            <h2>Tell us what you&apos;re solving for.</h2>
+            <p>A few lines is plenty. The more context you give, the more tailored the walkthrough.</p>
+          </div>
+          <ContactForm />
+        </div>
+        <ContactInfo />
+      </div>
+    </section>
+  )
+}
+
 const FAQS = [
   { q: 'Is LedgerOne a broker or exchange?', a: 'No. LedgerOne is a systematic allocation engine. We operate according to the rules and parameters you define — never on discretion, never reactively. We do not run a market, take the other side of your positions, or trade against your book.' },
-  { q: 'How does the engine actually deploy capital?', a: "You provide a risk profile, a capital amount, and the digital assets you want exposure to. The engine translates that into a live framework — bands, deployment ladders, realization tranches, and a macro-cycle overlay — and runs it through scoped credentials at the venues you've selected. Every action is surfaced as a rules-based instruction you keep control of, and recorded." },
+  { q: 'How does the engine actually deploy capital?', a: "You provide a risk profile, a capital amount, and the digital assets you want exposure to. The engine translates that into a live framework — bands, deployment ladders, realization tranches, and a macro-cycle overlay — and runs it through scoped credentials at the venues you've selected. It does not automate trades inside your exchange — every action is surfaced as a rules-based instruction you keep control of, and recorded." },
   { q: 'Who is LedgerOne for, specifically?', a: "Long-term individual allocators, frustrated active investors who want to stop making moment-to-moment decisions, family offices and advisors managing client crypto exposure, and sophisticated investors entering digital assets for the first time. The common thread: capital that wants a system, not a screen." },
   { q: 'What does pricing look like?', a: 'Three tiers — Individual, Multi-sleeve, and Enterprise (including SOC 2 attestations, multisig governance, and dedicated support). Pricing is by sleeve count and venue count, not by AUM. We share the full grid on the walkthrough.' },
   { q: 'Can I migrate my historical data?', a: 'Yes. We import from CSV exports, on-chain history, and most exchange APIs going back to first activity. Reconciliation is part of onboarding — most clients complete it inside one week, before the engine goes live.' },
@@ -242,13 +241,7 @@ export default function ContactPage() {
       <L1Nightsky />
       <L1Grain />
       <ContactHeader />
-      <ChromeDivider />
-      <section className="l1-wrap" style={{ position: 'relative', zIndex: 1 }}>
-        <div className="l1-contact">
-          <ContactForm />
-          <ContactSidebar />
-        </div>
-      </section>
+      <ContactBody />
       <ContactFaq />
       <L1Footer />
     </>

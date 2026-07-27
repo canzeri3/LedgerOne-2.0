@@ -7,6 +7,7 @@ import {
   Cell,
   Tooltip,
 } from 'recharts'
+import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
 
 type Datum = { name: string; value: number }
 
@@ -78,7 +79,7 @@ export default function AllocationDonut({ data }: { data: Datum[] }) {
           formatter={(rawVal, rawName) => {
             const v = Number(rawVal) || 0
             const pct = total > 0 ? (v / total) * 100 : 0
-            const valStr = `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+            const valStr = `${displayCurrencySymbol()}${usdToDisplay(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
             const pctStr = `${pct.toFixed(1)}%`
             return [`${valStr} · ${pctStr}`, String(rawName)]
           }}

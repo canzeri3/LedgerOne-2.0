@@ -1,14 +1,16 @@
 'use client'
 
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { fmtCurrency } from '@/lib/format'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 
-type PriceResp = {
-  price: number | null
+// New data core (/api/prices) shape
+type CorePricesResp = {
+  rows?: Array<{ id: string; price: number | null }>
+  updatedAt?: string
 }
 
 type Props = {
@@ -31,6 +33,32 @@ function fmtSignedPct(n: number | null | undefined) {
   if (n == null || !Number.isFinite(n)) return '—'
   const sign = n > 0 ? '+' : n < 0 ? '' : ''
   return `${sign}${(n * 100).toFixed(2)}%`
+}
+
+/** P&L KPI cell that toggles its value between $ and % (vs invested basis). */
+function PLStat({
+  label, usd, pct, accent,
+}: { label: string; usd: number; pct: number | null; accent: 'pos' | 'neg' | 'neutral' }) {
+  const [showPct, setShowPct] = useState(false)
+  const cls = accent === 'pos' ? 'pos' : accent === 'neg' ? 'neg' : ''
+  const canPct = pct != null && Number.isFinite(pct)
+  return (
+    <div className="ck-cell">
+      <div className="l">{label}</div>
+      <div className={`v ${cls}`}>{showPct && canPct ? fmtSignedPct(pct) : fmtSignedCurrency(usd)}</div>
+      {canPct && (
+        <button
+          type="button"
+          className={`ck-pct${showPct ? ' on' : ''}`}
+          onClick={() => setShowPct((v) => !v)}
+          aria-label={showPct ? 'Show dollar value' : 'Show percent'}
+          title={showPct ? 'Show $' : 'Show %'}
+        >
+          {showPct ? '$' : '%'}
+        </button>
+      )}
+    </div>
+  )
 }
 
 function fmtQty(n: number) {
@@ -190,9 +218,9 @@ function StatCard({
 export default function CoinStatsGrid({ id }: Props) {
   const { user, loading } = useUser()
 
-  // Live price
-  const { data: priceData } = useSWR<PriceResp>(
-    id ? `/api/price/${encodeURIComponent(id)}` : null,
+  // Live price (NEW data core — replaces legacy /api/price/[id] adapter)
+  const { data: pricesRaw } = useSWR<CorePricesResp>(
+    id ? `/api/prices?ids=${encodeURIComponent(id)}&currency=USD` : null,
     fetcher,
     {
       refreshInterval: 15_000,
@@ -203,9 +231,11 @@ export default function CoinStatsGrid({ id }: Props) {
       errorRetryInterval: 5_000,
     }
   )
-  
-  
-  const livePrice = priceData?.price ?? null
+
+  const livePrice = useMemo(() => {
+    const row = pricesRaw?.rows?.find((r) => r?.id === id) ?? pricesRaw?.rows?.[0]
+    return row?.price ?? null
+  }, [pricesRaw, id])
 
   // Trades
   const { data: trades } = useSWR<
@@ -251,38 +281,20 @@ const totalPct = invested > 0 ? stats.totalPL / invested : null
 
   return (
     <div className="mb-6 px-6 md:px-8 lg:px-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* TOP ROW (Current value → Holdings (qty) → Avg price) */}
-        <StatCard label="Current value" value={fmtCurrency(stats.currentValue)} />
-        <StatCard label="Holdings (qty)" value={fmtQty(stats.holdingsQty)} />
-        <StatCard label="Avg price" value={stats.holdingsQty > 0 ? fmtCurrency(stats.avgPrice) : '—'} />
-
-                {/* BOTTOM ROW (Unrealized P/L → Realized P/L → Total P/L) */}
-        <StatCard
-          label="Unrealized P/L"
-          value={fmtSignedCurrency(stats.unrealizedPL)}
-          pctValue={fmtSignedPct(unrealPct)}
-          accent={unrealAccent as any}
-          icon={unrealAccent === 'pos' ? 'up' : unrealAccent === 'neg' ? 'down' : undefined}
-          enablePctToggle
-        />
-        <StatCard
-          label="Realized P/L"
-          value={fmtSignedCurrency(stats.realizedPL)}
-          pctValue={fmtSignedPct(realPct)}
-          accent={realAccent as any}
-          icon={realAccent === 'pos' ? 'up' : realAccent === 'neg' ? 'down' : undefined}
-          enablePctToggle
-        />
-        <StatCard
-          label="Total P/L"
-          value={fmtSignedCurrency(stats.totalPL)}
-          pctValue={fmtSignedPct(totalPct)}
-          accent={totalAccent as any}
-          icon={totalAccent === 'pos' ? 'up' : totalAccent === 'neg' ? 'down' : undefined}
-          enablePctToggle
-        />
-
+      {/* KPI band — one bordered strip, five position stats
+          (Current Value omitted: already shown in the chart card) */}
+      <div className="ck">
+        <div className="ck-cell">
+          <div className="l">Holdings (Qty)</div>
+          <div className="v">{fmtQty(stats.holdingsQty)}</div>
+        </div>
+        <div className="ck-cell">
+          <div className="l">Avg Cost</div>
+          <div className="v">{stats.holdingsQty > 0 ? fmtCurrency(stats.avgPrice) : '—'}</div>
+        </div>
+        <PLStat label="Unrealized P&L" usd={stats.unrealizedPL} pct={unrealPct} accent={unrealAccent} />
+        <PLStat label="Realized P&L" usd={stats.realizedPL} pct={realPct} accent={realAccent} />
+        <PLStat label="Total P&L" usd={stats.totalPL} pct={totalPct} accent={totalAccent} />
       </div>
     </div>
   )

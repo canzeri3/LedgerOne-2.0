@@ -8,6 +8,7 @@ import useSWR, { useSWRConfig } from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 import PlanLimitModal from '@/components/billing/PlanLimitModal'
 import { deletePlannerWithAudit } from '@/lib/plannerAuditClient'
 
@@ -85,7 +86,7 @@ function LadderDepthDropdown({
   onChange: (v: RiskDepth) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const { mounted, shown } = useMenuTransition(open)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
 
@@ -94,8 +95,6 @@ function LadderDepthDropdown({
   const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number } | null>(
     null
   )
-
-  const MENU_ANIM_MS = 140
 
   // Order in UI: Conservative (90), Moderate (70), Aggressive (75)
   const OPTIONS: RiskDepth[] = ['90', '70', '75']
@@ -160,28 +159,10 @@ function LadderDepthDropdown({
     }
   }, [open])
 
-  // Mount/unmount with a short delay so we can animate close.
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      return
-    }
-    if (!mounted) return
-    const t = window.setTimeout(() => setMounted(false), MENU_ANIM_MS)
-    return () => window.clearTimeout(t)
-  }, [open, mounted])
-
-  const baseBg = 'bg-[rgb(41,42,43)]'
-  const baseText = 'text-slate-200'
-  const noBorder =
-    'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
-  const heightPad = 'px-3 py-2.5'
-  const radiusClosed = 'rounded-lg'
-
   const currentMeta = DepthMeta(value)
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="dd">
       {/* Control */}
       <button
         ref={buttonRef}
@@ -190,27 +171,12 @@ function LadderDepthDropdown({
         aria-expanded={open}
         aria-controls="ladder-depth-listbox"
         onClick={() => setOpen(o => !o)}
-        className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none
-                    flex items-center justify-between ${radiusClosed}`}
+        className={`dd-trigger${open ? ' open' : ''}`}
       >
-        <span className="text-sm flex items-center gap-2">
-          {currentMeta.shortLabel}
-          <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-            {currentMeta.levels} levels
-          </span>
-        </span>
-
-        <span
-          className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgb(54,55,56)]"
-          aria-hidden="true"
-        >
-          <svg
-            className={`h-3 w-3 text-slate-200 transition-transform ${
-              open ? 'rotate-180' : 'rotate-0'
-            }`}
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
+        <span className="lab">{currentMeta.shortLabel}</span>
+        <span className="dd-badge">{currentMeta.levels} levels</span>
+        <span className="dd-caret" aria-hidden="true">
+          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
             <path
               fillRule="evenodd"
               d="M5.23 7.21a.75.75 0 011.06.02L10 11.085l3.71-3.855a.75.75 0 111.08 1.04l-4.24 4.4a.75.75 0 01-1.08 0l-4.24-4.4a.75.75 0 01.02-1.06z"
@@ -234,53 +200,41 @@ function LadderDepthDropdown({
                 left: menuPos.left,
                 top: menuPos.top + 8,
                 width: menuPos.width,
+                transformOrigin: 'top',
               }}
               data-state={open ? 'open' : 'closed'}
-              className={`${baseBg} ${baseText} ${noBorder} rounded-lg border border-[rgb(32,33,34)] shadow-lg z-[9999] origin-top transition duration-150 ease-out will-change-transform will-change-opacity
-                ${open ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
+              className={`pl-dd-portal hdr-pop z-[9999]${shown ? ' is-open' : ''}`}
             >
-              <div className="py-1">
-                {OPTIONS.map(opt => {
-                  const meta = DepthMeta(opt)
-                  const selected = opt === value
-                  return (
-                    <button
-                      key={opt}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      onClick={() => {
-                        onChange(opt)
-                        setOpen(false)
-                        buttonRef.current?.focus()
-                      }}
-                      className={`w-full text-left px-3 py-2 transition
-                                ${selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-sm">{meta.title}</span>
-                        </div>
+              {OPTIONS.map(opt => {
+                const meta = DepthMeta(opt)
+                const selected = opt === value
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => {
+                      onChange(opt)
+                      setOpen(false)
+                      buttonRef.current?.focus()
+                    }}
+                    className={`dd-opt hdr-pop-item block w-full text-left${selected ? ' sel' : ''}`}
+                  >
+                    <div className="dd-opt-top">
+                      <span className="dd-opt-name">{meta.title}</span>
+                      <span className="dd-badge">{meta.levels} levels</span>
+                    </div>
 
-                        <span className="text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300">
-                          {meta.levels} levels
-                        </span>
-                      </div>
-
-                      {/* mini level bars */}
-                      <div className="mt-2 flex items-center gap-1">
-                        {meta.bars.map((_, i) => (
-                          <span
-                            key={i}
-                            className="h-1.5 rounded-sm bg-[rgb(75,76,78)]"
-                            style={{ width: 12 + (i % 3) * 2 }}
-                          />
-                        ))}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                    {/* mini level bars */}
+                    <div className="dd-seg">
+                      {meta.bars.map((_, i) => (
+                        <i key={i} />
+                      ))}
+                    </div>
+                  </button>
+                )
+              })}
             </div>,
             document.body
           )
@@ -652,10 +606,6 @@ if (!opts?.confirmed) {
     }
   }
 
-  /* ── styles for text inputs (match dropdown) ─────────────── */
-  const fieldShell =
-    'mt-1 w-full rounded-lg bg-[rgb(41,42,43)] px-3 py-2.5 text-[13px] text-slate-100 placeholder:text-[120,121,125] border border-[rgb(58,59,63)] focus:outline-none focus:ring-0 focus:border-transparent appearance-none'
-
   /* ── onChange formatters ─────────────────────────────────── */
   const onChangeBudget = (e: React.ChangeEvent<HTMLInputElement>) => {
     const normalized = normalizeDecimalInput(e.target.value)
@@ -663,49 +613,54 @@ if (!opts?.confirmed) {
   }
 
   return (
-  <div className="p-2">
-    <PlanLimitModal
-      open={limitModalOpen}
-      message={limitModalMsg}
-      onClose={() => setLimitModalOpen(false)}
-      upgradeHref="/pricing"
-    />
+    <>
+      <PlanLimitModal
+        open={limitModalOpen}
+        message={limitModalMsg}
+        onClose={() => setLimitModalOpen(false)}
+        upgradeHref="/pricing"
+      />
 
-
-      {/* Inputs only — no action buttons here */}
-      <div className="space-y-4">
-{/* Total budget */}
-<label className="block">
-  <span className="text-xs text-slate-300">Total budget ($)</span>
-
-  <div className="mt-1 relative">
-<span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-300 z-10 select-none leading-none">
-  $
-</span>
-
-    <input
-      type="text"
-      inputMode="decimal"
-      autoComplete="off"
-      disabled={busy}
-      value={budget}
-      onChange={onChangeBudget}
-className={`relative z-0 ${fieldShell} pl-7 text-[15px]`}
-      placeholder="e.g. 10,000"
-    />
-  </div>
-</label>
-
+      {/* Controls bar — inputs only, no action buttons here */}
+      <div className="pl-controls">
+        {/* Total budget */}
+        <div className="field grow">
+          <label htmlFor="buy-total-budget">Total budget</label>
+          <div className="num-input">
+            <span className="pre">$</span>
+            <input
+              id="buy-total-budget"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              disabled={busy}
+              value={budget}
+              onChange={onChangeBudget}
+              placeholder="e.g. 10,000"
+            />
+            <span className="suf">USD</span>
+          </div>
+        </div>
 
         {/* Risk profile — maps to ladder depth & levels under the hood */}
-        <label className="block">
-          <span className="text-xs text-slate-300">Risk profile</span>
+        <div className="field">
+          <label>Risk profile</label>
           <LadderDepthDropdown value={depth} onChange={v => setDepth(v)} />
-        </label>
-      </div>
+        </div>
 
-      {err && <div className="mt-2 text-xs text-red-300">{err}</div>}
-      {msg && <div className="mt-2 text-xs text-green-300">{msg}</div>}
-    </div>
+        {/* Save New Plan — button rendered by the page via portal (confirm flow lives there) */}
+        <div className="field">
+          <label aria-hidden="true">&nbsp;</label>
+          <div id="buy-controls-save" className="contents" />
+        </div>
+
+        {(err || msg) && (
+          <div className="field" style={{ justifyContent: 'flex-end' }}>
+            {err && <div className="text-xs text-red-300">{err}</div>}
+            {msg && <div className="text-xs text-green-300">{msg}</div>}
+          </div>
+        )}
+      </div>
+    </>
   )
 }

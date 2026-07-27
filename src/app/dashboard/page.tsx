@@ -11,7 +11,6 @@ import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
-import FullScreenPageLoader from '@/components/common/FullScreenPageLoader'
 
 import {
   buildBuyLevels,
@@ -401,6 +400,18 @@ const WINDOW_TO_TF: Record<WindowKey, Timeframe> = {
   '24h': '24h', '7d': '7d', '30d': '30d', '90d': '90d', '1y': '1y', 'ytd': 'YTD', 'max': 'Max',
 }
 
+// Human-readable timeframe context shown next to the delta (skin: "Past 30 days")
+const TF_CONTEXT: Record<Timeframe, string> = {
+  '24h': 'Past 24 hours',
+  '7d': 'Past 7 days',
+  '30d': 'Past 30 days',
+  '90d': 'Past 90 days',
+  '1y': 'Past year',
+  'YTD': 'Year to date',
+  'Max': 'All time',
+}
+
+// Segmented timeframe control (skin restyle — same value/onChange contract as before)
 function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: WindowKey) => void }) {
   const opts: WindowKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
   return (
@@ -413,11 +424,10 @@ function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: Windo
             aria-pressed={active}
             onClick={() => onChange(opt)}
             className={[
-              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
-              'bg-[rgb(28,29,31)] border',
+              'rounded-full border px-3 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors',
               active
-                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
+                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)]'
+                : 'border-[rgb(58,59,63)] text-slate-400 hover:text-slate-200 hover:border-slate-500',
               'focus:ring-0 focus:outline-none'
             ].join(' ')}
           >
@@ -427,6 +437,27 @@ function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: Windo
       })}
     </div>
   )
+}
+
+// Quiet KPI cell used in the hero stat strip (Total P&L / Realized / Unrealized)
+function HeroStat({ label, value, tone }: { label: string; value: string; tone: 'pos' | 'neg' | 'neutral' }) {
+  const color =
+    tone === 'pos' ? 'text-[rgb(116,170,98)]' : tone === 'neg' ? 'text-[rgb(214,66,78)]' : 'text-slate-300'
+  return (
+    <div className="border-l border-[rgb(41,42,45)] px-4 md:px-6 first:border-l-0 md:first:border-l">
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">{label}</div>
+      <div
+        className={['mt-1.5 text-[19px] font-medium whitespace-nowrap', color].join(' ')}
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function toneOf(n: number): 'pos' | 'neg' | 'neutral' {
+  return n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
 }
 
 /* ── Digit scroll (odometer) components — hydration-safe ──── */
@@ -782,117 +813,94 @@ const { delta, pct } = useMemo(() => {
     if (initialPageReady) setHasBootstrapped(true)
   }, [initialPageReady])
 
-  if (!hasBootstrapped && !initialPageReady) return <FullScreenPageLoader />
+  // The full-screen loader is owned solely by SWRRouteCover; render nothing
+  // (the cover is on top) until the first data is ready, then never blank again.
+  if (!hasBootstrapped && !initialPageReady) return null
 
   const chartRefreshing = coinIds.length > 0 && !!historiesMap && historiesValidating
 
 return (
     <div data-dashboard-page className="space-y-6">
 
-      {/* Top row: portfolio profits */}
-      <div className="mx-4 md:mx-6 lg:mx-8 mb-8 md:mb-10 lg:mb-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Profits</div>
-              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtCurrency(totalProfit)}
-              </div>
+      {/* Chart card with consolidated hero band (value + delta + stat strip + alerts) */}
+      <div className="rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
+
+        {/* HERO BAND */}
+        <div className="flex flex-col gap-6 border-b border-[rgb(41,42,45)] px-5 pb-7 pt-7 md:flex-row md:items-end md:justify-between md:px-6">
+          {/* Left: portfolio value + delta */}
+          <div>
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">
+              {showTotalPL ? 'Total P&L' : 'Portfolio Value'}
             </div>
-          </div>
-
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Realized Profits</div>
-              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtCurrency(realizedProfit)}
-              </div>
+            <div
+              className="mb-2 mt-1.5 font-display text-4xl font-bold tracking-tight text-slate-100 md:text-5xl"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {fmtCurrency(showTotalPL ? totalProfit : liveValue)}
             </div>
-          </div>
-
-          <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)]">
-            <div className="p-3 h-16 flex flex-col items-center justify-center leading-tight">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Unrealized Profits</div>
-              <div className="text-slate-100 text-base md:text-lg font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtCurrency(unrealizedProfit)}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Portfolio Balance (Live) card) */}
-      <div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8 relative">
-        {/* ABSOLUTE: Alerts in the card's top-right corner */}
-        <div className="absolute top-4 right-4">
-          <AlertsTooltip
-            coinIds={coinIds}
-            tradesByCoin={tradesByCoinForAlerts}
-            coins={coins}
-          />
-        </div>
-
-        {/* Header (left content spans full width now) */}
-        <div className="px-4 pt-4">
-          <div className="flex flex-col gap-4 md:gap-6">
-            <h2 className="text-l md:text-l font-semibold tracking-tight pl-2 md:pl-3 lg:pl-4">Portfolio Balance</h2>
-            <div className="text-3xl md:text-4xl font-bold text-slate-100 pl-2 md:pl-3 lg:pl-4">
-              {fmtCurrency(liveValue)}
-            </div>
-
-            {/* % change row now spans the whole card width */}
-            <div className="flex items-center">
-              <div
+            <div className="flex items-center gap-2.5 whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <span
                 className={[
-                  'text-sm md:text-lg font-medium',
-                  'pl-2 md:pl-3 lg:pl-4',
-                  pct >= 0 ? 'text-[rgb(124,188,97)]' : 'text-[rgb(214,66,78)]',
+                  'inline-flex items-center gap-1 rounded-md px-2 py-[3px] text-[15px] font-medium',
+                  pct >= 0 ? 'bg-[rgba(116,170,98,0.12)] text-[rgb(116,170,98)]' : 'bg-[rgba(214,66,78,0.1)] text-[rgb(214,66,78)]',
                 ].join(' ')}
-                style={{ fontVariantNumeric: 'tabular-nums' }}
               >
-                <span>{pct >= 0 ? '+' : '-'}</span>
+                <span>{pct >= 0 ? '▴' : '▾'}</span>
                 <ScrollingNumericText text={pctAbsText} />
                 <span>%</span>
-                <span> (</span>
-                <span>{delta >= 0 ? '' : '-'}</span>
-                <span>$</span>
+              </span>
+              <span className={pct >= 0 ? 'text-[15px] text-[rgb(116,170,98)]' : 'text-[15px] text-[rgb(214,66,78)]'}>
+                <span>{delta >= 0 ? '+$' : '-$'}</span>
                 <ScrollingNumericText text={deltaDigitsOnly} />
-                <span>)</span>
-              </div>
+              </span>
+              <span className="text-[12px] text-slate-500">{TF_CONTEXT[tf]}</span>
+            </div>
+          </div>
 
-{/* Chart mode + timeframe selector */}
-<div className="ml-auto -mr-0.5 flex items-center gap-2">
-  <button
-    type="button"
-    aria-pressed={showTotalPL}
-    onClick={() => setShowTotalPL(v => !v)}
-    className={[
-      'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
-      'bg-[rgb(28,29,31)] border',
-      showTotalPL
-        ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-        : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
-      'focus:ring-0 focus:outline-none'
-    ].join(' ')}
-title="Toggle Total P&L (realized + unrealized vs your cost basis)"
-  >
-    Total P&amp;L
-  </button>
-
-  <WindowTabs
-    value={TF_TO_WINDOW[tf]}
-    onChange={(win) => setTf(WINDOW_TO_TF[win])}
-  />
-</div>
-
-
+          {/* Right: alerts + quiet stat strip */}
+          <div className="flex flex-col items-start gap-5 md:items-end">
+            <AlertsTooltip
+              coinIds={coinIds}
+              tradesByCoin={tradesByCoinForAlerts}
+              coins={coins}
+            />
+            <div className="flex max-w-full overflow-x-auto scrollbar-auto-hide md:overflow-visible">
+              <HeroStat label="Total P&L" value={fmtCurrency(totalProfit)} tone={toneOf(totalProfit)} />
+              <HeroStat label="Realized" value={fmtCurrency(realizedProfit)} tone={toneOf(realizedProfit)} />
+              <HeroStat label="Unrealized" value={fmtCurrency(unrealizedProfit)} tone={toneOf(unrealizedProfit)} />
             </div>
           </div>
         </div>
 
-        {/* Card body */}
-        <div className="p-4">
-                 <div className="-ml-4 w-[calc(100%+1rem)] h-[260px] md:h-[300px] lg:h-[320px] relative">
+        {/* CHART TOOLS: P&L toggle + timeframe */}
+        <div className="flex justify-end px-5 pt-4 md:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={showTotalPL}
+              onClick={() => setShowTotalPL(v => !v)}
+              className={[
+                'rounded-full border px-3 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors',
+                showTotalPL
+                  ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)]'
+                  : 'border-[rgb(58,59,63)] text-slate-400 hover:text-slate-200 hover:border-slate-500',
+                'focus:ring-0 focus:outline-none',
+              ].join(' ')}
+              title="Toggle Total P&L (realized + unrealized vs your cost basis)"
+            >
+              Total P&amp;L
+            </button>
+
+            <WindowTabs
+              value={TF_TO_WINDOW[tf]}
+              onChange={(win) => setTf(WINDOW_TO_TF[win])}
+            />
+          </div>
+        </div>
+
+        {/* Card body: chart */}
+        <div className="p-4 md:p-5">
+          <div className="-ml-2 w-[calc(100%+0.5rem)] h-[300px] md:h-[355px] lg:h-[390px] relative">
             {coinIds.length > 0 && !historiesMap && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
                 Loading portfolio history…
@@ -903,45 +911,41 @@ title="Toggle Total P&L (realized + unrealized vs your cost basis)"
                 Updating chart…
               </div>
             )}
-{tf === 'Max' && chartSeries.length === 0 ? (
-  <div className="h-[260px] w-full rounded-xl border border-slate-700/40 bg-[rgb(18,19,21)] flex items-center justify-center">
-    <div className="text-sm text-slate-400">
-      Max history is currently unavailable (price history provider returned limited data).
-    </div>
-  </div>
-) : (
-  <PortfolioGrowthChart data={chartSeries} />
-)}
+            {tf === 'Max' && chartSeries.length === 0 ? (
+              <div className="h-full w-full rounded-xl border border-slate-700/40 bg-[rgb(18,19,21)] flex items-center justify-center">
+                <div className="text-sm text-slate-400">
+                  Max history is currently unavailable (price history provider returned limited data).
+                </div>
+              </div>
+            ) : (
+              <PortfolioGrowthChart data={chartSeries} />
+            )}
           </div>
-
         </div>
 
       </div>
 
-      {/* Spacer */}
-      <div className="h-2 md:h-2 lg:h-2"></div>
+      {/* Holdings */}
+      <div className="rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
+        <div className="flex items-center px-5 pb-3 pt-5 md:px-6">
+          <h2 className="text-[15px] font-semibold tracking-tight text-slate-100">Holdings</h2>
+        </div>
+        {/* Edge-to-edge table: no horizontal padding */}
+        <div className="px-0 pb-2 md:pb-3">
+          <PortfolioHoldingsTable
+            coinIds={coinIds}
+            historiesMapLive={historiesMapLive ?? {}}
+            trades={trades}
+            coins={coins}
+          />
+        </div>
+      </div>
 
-{/* Portfolio Holdings */}
-<div className="rounded-md border border-transparent ring-0 focus:ring-0 focus:outline-none bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">
-  <div className="px-4 pt-4">
- <h2 className="text-md md:text-2xmd font-semibold tracking-tight">Portfolio Holdings</h2>
-  </div>
-  {/* Edge-to-edge table: no horizontal padding */}
-  <div className="px-0 py-2 md:py-4">
-    <PortfolioHoldingsTable
-      coinIds={coinIds}
-      historiesMapLive={historiesMapLive ?? {}}
-      trades={trades}
-      coins={coins}
-    />
-  </div>
+      {/* Transactions (all coins) */}
+      <div className="mx-4 md:mx-6 lg:mx-8">
+        <RecentTradesCard />
+      </div>
 
-</div>
-{/* Transactions (all coins) — exact UI from coin page */}
-<div className="mx-4 md:mx-6 lg:mx-8">
-  <RecentTradesCard />
-</div>
- 
     </div>
   )
 }

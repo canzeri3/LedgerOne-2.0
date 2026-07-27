@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Download } from 'lucide-react'
 import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -235,62 +236,59 @@ export default function ExportCSVButtons() {
     }
   }
 
-  // UI primitives (match the improved Audit controls look)
-  const inputBase =
-    'rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-[14px] text-slate-100 hover:bg-[rgb(18,19,21)]/85 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
-
-  const btnBase =
-    'rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-[13px] text-slate-100 hover:bg-[rgb(18,19,21)]/90 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 disabled:opacity-50 disabled:hover:bg-[rgb(18,19,21)]/70'
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Scope selector */}
-      <div className="rounded-xl bg-[rgba(255,255,255,0.02)] ring-1 ring-inset ring-[rgb(41,42,45)]/70 p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-wide text-[rgb(186,186,188)]">Scope</div>
-            <div className="mt-1 text-[12px] text-[rgb(163,163,164)]">Exporting: {scopeLabel}</div>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <select className={inputBase} value={selectedCid} onChange={(e) => setSelectedCid(e.target.value as any)}>
-              <option value="ALL">All coins</option>
-              {coinOptions.map((c) => (
-                <option key={c.coingecko_id} value={c.coingecko_id}>
-                  {(c.symbol || c.coingecko_id).toUpperCase()} — {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="csv-label">Scope</div>
+          <div className="csv-hint">Exporting {scopeLabel}</div>
         </div>
+
+        <select className="st-select" value={selectedCid} onChange={(e) => setSelectedCid(e.target.value as any)}>
+          <option value="ALL">All coins</option>
+          {coinOptions.map((c) => (
+            <option key={c.coingecko_id} value={c.coingecko_id}>
+              {(c.symbol || c.coingecko_id).toUpperCase()} — {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
+      <div className="csv-divider" />
+
       {/* Buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={doAll} disabled={!user || loading !== null} className={btnBase} title="Download all available CSV files">
-          {loading === 'all' ? 'Preparing…' : 'Download all CSVs'}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <button onClick={doAll} disabled={!user || loading !== null} className="st-btn st-btn-primary" title="Download all available CSV files">
+          <Download className="h-4 w-4" />
+          {loading === 'all' ? 'Preparing…' : 'Download all'}
         </button>
 
-        <span className="text-[12px] text-[rgb(140,140,142)] mx-1">or</span>
+        <span className="csv-sep">or</span>
 
-        <button onClick={doTrades} disabled={!user || loading !== null} className={btnBase} title="Download trades CSV">
+        <button onClick={doTrades} disabled={!user || loading !== null} className="st-btn st-btn-ghost" title="Download trades CSV">
           {loading === 'trades' ? 'Preparing…' : 'Trades'}
         </button>
 
-        <button onClick={doPlanners} disabled={!user || loading !== null} className={btnBase} title="Download sell planners CSV">
+        <button onClick={doPlanners} disabled={!user || loading !== null} className="st-btn st-btn-ghost" title="Download sell planners CSV">
           {loading === 'planners' ? 'Preparing…' : 'Sell planners'}
         </button>
 
-        <button onClick={doLevels} disabled={!user || loading !== null} className={btnBase} title="Download sell levels CSV">
+        <button onClick={doLevels} disabled={!user || loading !== null} className="st-btn st-btn-ghost" title="Download sell levels CSV">
           {loading === 'levels' ? 'Preparing…' : 'Sell levels'}
         </button>
-
-        {err && <span className="text-[12px] text-rose-300 ml-2">{err}</span>}
       </div>
 
-      <p className="text-[12px] text-[rgb(140,140,142)]">
-        If your browser blocks multiple downloads, use the individual buttons.
-      </p>
+      {err && <div className="csv-note-danger">{err}</div>}
+
+      {/* What each file contains */}
+      <div className="csv-legend">
+        <div><b>Trades</b> — your trade ledger, with planner ids where present.</div>
+        <div><b>Sell planners</b> — planners plus computed <code>levels_planned</code>.</div>
+        <div><b>Sell levels</b> — ladder rows per planner.</div>
+      </div>
+
+      <p className="csv-hint">If your browser blocks multiple downloads, use the individual buttons.</p>
     </div>
   )
 }

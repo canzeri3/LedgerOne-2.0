@@ -14,13 +14,13 @@ import {
   Wallet,
   ScrollText,
   FileSpreadsheet,
-  Coins as CoinsIcon,
   HelpCircle,
   Settings as SettingsIcon,
 } from 'lucide-react'
 
 
 import { useFavorites } from '@/lib/useFavorites'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 
 type Coin = {
   coingecko_id: string
@@ -48,7 +48,7 @@ const active = pathname === hrefPath || pathname?.startsWith(hrefPath + '/')
     <Link
       href={href}
       className={[
-'flex items-center gap-2 rounded-lg px-3 py-2 transition-colors max-md:min-h-11',
+'flex items-center gap-3 rounded-lg px-3.5 py-2.5 min-h-11 text-[17px] transition-colors',
         'hover:bg-[rgb(42,43,44)]',
         active ? 'bg-[rgb(42,43,44)] !text-[rgb(252,252,252)]' : 'text-slate-200',
 
@@ -66,7 +66,7 @@ const active = pathname === hrefPath || pathname?.startsWith(hrefPath + '/')
 // Logo sizing knob (adjust ONLY this to make the logo bigger; no borders/containers change)
 const LOGO_SCALE = 1.25
 const LOGO_SHIFT_PX = -30 // negative = move visible logo LEFT, positive = move RIGHT (size unchanged)
-const LOGO_SHIFT_Y_PX = 10 // positive = move image DOWN, negative = move UP (borders/slot unchanged)
+const LOGO_SHIFT_Y_PX = 4 // positive = move image DOWN, negative = move UP (borders/slot unchanged)
 
 
 
@@ -91,6 +91,7 @@ export default function Sidebar() {
 
   // Open Coins section by default on all pages
   const [coinsOpen, setCoinsOpen] = useState<boolean>(true)
+  const { mounted: coinsMounted, shown: coinsShown } = useMenuTransition(coinsOpen)
   const [query, setQuery] = useState('')
 
   const { data: coins } = useSWR<Coin[]>(
@@ -137,7 +138,7 @@ export default function Sidebar() {
     // Sidebar scrolls independently if content exceeds viewport
 <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-auto-hide md:overscroll-auto">
           {/* Brand logo */}
-<div className="pt-3 pb-2 px-0 -ml-4 w-[calc(100%+16px)] md:pt-4 md:pb-3">
+<div className="pt-3 pb-3 px-0 -ml-4 w-[calc(100%+16px)] md:pt-4 md:pb-4 border-b border-[rgb(41,42,45)]">
 
         {/* Brand logo */}
      <div className="pl-0 pr-1 pt-0 pb-0">
@@ -170,7 +171,7 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
 
             <nav className="px-2 py-2 md:py-3">
   {/* Primary nav with icons on the left */}
-  <ul className="space-y-1">
+  <ul className="space-y-1.5">
     <li>
       <NavLink
         href="/dashboard"
@@ -229,36 +230,39 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
   </ul>
 
         {/* Coins dropdown */}
-      <div className="mt-5 md:mt-6">
+      <div className="mt-4 border-t border-[rgb(41,42,45)] pt-4 md:pt-5">
           <button
             type="button"
             onClick={() => setCoinsOpen((v) => !v)}
-className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-slate-200 transition-colors hover:bg-white/10 max-md:min-h-11"
+className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04] max-md:min-h-11"
             aria-expanded={coinsOpen}
             aria-controls="coins-panel"
           >
-            <span className="flex items-center gap-2">
-              <CoinsIcon className="h-4 w-4 opacity-80" />
-              <span className="font-medium">Coins</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
+              Coins
             </span>
             <ChevronRight
-              className={`h-4 w-4 transition-transform ${coinsOpen ? 'rotate-90' : ''}`}
+              className={`h-3.5 w-3.5 text-slate-500 transition-transform ${coinsOpen ? 'rotate-90' : ''}`}
             />
           </button>
 
-          {coinsOpen && (
-<div id="coins-panel" className="mt-2 px-1 md:px-2">
+          {coinsMounted && (
+<div
+  id="coins-panel"
+  style={{ transformOrigin: 'top' }}
+  className={`hdr-pop mt-2 px-1 md:px-2${coinsShown ? ' is-open' : ''}`}
+>
                 {/* Search input */}
               <div className="relative mb-2">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-300" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
                 <input
   value={query}
   onChange={(e) => setQuery(e.target.value)}
   className={[
-'w-full rounded-md pl-8 pr-2 py-2 text-base text-slate-100 placeholder:text-slate-400 md:text-sm',
-    'bg-[rgb(42,43,44)]',                 // inner area color
-    'border border-[rgb(64,65,66)]',      // default border color
-    'focus:outline-none focus:ring-2 focus:ring-[rgb(64,65,66)] focus:border-[rgb(64,65,66)]',
+'w-full rounded-md pl-8 pr-2 py-2 text-base text-slate-200 placeholder:text-slate-500 md:text-[14px]',
+    'bg-[rgb(32,33,35)]',                 // subtle fill that blends with the sidebar
+    'border border-[rgb(41,42,45)]',      // faint border
+    'focus:outline-none focus:border-[rgb(58,59,63)]', // subtle focus, no bright ring
     'transition-colors',
   ].join(' ')}
   placeholder="Search coins..."
@@ -271,40 +275,41 @@ className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-le
                   {filteredCoins.map((c) => {
                   const isFav = favSet?.has?.(c.coingecko_id)
                   return (
-                    <li key={c.coingecko_id} style={{ order: isFav ? -1 : 0 }}>
+                    <li key={c.coingecko_id} className="hdr-pop-item" style={{ order: isFav ? -1 : 0 }}>
                       <Link
                         href={`/coins/${c.coingecko_id}`}
                         className={[
-'flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors max-md:min-h-10',
+'grid grid-cols-[3.25rem_minmax(0,1fr)_auto_1rem] items-center gap-2 rounded-md px-2 py-2 text-[16px] transition-colors max-md:min-h-10',
                           'hover:bg-white/10', // stronger hover
                           pathname === `/coins/${c.coingecko_id}`
                           ? 'bg-white/15 !text-[rgb(252,252,252)]'
                           : 'text-slate-200',
-                        
+
                         ].join(' ')}
                       >
-                        <div className="min-w-0">
-                          <span className="font-medium">
-                            {c.symbol?.toUpperCase() ?? c.coingecko_id}
-                          </span>
-                          <span className="ml-2 text-slate-400 truncate">{c.name}</span>
-                          {typeof c.market_cap_rank === 'number' && (
-                            <span className="ml-2 rounded-full border border-[#0b1830] px-1.5 py-0.5 text-[10px] text-slate-400 align-middle">
-                              #{c.market_cap_rank}
-                            </span>
-                          )}
-                        </div>
+                        {/* Ticker column (fixed width so names align) */}
+                        <span className="font-semibold">
+                          {c.symbol?.toUpperCase() ?? c.coingecko_id}
+                        </span>
 
-                        {/* Star only on favourited coins (no empty star for others) */}
-                                           {isFav && (
-                          <span className="shrink-0 pl-2">
+                        {/* Name column */}
+                        <span className="text-slate-400 truncate">{c.name}</span>
+
+                        {/* Rank column */}
+                        <span className="text-right text-[11px] tabular-nums text-slate-500">
+                          {typeof c.market_cap_rank === 'number' ? `#${c.market_cap_rank}` : ''}
+                        </span>
+
+                        {/* Star column (only on favourited coins; slot reserved for alignment) */}
+                        <span className="flex justify-end">
+                          {isFav && (
                             <Star
                               className="h-4 w-4 text-amber-300/70"
                               fill="currentColor"
                               strokeWidth={0}
                             />
-                          </span>
-                        )}
+                          )}
+                        </span>
                       </Link>
                     </li>
                   )

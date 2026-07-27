@@ -5,6 +5,7 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 
 
 /* ── shared UI tokens matched to BuyPlannerInputs ─────────── */
@@ -189,11 +190,9 @@ function SellDropdown({
   getMeta,
 }: SellDropdownProps) {
   const [open, setOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const { mounted, shown } = useMenuTransition(open)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
-
-  const MENU_ANIM_MS = 140
 
   // Close on click outside
   useEffect(() => {
@@ -211,30 +210,11 @@ function SellDropdown({
     }
   }, [open])
 
-  // Mount/unmount with a short delay so we can animate close.
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      return
-    }
-    if (!mounted) return
-    const t = window.setTimeout(() => setMounted(false), MENU_ANIM_MS)
-    return () => window.clearTimeout(t)
-  }, [open, mounted])
-
   const currentMeta = getMeta(value)
 
-  const baseBg = 'bg-[rgb(41,42,43)]'
-  const baseText = 'text-slate-200'
-  const noBorder =
-    'outline-none border-none focus:outline-none focus:ring-0 focus:border-transparent'
-  const heightPad = 'px-3 py-2.5'
-  const radiusClosed = 'rounded-lg'
-  const muted = 'text-slate-400'
-
   return (
-    <div ref={wrapRef} className="relative mt-1">
-      {/* Control (pill-style button) */}
+    <div ref={wrapRef} className="dd">
+      {/* Control */}
       <button
         ref={buttonRef}
         type="button"
@@ -252,98 +232,67 @@ function SellDropdown({
             setOpen(false)
           }
         }}
-        className={`${baseBg} ${baseText} ${noBorder} ${heightPad} w-full text-left select-none ${radiusClosed}`}
+        className={`dd-trigger${open ? ' open' : ''}`}
       >
-        <div className="inline-flex w-full items-center gap-1">
-          {/* Left: option name */}
-          <span className="text-sm" style={{ width: 'auto' }}>
-            {currentMeta.title}
-          </span>
-
-          {/* Chip immediately next to the name */}
-          <span
-            className="ml-1 text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
-            style={{ width: 'auto', flexShrink: 0 }}
+        <span className="lab">{currentMeta.title}</span>
+        <span className="dd-badge">{currentMeta.chip}</span>
+        <span className="dd-caret" aria-hidden="true">
+          <svg
+            className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : 'rotate-0'}`}
+            viewBox="0 0 20 20"
+            fill="currentColor"
           >
-            {currentMeta.chip}
-          </span>
-
-          {/* Arrow pushed to far right */}
-          <span
-            className="inline-flex items-center justify-center rounded-full bg-[rgb(54,55,56)] ml-auto"
-            aria-hidden="true"
-            style={{ width: 20, height: 20, flexShrink: 0 }}
-          >
-            <svg
-              className={`h-3 w-3 text-slate-200 transition-transform ${
-                open ? 'rotate-180' : 'rotate-0'
-              }`}
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.19l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.25 4.53a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </span>
-        </div>
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.19l3.71-3.96a.75.75 0 1 1 1.08 1.04l-4.25 4.53a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
       </button>
 
-      {/* Dropdown menu – 2-line structure, no mini bars */}
+      {/* Dropdown menu – 2-line structure */}
       {mounted && (
         <div
           role="listbox"
           aria-label={ariaLabel}
           aria-hidden={!open}
           data-state={open ? 'open' : 'closed'}
-          className={`${baseBg} ${baseText} ${noBorder} absolute left-0 right-0 top-full mt-2 w-full rounded-lg border border-[rgb(32,33,34)] shadow-lg z-50 origin-top transition duration-150 ease-out will-change-transform will-change-opacity
-            ${open ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
+          style={{ transformOrigin: 'top' }}
+          className={`dd-panel hdr-pop z-50${shown ? ' is-open' : ''}`}
         >
-          <div className="py-1">
-            {options.map((opt) => {
-              const meta = getMeta(opt)
-              const selected = opt === value
+          {options.map((opt) => {
+            const meta = getMeta(opt)
+            const selected = opt === value
 
-              const bracketChip = meta.chip
-              const label =
-                ariaLabel === 'Select coin volatility'
-                  ? `${meta.title} Volatility`
-                  : meta.title
+            const bracketChip = meta.chip
+            const label =
+              ariaLabel === 'Select coin volatility'
+                ? `${meta.title} Volatility`
+                : meta.title
 
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    onChange(opt)
-                    setOpen(false)
-                    buttonRef.current?.focus()
-                  }}
-                  className={`w-full text-left px-3 py-2 transition ${
-                    selected ? 'bg-[rgb(47,48,49)]' : 'hover:bg-[rgb(47,48,49)]'
-                  }`}
-                >
-                  <div className="inline-flex w-full items-center">
-                    <span className="text-sm" style={{ width: 'auto' }}>
-                      {label}
-                    </span>
-                    <span
-                      className="ml-auto text-[11px] leading-none px-2 py-1 rounded-md bg-[rgb(54,55,56)] text-slate-300"
-                      style={{ width: 'auto', flexShrink: 0 }}
-                    >
-                      {bracketChip}
-                    </span>
-                  </div>
+            return (
+              <button
+                key={opt}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(opt)
+                  setOpen(false)
+                  buttonRef.current?.focus()
+                }}
+                className={`dd-opt hdr-pop-item block w-full text-left${selected ? ' sel' : ''}`}
+              >
+                <div className="dd-opt-top">
+                  <span className="dd-opt-name">{label}</span>
+                  <span className="dd-badge">{bracketChip}</span>
+                </div>
 
-                  <div className={`mt-1 text-[12px] ${muted}`}>{meta.desc}</div>
-                </button>
-              )
-            })}
-          </div>
+                <div className="dd-opt-desc">{meta.desc}</div>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
@@ -565,7 +514,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       const avg = locked > 0 ? locked : liveAvg
       const baseAvg = avg > 0 ? avg : 0
       if (!baseAvg) {
-        setErr('Unable to compute base average price.')
+        setErr('Enter your 1st buy before creating a sell planner.')
         return
       }
 
@@ -653,51 +602,58 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   }, [user?.id, coingeckoId, activeSell?.id, activeSell?.avg_lock_price]) // rebind if lock state/id changes
 
   return (
-    <div className="space-y-4">
-      <div className="text-xs text-slate-400">{help}</div>
+    <div className="pl-controls">
+      {/* Active plan switcher slot — the Active/History control renders here
+          (portal target used by SellPlannerCombinedCard.Planner) */}
+      <div className="field">
+        <label>Active plan</label>
+        <div id="sell-planner-header-right" className="flex items-center gap-2 min-h-[38px]" />
+      </div>
 
-      {/* Match BuyPlannerInputs layout: single column, tight gaps */}
-      <div className="grid grid-cols-1 gap-2">
-  {/* Card 2: Coin Volatility (step size per level) */}
-  <label className="block">
-    <span className="text-xs text-slate-300">Coin Volatility</span>
-    <SellDropdown
-      value={step}
-      options={stepOptions}
-      onChange={setStep}
-      ariaLabel="Select coin volatility"
-      getMeta={sellVolatilityMeta}
-    />
-  </label>
+      {/* Coin Volatility (step size per level) */}
+      <div className="field">
+        <label>Coin volatility</label>
+        <SellDropdown
+          value={step}
+          options={stepOptions}
+          onChange={setStep}
+          ariaLabel="Select coin volatility"
+          getMeta={sellVolatilityMeta}
+        />
+      </div>
 
-  {/* Card 1: Sell Intensity (% of remaining each level) */}
-  <label className="block">
-    <span className="text-xs text-slate-300">Sell Intensity</span>
-    <SellDropdown
-      value={sellPct}
-      options={sellPctOptions}
-      onChange={setSellPct}
-      ariaLabel="Select sell intensity"
-      getMeta={sellIntensityMeta}
-    />
-  </label>
-</div>
+      {/* Sell Intensity (% of remaining each level) */}
+      <div className="field">
+        <label>Sell intensity</label>
+        <SellDropdown
+          value={sellPct}
+          options={sellPctOptions}
+          onChange={setSellPct}
+          ariaLabel="Select sell intensity"
+          getMeta={sellIntensityMeta}
+        />
+      </div>
 
-
-      <div className="flex items-center gap-3 pt-1">
-        {/* Match Buy Planner "Save New" button UI */}
+      {/* Generate — same handler, skin button */}
+      <div className="field">
+        <label aria-hidden="true">&nbsp;</label>
         <button
           type="button"
           onClick={onGenerate}
           disabled={busy}
-          className="button disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <span className="button-content">Generate Ladder</span>
+          Generate Ladder
         </button>
       </div>
 
-      {err && <div className="text-xs text-red-300">{err}</div>}
-      {msg && <div className="text-xs text-green-300">{msg}</div>}
+      {(help || err || msg) && (
+        <div className="field" style={{ justifyContent: 'flex-end' }}>
+          {help && <div className="field-hint">{help}</div>}
+          {err && <div className="text-xs text-red-300">{err}</div>}
+          {msg && <div className="text-xs text-green-300">{msg}</div>}
+        </div>
+      )}
     </div>
   )
 }

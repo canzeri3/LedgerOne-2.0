@@ -258,49 +258,45 @@ export default function SellPlannerCombinedCardPlanner({
               role="dialog"
               aria-modal="true"
               aria-labelledby="confirm-sell-delete-title"
-              className="fixed inset-0 z-[110] flex items-center justify-center px-4"
+              className="pl-modal-overlay !z-[110]"
             >
               {/* Backdrop */}
               <button
                 type="button"
                 aria-label="Close delete confirmation"
                 onClick={closeConfirmSellDelete}
-                className="absolute inset-0 bg-black/60"
+                className="absolute inset-0"
               />
 
               {/* Panel */}
-              <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
-                <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
-                  <h2
-                    id="confirm-sell-delete-title"
-                    className="text-sm font-semibold text-slate-100"
-                  >
-                    Delete Sell Planner?
-                  </h2>
-                  <p className="mt-1 text-[12px] text-slate-400">
-                    {selected === 'active'
-                      ? 'This removes the live Sell Planner for this coin. You can restore it later from Audit Log.'
-                      : 'This removes the selected frozen Sell Planner version. You can restore it later from Audit Log.'}
-                  </p>
+              <div className="pl-modal z-10">
+                <div className="pl-modal-icon danger" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14" stroke="currentColor" strokeWidth="2" />
+                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
                 </div>
 
-                <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
+                <h2 id="confirm-sell-delete-title" className="pl-modal-title">
+                  Delete Sell Planner?
+                </h2>
+
+                <p className="pl-modal-body">
                   {selected === 'active'
                     ? 'Deleting the live planner removes the current ladder and stops live planner tracking for this coin.'
                     : 'Deleting the selected frozen planner removes that saved version from History.'}{' '}
                   Any trades you already recorded under this planner will remain saved and visible in your history.
-                  <span className="block mt-2 text-slate-200 font-medium">
-                    You can restore it later from Audit Log.
-                  </span>
-                </div>
+                  <b className="block mt-2">You can restore it later from Audit Log.</b>
+                </p>
 
-
-                <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+                <div className="pl-modal-acts">
                   <button
                     ref={confirmSellDeleteCancelRef}
                     type="button"
                     onClick={closeConfirmSellDelete}
-                    className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+                    className="btn"
                   >
                     Cancel
                   </button>
@@ -308,7 +304,7 @@ export default function SellPlannerCombinedCardPlanner({
                   <button
                     type="button"
                     onClick={confirmSellDelete}
-                    className="rounded px-4 py-2 text-sm font-medium border border-[rgb(88,60,60)] bg-[rgb(44,34,34)] text-slate-100 hover:bg-[rgb(52,38,38)]"
+                    className="btn btn-danger"
                   >
                     Delete
                   </button>
@@ -319,137 +315,88 @@ export default function SellPlannerCombinedCardPlanner({
           )
         : null}
         
-      {/* ───────────────── Header moved to OUTER card via portal ───────────────── */}
-      {historyLength > 0 && (
+      {/* ───────────────── Header moved to OUTER card via portal ─────────────────
+          Always rendered: the Active pill shows even with no saved versions;
+          numbered pills appear only when history exists (labels is empty otherwise). */}
+      {(
 <HeaderPortal ownerKey={pathname}>
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {/* Label (subtle). If you want it always visible, remove 'hidden md:inline'. */}
-            <span className="hidden md:inline text-xs mr-2">
-              {title ?? 'Active & History'}
-            </span>
-
+          <div className="plan-seg-group overflow-x-auto">
             {/* Active tab */}
             <button
               type="button"
               onClick={() => setSelected('active')}
-                     className={[
-                'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
-                selected === 'active'
-                  ? 'bg-white/10 border-white/20'
-                  : 'bg-white/5 hover:bg-white/10 border-white/10',
-                activeHasAlert
-                  ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
-                  : '',
-                // text inherits TEXT_RGB
-              ].join(' ')}
-
+              className={[
+                'plan-seg live-seg',
+                activeHasAlert ? 'alert' : '',
+                selected === 'active' ? 'on' : '',
+              ].join(' ').trim()}
             >
+              <span className="plan-live" aria-hidden="true" />
               Active
             </button>
 
-           {/* Version selectors (numbers only; no "V") */}
-<div className="ml-1 flex items-center gap-1">
-  {labels.map((n) => {
-    const hasAlertForLabel = alertLabels.includes(n)
-    return (
-      <button
-        key={n}
-        type="button"
-        onClick={() => setSelected(n)}
-        className={[
-          'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
-          selected === n
-            ? 'bg-white/10 border-white/20'
-            : 'bg-white/5 hover:bg-white/10 border-white/10',
-              hasAlertForLabel
-            ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
-            : '',
-
-          // text inherits TEXT_RGB
-        ].join(' ')}
-      >
-        {n}
-      </button>
-    )
-  })}
-</div>
-
-
+            {/* Version selectors (numbers only; no "V") */}
+            {labels.map((n) => {
+              const hasAlertForLabel = alertLabels.includes(n)
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSelected(n)}
+                  className={[
+                    'plan-seg plan-num',
+                    hasAlertForLabel ? 'alert' : '',
+                    selected === n ? 'on' : '',
+                  ].join(' ').trim()}
+                >
+                  {n}
+                </button>
+              )
+            })}
           </div>
         </HeaderPortal>
       )}
 
-      {/* ───────────────── Content card WITHOUT its own header ───────────────── */}
-      <Card
-        className={[
-          // Apply global text color to everything inside this card
-          'text-[rgb(204,213,223)]',
-          // Remove gradient & set solid background
-          'bg-none !bg-[rgb(28,29,31)] !from-transparent !to-transparent',
-          // Remove border ring + shadow and hover float
-          '!border-0 !shadow-none !hover:translate-y-0',
-          className || ''
-        ].join(' ')}
-          noHoverLift
-        title={undefined} // prevent inner header; header now lives in outer card
-      >
-        <div className="relative w-full h-full">
-          {/* ── UI-only: DOUBLE-BORDER panel ───────────────────────────────────── */}
-          <div
-            className="rounded-md bg-[rgb(28,29,31)]"
-            style={{ borderStyle: 'solid', borderWidth: '2px', borderColor: 'rgb(49,50,54)' }}
-          >
-            <div
-              className="rounded-md"
-              style={{ borderStyle: 'solid', borderWidth: '6px', borderColor: 'rgb(41,42,45)' }}
-            >
-              <div className="p-2">
-                <div
-                  ref={activeRootRef}
-                  style={{ display: selected === 'active' ? 'block' : 'none', color: TEXT_RGB }}
-                >
-                  {ActiveView}
-                </div>
+      {/* ───────────────── Content (no card chrome — panel provides surface) ───────────────── */}
+      <div className={['relative w-full', className || ''].join(' ')} style={{ color: TEXT_RGB }}>
+        <div
+          ref={activeRootRef}
+          style={{ display: selected === 'active' ? 'block' : 'none', color: TEXT_RGB }}
+        >
+          {ActiveView}
+        </div>
 
-                <div
-                  style={{ display: selected === 'active' ? 'none' : 'block', color: TEXT_RGB }}
-                >
-                  <div ref={historyRootRef} className="space-y-3">
-                    {HistoryView}
-                  </div>
-                </div>
-
-                {canDeleteSelected && (
-                  <div className="mt-3 flex justify-end pt-1">
-                    <button
-                      type="button"
-                      onClick={() => openConfirmSellDelete(handleDeleteSelected)}
-                      className="sell-delete-btn"
-                    >
-                      <span className="button__text">Delete</span>
-                      <span className="button__icon" aria-hidden="true">
-                        <svg className="svg" viewBox="0 0 24 24" fill="none">
-                          <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="2" />
-                          <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      </span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Optional helper – now also uses the same text color */}
-                {hasLivePrice ? (
-                  <div className="mt-2 text-xs" style={{ color: TEXT_RGB }}>
-                    Live price context: ${Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </div>
-                ) : null}
-              </div>
-                          </div>
+        <div style={{ display: selected === 'active' ? 'none' : 'block', color: TEXT_RGB }}>
+          <div ref={historyRootRef} className="space-y-3">
+            {HistoryView}
           </div>
         </div>
-      </Card>
+
+        {canDeleteSelected && (
+          <div className="flex justify-end" style={{ margin: '14px 26px 0' }}>
+            <button
+              type="button"
+              onClick={() => openConfirmSellDelete(handleDeleteSelected)}
+              className="btn btn-danger"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="2" />
+                <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Delete
+            </button>
+          </div>
+        )}
+
+        {/* Optional helper – now also uses the same text color */}
+        {hasLivePrice ? (
+          <div className="text-xs" style={{ margin: '10px 26px 0', color: TEXT_RGB }}>
+            Live price context: ${Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </div>
+        ) : null}
+      </div>
 
       <style jsx>{`
         .sell-delete-btn {

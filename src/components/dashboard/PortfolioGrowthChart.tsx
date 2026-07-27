@@ -3,6 +3,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
 import { useMemo } from 'react'
+import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
 
 type Point = { t: number; v: number }
 
@@ -238,11 +239,13 @@ const gradId = useMemo(() => 'pgfill-' + Math.random().toString(36).slice(2), []
         <YAxis
           domain={[yTicks[0], yTicks[yTicks.length - 1]]}
           ticks={yTicks}
-          tickFormatter={(n: number) =>
-            n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
-            : n >= 1_000 ? `$${(n / 1_000).toFixed(1)}k`
-            : `$${n.toFixed(0)}`
-          }
+          tickFormatter={(n: number) => {
+            const c = usdToDisplay(n)
+            const s = displayCurrencySymbol()
+            return c >= 1_000_000 ? `${s}${(c / 1_000_000).toFixed(1)}M`
+            : c >= 1_000 ? `${s}${(c / 1_000).toFixed(1)}k`
+            : `${s}${c.toFixed(0)}`
+          }}
           tick={{
             fill: 'rgb(163,163,164)',  // axis font color
             fontSize: 11.5,

@@ -7,8 +7,8 @@ import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import ProgressBar from '@/components/common/ProgressBar'
 import { usePrice } from '@/lib/dataCore'
+import SlotPortal from '@/components/planner/SlotPortal'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -303,157 +303,155 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       data-has-alert={activeHasAlert ? '1' : '0'}
       data-active-id={active?.id ?? ''}
     >     
-     {actionableNow.alertRows > 0 && (
-        <div className="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
-            <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.2)]"
-                aria-hidden="true"
-              />
-              Actionable now
-            </span>
+      {/* Panel-head stat pills (display-only; sums of already-fetched values) */}
+      <SlotPortal slotId="sell-phead-stats">
+        <div className="pl-stat">
+          <span className="l">Sold</span>
+          <span className="v" style={{ color: 'var(--pl-ladder-green)' }}>
+            {fmtCurrency(allocated.reduce((s, t, i) => s + t * (lvls[i]?.targetPrice ?? 0), 0))}
+          </span>
+        </div>
+        <div className="pl-stat key">
+          <span className="l">If all hit</span>
+          <span className="v" style={{ color: 'var(--pl-text)' }}>
+            {fmtCurrency(rows.reduce((s, r) => s + r.plannedUsd, 0))}
+          </span>
+        </div>
+      </SlotPortal>
 
-            <span className="text-yellow-200/80">•</span>
+      {actionableNow.alertRows > 0 && (
+        <div className="pl-banner">
+          <span className="dot" aria-hidden="true" />
+          <b className="alert-txt">Actionable now</b>
 
-            <span className="text-slate-200">
-              <span className="tabular-nums">{actionableNow.alertRows}</span>{' '}
-              {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
-            </span>
+          <span className="sep">·</span>
 
-            <span className="text-slate-500">·</span>
+          <span>
+            <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
+            {actionableNow.alertRows === 1 ? 'row' : 'rows'}
+          </span>
 
-            <span className="text-slate-200 tabular-nums">
-              {actionableNow.remainingTokens.toFixed(6)} coins
-            </span>
+          <span className="sep">·</span>
 
-            <span className="text-slate-500">·</span>
+          <span>
+            Sell <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b> coins ≈{' '}
+            <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
+          </span>
 
-            <span className="text-slate-200">
-              <span className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</span>{' '}
-              <span className="text-slate-400">remaining</span>
-            </span>
-
-            {actionableNow.lowestAlertPrice !== null && (
-              <>
-                <span className="text-slate-500">·</span>
-                <span className="text-slate-200">
-                  lowest alerted target{' '}
-                  <span className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</span>
-                </span>
-              </>
-            )}
-          </div>
+          {actionableNow.lowestAlertPrice !== null && (
+            <>
+              <span className="sep">@</span>
+              <span>
+                <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+              </span>
+            </>
+          )}
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
-        <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-sell-planner>
-          <thead className="text-[rgba(237, 237, 237, 1)]">
-            <tr>
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Lvl</span>
-                  <Layers className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
+      <div className="pl-ladder flex-1">
+        <div className="ldr-scroll">
+          <table className="ldr" data-sell-planner>
+            <thead>
+              <tr>
+                <th>
+                  <span className="th-l">
+                    Lvl <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
 
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Target</span>
-                  <Target className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
+                <th>
+                  <span className="th-l">
+                    Target <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
 
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Planned</span>
-                  <Coins className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Planned <Coins className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
 
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Planned</span>
-                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Planned <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
 
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Missing</span>
-                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Missing <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
 
-              <th className="w-1/6 px-3 py-2 text-right">
-                <span className="inline-flex w-full items-center justify-end gap-1">
-                  <span>Progress</span>
-                  <TrendingUp className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
-            </tr>
+                <th className="r">
+                  <span className="th-l">
+                    Progress <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const green = r.pct >= 0.97
+                const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+                // YELLOW when live price is anywhere from 1.5% below the level or anything above it
+                const yellow =
+                  !green &&
+                  hasLive &&
+                  r.targetPrice > 0 &&
+                  (livePrice as number) >= r.targetPrice * 0.985
 
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const green = r.pct >= 0.97
-              const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
-              // YELLOW when live price is anywhere from 1.5% below the level or anything above it
-              const yellow =
-                !green &&
-                hasLive &&
-                r.targetPrice > 0 &&
-                (livePrice as number) >= r.targetPrice * 0.985
+                const rowClass = green ? 'done' : yellow ? 'alert' : ''
 
-              const rowClass = green
-                ? 'text-[rgb(121,171,89)]'
-                : yellow
-                ? 'text-[rgb(207,180,45)]'
-                : ''
-
-              return (
-                <tr key={i} className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}>
-                  <td className="px-3 py-2">{r.level}</td>
-                  <td className="px-3 py-2">{fmtCurrency(r.targetPrice)}</td>
-                  <td className="px-3 py-2">{r.plannedTokens.toFixed(6)}</td>
-                  <td className="px-3 py-2">{fmtCurrency(r.plannedUsd)}</td>
-                  <td className="px-3 py-2">{fmtCurrency(r.missingUsd)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end items-center gap-2">
-                      <div className="w-40"><ProgressBar pct={r.pct} /></div>
-                      <span className="w-10 text-right tabular-nums">
-                        {Math.round(r.pct * 100)}%
+                return (
+                  <tr key={i} className={rowClass}>
+                    <td className="lvl"><span className="ix">{r.level}</span></td>
+                    <td className="tgt">{fmtCurrency(r.targetPrice)}</td>
+                    <td className="num coins">{r.plannedTokens.toFixed(6)}</td>
+                    <td className="num amt">{fmtCurrency(r.plannedUsd)}</td>
+                    <td className="num amt">{fmtCurrency(r.missingUsd)}</td>
+                    <td>
+                      <div className="ldr-prog">
+                        <div className="ldr-prog-track">
+                          <div
+                            className="ldr-prog-fill"
+                            style={{ width: `${(r.pct * 100).toFixed(2)}%` }}
+                          />
+                        </div>
+                        <span className="ldr-prog-pct">
+                          {Math.round(r.pct * 100)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={6}>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-2">
+                      <span className="ft-lbl" style={{ margin: 0 }}>Total planned</span>
+                      <span className="ft-v">{rows.reduce((s, r) => s + r.plannedTokens, 0).toFixed(6)}</span>
+                      <span className="ft-sep" style={{ margin: 0 }}>/</span>
+                      <span className="ft-v">
+                        {fmtCurrency(rows.reduce((s, r) => s + r.plannedUsd, 0))}
                       </span>
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-[rgb(51,52,54)]">
-              <td colSpan={6} className="px-3 py-3">
-                <div className="flex items-center justify-between text-slate-400 text-xs">
-                  <div className="inline-flex items-center gap-2">
-                    <span>Total planned</span>
-                    <span className="tabular-nums">{rows.reduce((s, r) => s + r.plannedTokens, 0).toFixed(6)}</span>
-                    <span className="text-slate-600">/</span>
-                    <span className="tabular-nums">
-                      {fmtCurrency(rows.reduce((s, r) => s + r.plannedUsd, 0))}
-                    </span>
+                    <div className="inline-flex items-center gap-2">
+                      <span className="ft-off" style={{ margin: 0 }}>Off-Plan</span>
+                      <span className="ft-m">{/* placeholder */}{(0).toFixed(6)}</span>
+                      <span className="ft-sep" style={{ margin: 0 }}>/</span>
+                      <span className="ft-m">{fmtCurrency(0)}</span>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-2 text-xs text-slate-400">
-                    <span className="text-amber-300">Off-Plan</span>
-                    <span className="tabular-nums">{/* placeholder */}{(0).toFixed(6)}</span>
-                    <span className="text-slate-600">/</span>
-                    <span className="tabular-nums">{fmtCurrency(0)}</span>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Settings as SettingsIcon, Eye, EyeOff, Menu, X } from 'lucide-react'
+import { Eye, EyeOff, Menu, X } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import AuthButton from '@/components/auth/AuthButton'
 // TS NOTE: Sidebar is default-exported at runtime but TS complains about the default export.
@@ -12,21 +12,27 @@ import Sidebar from '@/components/common/Sidebar'
 import AuthListener from '@/components/auth/AuthListener'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import HeaderCalculator from '@/components/common/HeaderCalculator'
-import HeaderCurrencyConverter from '@/components/common/HeaderCurrencyConverter'
+import HeaderCurrencySwitcher from '@/components/common/HeaderCurrencySwitcher'
+import ThemeToggle from '@/components/common/ThemeToggle'
+import { CurrencyRemount, DisplayCurrencyProvider } from '@/lib/displayCurrency'
 import SWRRouteCover from '@/components/common/SWRRouteCover'
 
 
-// Deep page background (rich-black, very deep blue) — in-app routes
-const PAGE_BG = 'rgb(19,20,21)'
+// Deep page background (rich-black, very deep blue) — in-app routes.
+// Shell colors resolve through CSS variables so the light theme
+// (html[data-theme="light"], see theme-light.css) can retint the chrome;
+// the fallbacks are the original dark values, so dark mode is unchanged.
+const PAGE_BG = 'var(--sh-page-bg, rgb(19,20,21))'
 // Marketing page background — matches design token --color-bg-base: #0D0E14
 const MARKETING_BG = '#0D0E14'
 // Semi-opaque surfaces
-const SIDEBAR_BG = 'rgb(31,32,33)'
-const HEADER_BG = 'rgb(19,20,21)'
+const SIDEBAR_BG = 'var(--sh-sidebar-bg, rgb(31,32,33))'
+const SIDEBAR_FG = 'var(--sh-sidebar-fg, rgb(188,189,189))'
+const HEADER_BG = 'var(--sh-header-bg, rgb(19,20,21))'
 // Border tone when scrolled
-const BORDER_SCROLL = 'rgb(43,44,45)'
+const BORDER_SCROLL = 'var(--sh-border-scroll, rgb(43,44,45))'
 // Glow tone (downward only) when scrolled — very dark
-const GLOW_SCROLL = 'rgb(20,21,22)'
+const GLOW_SCROLL = 'var(--sh-glow-scroll, rgb(20,21,22))'
 
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -49,8 +55,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [])
 
    const pathname = usePathname()
-  const MARKETING_ROUTES = new Set(['/', '/platform', '/use-cases', '/pricing', '/contact'])
+  const MARKETING_ROUTES = new Set(['/', '/platform', '/how-it-works', '/use-cases', '/pricing', '/contact'])
   const isLanding = MARKETING_ROUTES.has(pathname)
+
+  // Page title shown on the left of the in-app header (one per route)
+  const pageTitle = (() => {
+    const p = (pathname ?? '').split('?')[0]
+    if (p === '/dashboard') return 'Dashboard'
+    if (p.startsWith('/planner')) return 'Planner'
+    if (p.startsWith('/portfolio')) return 'Portfolio'
+    if (p.startsWith('/audit')) return 'Audit Log'
+    if (p.startsWith('/coins')) return 'Coins'
+    if (p.startsWith('/settings')) return 'Settings'
+    if (p.startsWith('/csv')) return 'CSV'
+    if (p.startsWith('/how-to')) return 'How to Use'
+    if (p.startsWith('/admin')) return 'Admin'
+    const seg = p.split('/').filter(Boolean)[0]
+    return seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : ''
+  })()
   const isMergedLanding = isLanding
   const toggleAmountsHidden = () => {
     const next = !amountsHidden
@@ -164,7 +186,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     const maskMoney = (s: string) => {
       // matches "$1,234.56", "-$185.71", "$0", "$12.3" etc.
-      return s.replace(/-?\$[\d,]+(?:\.\d+)?/g, '***')
+      return s.replace(/-?[$€][\d,]+(?:\.\d+)?/g, '***')
     }
 
     const maskTextNode = (tn: Text) => {
@@ -272,7 +294,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
   }, [isMobileNavOpen])
 
+  // Auth pages render bare — no sidebar, no header, no marketing nav. They supply their
+  // own full-screen background. AuthListener still mounts so cookie/session sync keeps working.
+  const p0 = (pathname ?? '').split('?')[0]
+  const isBareAuth = p0 === '/login' || p0 === '/signup' || p0.startsWith('/auth')
+  if (isBareAuth) {
+    return (
+      <DisplayCurrencyProvider>
+        <AuthListener />
+        {children}
+      </DisplayCurrencyProvider>
+    )
+  }
+
   return (
+    <DisplayCurrencyProvider>
     <div className="min-h-screen text-slate-100" style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}>
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
@@ -300,7 +336,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               className="flex h-full flex-col overflow-hidden border-r border-[rgb(43,44,45)] backdrop-blur-md shadow-2xl shadow-black/50"
               style={{
                 backgroundColor: SIDEBAR_BG,
-                color: 'rgb(188,189,189)',
+                color: SIDEBAR_FG,
               }}
             >
               <div className="flex items-center justify-between px-4 py-3">
@@ -330,18 +366,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
       )}
 
       {/* Sticky sidebar + independent scrolling main column */}
-      <div className="grid grid-cols-12">
+      <div className="grid grid-cols-[repeat(96,minmax(0,1fr))]">
 
         {/* Sticky, full-height sidebar (independent of page scroll) */}
            <aside
           className={
             isLanding
               ? 'hidden'
-              : 'hidden md:col-span-3 md:block lg:col-span-2 sticky top-0 h-[100dvh] backdrop-blur-md ring-0 shadow-none z-50'
+              : 'hidden md:block md:col-[span_24/span_24] lg:col-[span_19/span_19] sticky top-0 h-[100dvh] backdrop-blur-md ring-0 shadow-none z-50'
           }
           style={{
             backgroundColor: SIDEBAR_BG,
-            color: 'rgb(188,189,189)',
+            color: SIDEBAR_FG,
             borderRight: 'none',
             boxShadow: 'none',
           }}
@@ -353,8 +389,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div
           className={
             isLanding
-              ? 'col-span-12 min-h-screen flex flex-col'
-              : 'col-span-12 md:col-span-9 lg:col-span-10 min-h-screen flex flex-col -ml-px'
+              ? 'col-span-full min-h-screen flex flex-col'
+              : 'col-span-full md:col-[span_72/span_72] lg:col-[span_77/span_77] min-h-screen flex flex-col -ml-px'
           }
         >
           {/* Semi-opaque header */}
@@ -406,8 +442,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <nav className="hidden md:flex flex-none items-center justify-center gap-8">
                     {([
                       { href: '/', label: 'Home' },
+                      { href: '/how-it-works', label: 'How It Works' },
                       { href: '/platform', label: 'Platform' },
-                      { href: '/use-cases', label: 'Use cases' },
                       { href: '/contact', label: 'Contact' },
                     ] as const).map(({ href, label }) => (
                       <Link
@@ -475,8 +511,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   >
                     {([
                       { href: '/', label: 'Home' },
+                      { href: '/how-it-works', label: 'How It Works' },
                       { href: '/platform', label: 'Platform' },
-                      { href: '/use-cases', label: 'Use cases' },
                       { href: '/contact', label: 'Contact' },
                     ] as const).map(({ href, label }) => (
                       <Link
@@ -499,9 +535,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </>
             ) : (
               // Default in-app header (logo left, alerts + settings + auth right)
-              <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+              <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:gap-3 sm:px-4">
                 {/* Left: mobile nav trigger + logo slot for in-app views */}
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsMobileNavOpen(true)}
@@ -520,10 +556,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   >
                     {/* In-app logo intentionally omitted (existing behavior preserved) */}
                   </Link>
+
+                  {/* Page title (left side, per route) */}
+                  {pageTitle ? (
+                    <h1 className="truncate text-[17px] font-semibold tracking-tight text-slate-100">
+                      {pageTitle}
+                    </h1>
+                  ) : null}
                 </div>
 
                 {/* Right: alerts, settings, auth */}
-                <div className="flex items-center justify-end gap-3">
+                <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-3">
                   
                   {/* Alerts in header – same logic as dashboard, styled via data-header-alerts + header-has-alerts */}
                   <div
@@ -540,8 +583,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     />
                   </div>
 
-                  <HeaderCalculator />
-                  <HeaderCurrencyConverter />
+                  <HeaderCurrencySwitcher />
+                  {/* Calculator is a secondary tool — hide on the smallest screens to avoid header overflow */}
+                  <div className="hidden sm:inline-flex">
+                    <HeaderCalculator />
+                  </div>
+
+                  {/* Theme toggle – switch between light and dark mode */}
+                  <ThemeToggle />
 
                   {/* Settings gear – icon only (no circle) */}
                                                       {/* Privacy toggle – mask on-screen currency amounts */}
@@ -559,14 +608,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     )}
                   </button>
 
-                  <Link
-                    href="/settings"
-                    aria-label="Settings & preferences"
-                    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
-                  >
-                    <SettingsIcon className="h-4 w-4 text-slate-200" />
-                  </Link>
-
                   {/* Force the user email button bg + border to rgb(19,20,21) */}
                   {/* @ts-ignore */}
                   <AuthButton className="bg-[rgb(19,20,21)] border border-[rgb(19,20,21)]" />
@@ -577,13 +618,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
                  {/* Scrollable page content */}
           <main
+            id="l1-app-main"
             className={
               isLanding
                 ? 'flex-1 w-full p-0'
                 : 'flex-1 mx-auto w-full px-4 md:px-6 py-4'
             }
           >
-            {children}
+            <CurrencyRemount>{children}</CurrencyRemount>
           </main>
     </div>
   </div>
@@ -591,7 +633,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   {/* Keeps the cover visible until SWR-backed components finish loading for the new route */}
   <SWRRouteCover />
 </div>
-
+    </DisplayCurrencyProvider>
   )
 }
 

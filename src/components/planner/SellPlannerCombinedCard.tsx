@@ -4,7 +4,7 @@ import { mutate as globalMutate } from 'swr'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { usePrice } from '@/lib/dataCore'
 import { usePathname } from 'next/navigation'
-import Card from '@/components/ui/Card'
+import SlotPortal from '@/components/planner/SlotPortal'
 import { deleteSellPlannerWithAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -126,8 +126,6 @@ export default function SellPlannerCombinedCard({
     return newestFirst ? (N - label + 1) : label
   }, [selected, historyLength, newestFirst])
 
-  const canDeleteSelected = selected === 'active' ? !!activePlannerId : !!nthIndex
-
   useEffect(() => {
 
     const root = historyRootRef.current
@@ -169,56 +167,44 @@ export default function SellPlannerCombinedCard({
 
   return (
     <>
-      <Card
-        title={title}
-        headerRight={
-          historyLength > 0 ? (
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setSelected('active')}
-                className={[
-                  'shrink-0 rounded-full px-3 py-1 text-xs border transition-colors',
-                  selected === 'active'
-                    ? 'bg-white/15 text-white border-white/20'
-                    : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
-                  activeHasAlert
-                    ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
-                    : '',
-                ].join(' ')}
-              >
-                Active
-              </button>
-             {labels.map((n) => {
-  const hasAlertForLabel = alertLabels.includes(n)
-  return (
-    <button
-      key={n}
-      type="button"
-      onClick={() => setSelected(n)}
-      className={[
-        'shrink-0 rounded-full px-2.5 py-1 text-xs min-w-8 text-center border transition-colors',
-        selected === n
-          ? 'bg-white/15 text-white border-white/20'
-          : 'bg-white/5 text-slate-200 hover:bg-white/10 border-white/10',
-               hasAlertForLabel
-          ? 'border-[rgb(242,205,73)] !border-[rgb(242,205,73)] text-[rgb(242,205,73)] !text-[rgb(242,205,73)]'
-          : '',
+      {/* Plan switcher pills — rendered into the coin panel head (display-only placement) */}
+      {historyLength > 0 && (
+        <SlotPortal slotId="coin-sell-plans">
+          <div className="plan-seg-group overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setSelected('active')}
+              className={[
+                'plan-seg live-seg',
+                activeHasAlert ? 'alert' : '',
+                selected === 'active' ? 'on' : '',
+              ].join(' ').trim()}
+            >
+              <span className="plan-live" aria-hidden="true" />
+              Active
+            </button>
+            {labels.map((n) => {
+              const hasAlertForLabel = alertLabels.includes(n)
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSelected(n)}
+                  className={[
+                    'plan-seg plan-num',
+                    hasAlertForLabel ? 'alert' : '',
+                    selected === n ? 'on' : '',
+                  ].join(' ').trim()}
+                >
+                  {n}
+                </button>
+              )
+            })}
+          </div>
+        </SlotPortal>
+      )}
 
-      ].join(' ')}
-    >
-      {n}
-    </button>
-  )
-})}
-
-
-            </div>
-
-          ) : undefined
-        }
-        className={className}
-      >
+      <div className={['relative w-full', className || ''].join(' ')}>
         <div className="relative w-full h-full">
           <div ref={activeRootRef} style={{ display: selected === 'active' ? 'block' : 'none' }}>
             {ActiveView}
@@ -230,27 +216,8 @@ export default function SellPlannerCombinedCard({
             </div>
           </div>
 
-          {canDeleteSelected && (
-            <div className="flex justify-end pt-3 pb-1">
-              <button
-                type="button"
-                onClick={handleDeleteSelected}
-                className="sell-delete-btn"
-              >
-                <span className="button__text">Delete</span>
-                <span className="button__icon" aria-hidden="true">
-                  <svg className="svg" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </span>
-              </button>
-            </div>
-            )}
         </div>
-      </Card>
+      </div>
 
       <style jsx>{`
         .sell-delete-btn {

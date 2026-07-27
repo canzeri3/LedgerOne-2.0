@@ -37,11 +37,28 @@ function coinColor(idOrSymbol: string): string {
   return map[k] ?? map.default
 }
 
+/** Display-only: turn slug/ALL-CAPS names ("bitcoin", "ETHEREUM") into Title Case ("Bitcoin").
+ *  Names that already have mixed case (e.g. "USD Coin") pass through untouched. */
+function normalizeAssetName(raw: string): string {
+  const s = (raw || '').trim()
+  if (!s) return s
+  const isSlugLike = /^[a-z0-9-]+$/.test(s)
+  const isAllCaps = s === s.toUpperCase() && /[A-Z]/.test(s)
+  if (!isSlugLike && !isAllCaps) return s
+  return s
+    .toLowerCase()
+    .replace(/-/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
 /** Mini progress bar with coin color (compact). */
 function MiniProgress({ pct, color }: { pct: number; color: string }) {
   const clamped = Math.max(0, Math.min(1, pct || 0))
   return (
-    <div className="h-1.5 rounded-full bg-[rgb(56,57,60)] w-full overflow-hidden">
+    <div className="h-[3px] rounded-full bg-[rgb(41,42,45)] w-full overflow-hidden">
       <div
         className="h-full rounded-full"
         style={{ width: `${(clamped * 100).toFixed(2)}%`, backgroundColor: color }}
@@ -104,13 +121,13 @@ export default function PortfolioHoldingsTable({ coinIds, historiesMapLive, trad
       <table className="w-full min-w-[860px] text-left border-collapse table-fixed text-[14px]">
         <colgroup><col style={{width:'22ch'}}/><col style={{width:'16ch'}}/><col/><col style={{width:'16ch'}}/><col style={{width:'22ch'}}/></colgroup>
         
-        <thead className="border-y border-y-[rgb(41,42,45)] bg-[rgb(32,33,35)]">
-          <tr className="text-slate-300 text-[12px] uppercase tracking-wide">
-            <th className="px-3 py-2 font-medium">Asset</th>
-            <th className="px-3 py-2 font-medium text-left">Price</th>
-            <th className="px-3 py-2 font-medium text-center">Allocation</th>
-            <th className="px-3 py-2 font-medium text-right">Amount</th>
-            <th className="px-3 py-2 font-medium text-right">Value</th>
+        <thead className="border-b border-b-[rgb(41,42,45)]">
+          <tr className="text-slate-500 text-[11px] uppercase tracking-[0.09em]">
+            <th className="px-5 py-2.5 font-semibold md:px-6">Asset</th>
+            <th className="px-5 py-2.5 font-semibold text-right md:px-6">Price</th>
+            <th className="px-5 py-2.5 font-semibold text-left md:px-6">Allocation</th>
+            <th className="px-5 py-2.5 font-semibold text-right md:px-6">Amount</th>
+            <th className="px-5 py-2.5 font-semibold text-right md:px-6">Value</th>
           </tr>
         </thead>
 
@@ -136,48 +153,48 @@ export default function PortfolioHoldingsTable({ coinIds, historiesMapLive, trad
                 onKeyDown={onKey}
                 className={`outline-none cursor-pointer transition-colors duration-150
                   ${idx % 2 ? 'bg-[rgb(32,33,35)]' : ''}
-                  hover:bg-[rgb(19,20,21)] focus:bg-[rgb(19,20,21)]`}
+                  hover:bg-[rgb(38,39,42)] focus:bg-[rgb(38,39,42)]`}
                 aria-label={`Open ${r.name} details`}
               >
                 {/* ASSET */}
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <CoinLogo symbol={r.symbol} name={r.name} className="h-6 w-6 flex-none" />
+                <td className="px-5 py-3.5 md:px-6">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <CoinLogo symbol={r.symbol} name={r.name} className="h-7 w-7 flex-none" />
                     <div className="flex flex-col leading-tight min-w-0">
                       {/* Keeping the link for SEO and standard behavior; row click also navigates */}
                       <Link
                         href={`/coins/${r.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="text-[14px] font-semibold text-slate-100 hover:underline truncate"
-                        title={r.name}
+                        title={normalizeAssetName(r.name)}
                       >
-                        {r.name}
+                        {normalizeAssetName(r.name)}
                       </Link>
-                      <span className="text-[11px] text-slate-400 uppercase">{r.symbol}</span>
+                      <span className="text-[11px] tracking-[0.05em] text-slate-500 uppercase">{r.symbol}</span>
                     </div>
                   </div>
                 </td>
 
                 {/* PRICE */}
-                <td className="px-3 py-2 whitespace-nowrap text-[rgb(157,158,159)] text-left">
+                <td className="px-5 py-3.5 whitespace-nowrap text-right tabular-nums text-[rgb(157,158,159)] md:px-6">
                   {r.price != null ? fmtCurrency(r.price) : '—'}
                 </td>
 
-                {/* ALLOCATION (centered exactly; % snug to bar) */}
-                <td className="px-3 py-2 text-center">
-                  <div className="flex items-center justify-center gap-0">
-                    <span className="text-slate-300 text-[13px] leading-none mr-[2px]">
+                {/* ALLOCATION (pct snug to bar) */}
+                <td className="px-5 py-3.5 md:px-6">
+                  <div className="flex items-center gap-3 min-w-[200px]">
+                    <span className="w-[52px] flex-none text-right text-[12.5px] tabular-nums text-slate-300">
                       {fmtPct(pct)}
                     </span>
-                    <div className="w-40 md:w-56 max-w-full">
+                    <div className="flex-1">
                       <MiniProgress pct={pct} color={color} />
                     </div>
                   </div>
                 </td>
 
                 {/* AMOUNT (fixed position right edge, with space before ticker) */}
-                <td className="px-3 py-2">
-                  <div className="w-[16ch] ml-auto text-right whitespace-nowrap tabular-nums">
+                <td className="px-5 py-3.5 md:px-6">
+                  <div className="w-[16ch] ml-auto text-right whitespace-nowrap tabular-nums text-slate-400">
                     {Number.isFinite(r.amount)
                       ? `${r.amount.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${r.symbol}`
                       : '—'}
@@ -185,7 +202,7 @@ export default function PortfolioHoldingsTable({ coinIds, historiesMapLive, trad
                 </td>
 
                 {/* VALUE */}
-                <td className="px-3 py-2 text-right whitespace-nowrap">
+                <td className="px-5 py-3.5 text-right whitespace-nowrap tabular-nums text-slate-100 md:px-6">
                   {fmtCurrency(r.value)}
                 </td>
               </tr>

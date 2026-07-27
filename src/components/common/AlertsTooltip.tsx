@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -112,6 +113,10 @@ export function AlertsTooltip({
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const closeTimer = useRef<number | null>(null)
+
+  // Enter/exit animation: keep the panel mounted through the close transition so
+  // it can retract smoothly (the CSS "easeReverse").
+  const { mounted: render, shown } = useMenuTransition(open)
 
   const openNow = () => {
     if (closeTimer.current) {
@@ -631,7 +636,7 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
       <button
         className={[
           "relative px-4 py-2 text-xs font-semibold text-slate-200/90 rounded-md bg-[rgb(34,35,39)] hover:bg-[rgb(25,26,28)] ring-1 focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/40 transition-all duration-300 overflow-hidden inline-flex items-center gap-2",
-          "ring-slate-600/40",
+          hasAlerts ? "ring-yellow-400/60" : "ring-slate-600/40",
         ].join(" ")}
         type="button"
         aria-haspopup="true"
@@ -668,11 +673,14 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
       </button>
 
       {/* Panel */}
-      {open && (
+      {render && (
         <div
           role="dialog"
           aria-label="Alerts"
-          className="absolute right-0 z-50 mt-2 w-[260px] rounded-lg bg-[rgb(42,44,49)] ring-1 ring-slate-700/40 shadow-2xl p-2"
+          className={[
+            "hdr-pop absolute right-0 z-50 mt-2 w-[260px] rounded-lg bg-[rgb(42,44,49)] ring-1 ring-slate-700/40 shadow-2xl p-2",
+            shown ? "is-open" : "",
+          ].join(" ")}
           onPointerEnter={openNow}
           onPointerLeave={(e) => scheduleClose(e)}
         >
@@ -706,7 +714,7 @@ href={
 
 
   prefetch
-  className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
+  className="hdr-pop-item flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
   onPointerEnter={openNow} /* keeps tooltip open while moving toward it */
   onFocus={openNow}
 >

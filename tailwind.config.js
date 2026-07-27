@@ -9,6 +9,9 @@ const config: Config = {
       fontFamily: {
         // Make `font-sans` resolve to Inter first (from next/font via --font-inter)
         sans: ['var(--font-inter)', ...defaultTheme.fontFamily.sans],
+        // App design-system fonts: `font-display` = Sora, `font-plex` = IBM Plex Sans
+        display: ['var(--font-sora)', ...defaultTheme.fontFamily.sans],
+        plex: ['var(--font-plex)', ...defaultTheme.fontFamily.sans],
       },
     },
   },

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { L1Nightsky, L1Grain, L1Icon, L1ClosingCTA, L1Footer } from '@/components/ledgerone'
+import { L1Nightsky, L1Grain, L1ClosingCTA, L1Footer } from '@/components/ledgerone'
 
 /* ---- Shared ---- */
 function SectionHead({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) {
@@ -34,11 +34,7 @@ function PlatformHeader() {
             <h1>Your allocation engine, configured to you.</h1>
           </div>
           <div className="l1-lead-col">
-            <img
-              className="l1-floating-icon"
-              src="/app-icon-clean.png"
-              alt="LedgerOne"
-            />
+            <img className="l1-floating-icon" src="/app-icon-clean.png" alt="LedgerOne" />
             <p className="lead">
               LedgerOne&apos;s engine translates your parameters into a fully
               automated systematic framework — across any supported digital
@@ -52,12 +48,11 @@ function PlatformHeader() {
 }
 
 /* ---- Tab preview components ---- */
-const GREEN = '#3ECFA4'
-const RED = '#E2604E'
-const AMBER = '#EFC435'
-const PURP = '#9B8BFF'
 
+/* 01 · Capital ledger */
 function PrevLedger() {
+  const GREEN = '#3ECFA4'
+  const RED = '#E2604E'
   const groups = [
     { date: '5/31/2026', txns: [{ side: 'Sell', coin: 'ETHEREUM', qty: '4', price: '$3,000.00', total: '-$12,000.00' }] },
     { date: '5/23/2026', txns: [
@@ -67,14 +62,20 @@ function PrevLedger() {
     ]},
     { date: '3/8/2026', txns: [{ side: 'Buy', coin: 'BITCOIN', qty: '0.05427809', price: '$74,864.10', total: '+$4,063.48' }] },
   ]
+  const Chip = ({ label, caret }: { label: string; caret?: boolean }) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 10px', whiteSpace: 'nowrap', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--color-text-secondary)' }}>
+      {label}{caret && <span style={{ color: 'var(--color-text-muted)', fontSize: 9 }}>▾</span>}
+    </span>
+  )
   const cols = '58px 1fr 86px 96px'
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--color-text-primary)' }}>Transactions</div>
         <div style={{ display: 'flex', gap: 7 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 10px', whiteSpace: 'nowrap', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--color-text-secondary)' }}>All coins <span style={{ color: 'var(--color-text-muted)', fontSize: 9 }}>▾</span></span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 10px', whiteSpace: 'nowrap', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--color-text-secondary)' }}>Date <span style={{ color: 'var(--color-text-muted)', fontSize: 9 }}>▾</span></span>
+          <Chip label="All coins" caret />
+          <Chip label="Date" caret />
+          <span style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', padding: '5px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--color-text-muted)' }}>8 shown</span>
         </div>
       </div>
       <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 2, overflow: 'hidden' }}>
@@ -92,10 +93,10 @@ function PrevLedger() {
                 <div key={ti} style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: last ? 'none' : '1px solid var(--color-border)' }}>
                   <span style={{ justifySelf: 'start', padding: '3px 11px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, color: c, background: buy ? 'rgba(62,207,164,0.10)' : 'rgba(226,96,78,0.10)', border: `1px solid ${buy ? 'rgba(62,207,164,0.32)' : 'rgba(226,96,78,0.34)'}` }}>{t.side}</span>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--color-text-primary)' }}>{t.coin}</div>
+                    <div style={{ fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--color-text-primary)', letterSpacing: '0.01em' }}>{t.coin}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 3 }}>@ {t.price}</div>
                   </div>
-                  <span style={{ textAlign: 'right' as const, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>{t.qty}</span>
+                  <span style={{ textAlign: 'right' as const, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.qty}</span>
                   <span style={{ textAlign: 'right' as const, fontFamily: 'var(--font-mono)', fontSize: 12.5, color: c, whiteSpace: 'nowrap' }}>{t.total}</span>
                 </div>
               )
@@ -107,96 +108,174 @@ function PrevLedger() {
   )
 }
 
+/* 02 · Allocation framework */
 function PrevAllocation() {
+  const GREEN = '#3ECFA4'
+  const AMBER = '#EFC435'
   const rows = [
-    { lvl: 1, target: '$1,049.37', missing: '$4,440.97', act: true },
-    { lvl: 2, target: '$918.20', missing: '$5,551.21', act: true },
-    { lvl: 3, target: '$787.03', missing: '$6,939.02', act: true },
-    { lvl: 4, target: '$655.86', missing: '$8,673.77', act: false },
-    { lvl: 5, target: '$524.69', missing: '$10,842.22', act: false },
-    { lvl: 6, target: '$393.51', missing: '$13,552.81', act: false },
+    { lvl: '1', target: '$3,863.38', planned: '$4,440.97', missing: '$0.0000', pct: '100%', fill: '100%', state: 'done' },
+    { lvl: '2', target: '$3,380.46', planned: '$5,551.21', missing: '$0.0000', pct: '100%', fill: '100%', state: 'done' },
+    { lvl: '3', target: '$2,897.54', planned: '$6,939.02', missing: '$0.0000', pct: '100%', fill: '100%', state: 'done' },
+    { lvl: '4', target: '$2,414.61', planned: '$8,673.77', missing: '$0.0000', pct: '100%', fill: '100%', state: 'done' },
+    { lvl: '5', target: '$1,931.69', planned: '$10,842.22', missing: '$9,447.19', pct: '13%', fill: '13%', state: 'alert' },
+    { lvl: '6', target: '$1,448.77', planned: '$13,552.81', missing: '$13,552.81', pct: '0%', fill: '0%', state: '' },
   ]
-  const cols = '30px 1fr 1fr 78px'
+  const tone = (s: string) => (s === 'done' ? GREEN : s === 'alert' ? AMBER : 'var(--color-text-primary)')
+  const ixBorder = (s: string) => (s === 'done' ? 'rgba(62,207,164,0.45)' : s === 'alert' ? 'rgba(239,196,53,0.45)' : 'var(--color-border)')
+  const cols = '46px minmax(86px,1fr) minmax(92px,1fr) minmax(92px,1fr) 120px'
+  const th: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }
+  const numCell: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 12.5, fontVariantNumeric: 'tabular-nums', textAlign: 'right', whiteSpace: 'nowrap' }
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 12px', padding: '13px 16px', marginBottom: 16, border: `1px solid rgba(239,196,53,0.32)`, background: 'rgba(239,196,53,0.05)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 12px', padding: '13px 16px', marginBottom: 16, border: '1px solid rgba(239,196,53,0.32)', background: 'rgba(239,196,53,0.05)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', color: AMBER }}><span style={{ width: 6, height: 6, borderRadius: 999, background: AMBER, boxShadow: `0 0 8px ${AMBER}` }} />Actionable now</span>
         <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>3 alert rows</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>1 alert row</span>
         <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>$16,931.20 <span style={{ color: 'var(--color-text-muted)' }}>remaining</span></span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}><b style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>$9,447.19</b> remaining</span>
+        <span style={{ color: 'var(--color-text-muted)' }}>@</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>Price: <b style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>$1,931.69</b></span>
       </div>
-      <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 2, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '11px 16px', borderBottom: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)', fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--color-text-muted)' }}>
-          <span>Lvl</span><span>Target</span><span>Missing $</span><span style={{ textAlign: 'right' as const }}>Progress</span>
-        </div>
-        {rows.map((r, i) => {
-          const c = r.act ? AMBER : 'var(--color-text-primary)'
-          return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: c }}>{r.lvl}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: c }}>{r.target}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: c }}>{r.missing}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' as const }}>
-                <div style={{ width: 38, height: 4, borderRadius: 999, background: 'var(--color-bg-elevated)' }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: r.act ? AMBER : 'var(--color-text-muted)', minWidth: 24, textAlign: 'right' as const }}>0%</span>
+      <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 2, overflowX: 'auto' }}>
+        <div style={{ minWidth: 440 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '13px 18px 11px', borderBottom: '1px solid var(--color-border)' }}>
+            <span style={th}>Lvl</span>
+            <span style={th}>Target</span>
+            <span style={{ ...th, textAlign: 'right' }}>Planned $</span>
+            <span style={{ ...th, textAlign: 'right' }}>Missing $</span>
+            <span style={{ ...th, textAlign: 'right' }}>Progress</span>
+          </div>
+          {rows.map((r, i) => {
+            const c = tone(r.state)
+            return (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, alignItems: 'center', padding: '0 18px', height: 44, borderBottom: '1px solid var(--color-border)', background: i % 2 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                <span style={{ display: 'inline-grid', placeItems: 'center', minWidth: 26, height: 22, padding: '0 6px', justifySelf: 'start', fontFamily: 'var(--font-mono)', fontSize: 12, color: r.state ? c : 'var(--color-text-muted)', border: `1px solid ${ixBorder(r.state)}`, borderRadius: 6 }}>{r.lvl}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: c, whiteSpace: 'nowrap' }}>{r.target}</span>
+                <span style={{ ...numCell, color: c }}>{r.planned}</span>
+                <span style={{ ...numCell, color: c }}>{r.missing}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifySelf: 'end', minWidth: 0 }}>
+                  <div style={{ width: 56, height: 7, borderRadius: 999, background: 'rgba(255,255,255,0.09)', overflow: 'hidden' }}>
+                    <div style={{ width: r.fill, height: '100%', borderRadius: 999, background: GREEN }} />
+                  </div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, width: 38, textAlign: 'right' as const, color: r.state ? c : 'var(--color-text-muted)' }}>{r.pct}</span>
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '15px 18px', background: 'var(--color-bg-base)', borderTop: '1px solid var(--color-border)' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--color-text-secondary)' }}>
+              <span style={{ fontSize: 11, letterSpacing: '0.04em', textTransform: 'uppercase' as const, color: 'var(--color-text-muted)', marginRight: 9 }}>Total</span>
+              <span style={{ color: 'var(--color-text-primary)' }}>23.746182</span>
+              <span style={{ color: 'var(--color-text-muted)', margin: '0 6px' }}>/</span>
+              <span style={{ color: 'var(--color-text-primary)' }}>$50,000.00</span>
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5 }}>
+              <span style={{ fontWeight: 600, color: AMBER, marginRight: 9 }}>Off-Plan</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>0.000000</span>
+              <span style={{ color: 'var(--color-text-muted)', margin: '0 6px' }}>/</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>$0.0000</span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
+/* 03 · Rules engine */
 function PrevRules() {
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 8, letterSpacing: '0.02em' }}>{label}</div>
+      {children}
+    </div>
+  )
+  const Badge = ({ children, tone }: { children: React.ReactNode; tone?: string }) => (
+    <span style={{ padding: '3px 9px', borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: 10.5, whiteSpace: 'nowrap', color: tone === 'accent' ? 'var(--color-accent-purple)' : 'var(--color-text-secondary)', background: 'var(--color-bg-elevated)', border: `1px solid ${tone === 'accent' ? 'var(--color-accent-purple-muted)' : 'var(--color-border)'}` }}>{children}</span>
+  )
+  const Selector = ({ value, badge, badgeTone, open }: { value: string; badge?: string; badgeTone?: string; open?: boolean }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 16px', background: 'var(--color-bg-surface)', border: `1px solid ${open ? 'var(--color-accent-purple-muted)' : 'var(--color-border)'}`, borderRadius: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', color: 'var(--color-text-primary)' }}>{value}</span>
+        {badge && <Badge tone={badgeTone}>{badge}</Badge>}
+      </div>
+      <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 999, border: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--color-text-muted)', transform: open ? 'none' : 'rotate(180deg)' }}>▲</span>
+    </div>
+  )
+  const Dashes = ({ n, on }: { n: number; on?: boolean }) => (
+    <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <span key={i} style={{ width: 18, height: 6, borderRadius: 2, background: i < n ? (on ? 'var(--color-accent-purple)' : 'var(--color-text-muted)') : 'var(--color-bg-elevated)', opacity: i < n ? (on ? 1 : 0.55) : 1 }} />
+      ))}
+    </div>
+  )
+  const Opt = ({ name, badge, dashes, sub, sel }: { name: string; badge?: string; dashes?: number; sub?: string; sel?: boolean }) => (
+    <div style={{ padding: '13px 16px', borderRadius: 8, background: sel ? 'var(--color-bg-elevated)' : 'transparent', border: sel ? '1px solid var(--color-accent-purple-muted)' : '1px solid transparent' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14.5, color: sel ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{name}</span>
+        <Badge tone={sel ? 'accent' : 'muted'}>{badge}</Badge>
+      </div>
+      {dashes != null && <Dashes n={dashes} on={sel} />}
+      {sub && <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6, lineHeight: 1.45 }}>{sub}</div>}
+    </div>
+  )
   return (
     <div style={{ display: 'grid', gap: 22 }}>
-      <div>
-        <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 8 }}>Risk profile</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 16px', background: 'var(--color-bg-surface)', border: `1px solid var(--color-accent-purple-muted)`, borderRadius: 8 }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)' }}>Moderate</span>
-          <span style={{ padding: '3px 9px', borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--color-accent-purple)', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-accent-purple-muted)' }}>6 levels</span>
+      <Field label="Risk profile">
+        <Selector value="Moderate" badge="6 levels" open />
+        <div style={{ marginTop: 8, padding: 6, background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 10, display: 'grid', gap: 2 }}>
+          <Opt name="Conservative profile" badge="8 levels" dashes={8} />
+          <Opt name="Moderate profile" badge="6 levels" dashes={6} sel />
+          <Opt name="Aggressive profile" badge="3 levels" dashes={3} />
         </div>
-      </div>
+      </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 8 }}>Sell Intensity</div>
-          <div style={{ padding: '13px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)' }}>Balanced Trim</span>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 8 }}>Coin Volatility</div>
-          <div style={{ padding: '13px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)' }}>Low</span>
-          </div>
-        </div>
+        <Field label="Sell Intensity">
+          <Selector value="Balanced Trim" badge="Standard" />
+        </Field>
+        <Field label="Coin Volatility">
+          <Selector value="Low" badge="Tight" />
+        </Field>
       </div>
-      <div>
-        <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginBottom: 8 }}>Total budget ($)</div>
+      <Field label="Total budget ($)">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 18px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 18, color: 'var(--color-text-muted)' }}>$</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 18, color: 'var(--color-text-primary)' }}>50,000</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 18, letterSpacing: '0.02em', color: 'var(--color-text-primary)' }}>50,000</span>
         </div>
-      </div>
+      </Field>
     </div>
   )
 }
 
+/* 04 · Allocation agent */
 function PrevAgent() {
+  const GREEN = '#3ECFA4'
+  const RED = '#E2604E'
+  const AMBER = '#EFC435'
   const alerts = [
     { side: 'Buy', coin: 'AVAX' }, { side: 'Buy', coin: 'BCH' },
     { side: 'Buy', coin: 'BNB' }, { side: 'Buy', coin: 'TON' },
-    { side: 'Sell', coin: 'AVAX' }, { side: 'Sell', coin: 'BTC' },
-    { side: 'Sell', coin: 'ETH' },
+    { side: 'Buy', coin: 'WBETH' }, { side: 'Sell', coin: 'AVAX' },
+    { side: 'Sell', coin: 'BTC' }, { side: 'Sell', coin: 'ETH' },
   ]
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 12px', padding: '13px 16px', marginBottom: 14, border: '1px solid rgba(239,196,53,0.32)', background: 'rgba(239,196,53,0.05)', borderRadius: 2, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: AMBER }}><span style={{ width: 6, height: 6, borderRadius: 999, background: AMBER, boxShadow: `0 0 8px ${AMBER}` }} />Actionable now</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', color: AMBER }}><span style={{ width: 6, height: 6, borderRadius: 999, background: AMBER, boxShadow: `0 0 8px ${AMBER}` }} />Actionable now</span>
         <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-        <span style={{ color: 'var(--color-text-secondary)' }}>4 alert rows</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>4 alert rows</span>
+        <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--color-text-secondary)' }}>$25,604.97 <span style={{ color: 'var(--color-text-muted)' }}>remaining</span></span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '9px 14px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>Alerts</span>
+          <span style={{ minWidth: 26, textAlign: 'center', padding: '3px 8px', borderRadius: 999, background: 'var(--color-accent-purple-muted)', color: 'var(--color-accent-purple)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>11</span>
+        </div>
       </div>
       <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 6, display: 'grid', gap: 2 }}>
         {alerts.map((a, i) => {
@@ -205,9 +284,9 @@ function PrevAgent() {
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '11px 12px', borderRadius: 7 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 13px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.04em', textTransform: 'uppercase' as const, color: c, background: buy ? 'rgba(62,207,164,0.10)' : 'rgba(226,96,78,0.10)', border: `1px solid ${buy ? 'rgba(62,207,164,0.34)' : 'rgba(226,96,78,0.36)'}` }}>
-                {buy ? '↑' : '↗'} {a.side}
+                <span style={{ fontSize: 12, lineHeight: 1 }}>{buy ? '↑' : '↗'}</span>{a.side}
               </span>
-              <span style={{ flex: 1, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--color-text-primary)' }}>{a.coin}</span>
+              <span style={{ flex: 1, fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--color-text-primary)', letterSpacing: '0.01em' }}>{a.coin}</span>
               <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>›</span>
             </div>
           )
@@ -217,34 +296,117 @@ function PrevAgent() {
   )
 }
 
+/* 05 · Reporting */
 function PrevReporting() {
-  const stats = [
-    { l: 'Current Value', v: '$123,494.11', c: undefined },
-    { l: 'Holdings (Qty)', v: '1.67927809', c: undefined },
-    { l: 'Avg Price', v: '$33,385.47', c: undefined },
-    { l: 'Unrealized P/L', v: '+$67,430.63', c: GREEN },
-    { l: 'Realized P/L', v: '$0.0000', c: undefined },
-    { l: 'Total P/L', v: '+$67,430.63', c: GREEN },
-  ]
+  const GREEN = '#54CC72'
+  const RED = '#E2604E'
+  const PURP = '#9B8BFF'
+  const pts = (() => {
+    const N = 64
+    const noise = (n: number) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x) }
+    const arr: { x: number; y: number }[] = []
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1)
+      let base: number
+      if (t < 0.18) base = 0.72 + (t / 0.18) * 0.20
+      else if (t < 0.55) base = 0.92 - ((t - 0.18) / 0.37) * 0.62
+      else if (t < 0.72) base = 0.30 - ((t - 0.55) / 0.17) * 0.10
+      else base = 0.20 + ((t - 0.72) / 0.28) * 0.16
+      let v = base + (noise(i) - 0.5) * 0.05
+      v = Math.max(0.06, Math.min(0.96, v))
+      arr.push({ x: t * 600, y: 188 - v * 176 })
+    }
+    return arr
+  })()
+  const linePath = (() => {
+    let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i], q = pts[i - 1]
+      const cx = (p.x + q.x) / 2
+      d += ` Q ${q.x.toFixed(1)},${q.y.toFixed(1)} ${cx.toFixed(1)},${((p.y + q.y) / 2).toFixed(1)}`
+    }
+    return d
+  })()
+  const yLabels = ['$131,076.00', '$129,071.89', '$126,571.89', '$124,071.89', '$121,571.89']
+  const xLabels = ['May 24, 11:00 AM', 'May 26, 06:34 PM', 'May 29, 02:07 AM', 'May 31, 11:09 AM']
+  const ranges = ['Total P&L', '24H', '7D', '30D', '90D', '1Y', 'YTD', 'MAX']
+  const Stat = ({ l, v, c, arrow }: { l: string; v: string; c?: string; arrow?: boolean }) => (
+    <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '13px 15px', position: 'relative' }}>
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--color-text-muted)' }}>{l}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 17, color: c || 'var(--color-text-primary)', marginTop: 6, letterSpacing: '-0.01em' }}>{v}</div>
+      {arrow && <span style={{ position: 'absolute', top: 12, right: 13, color: GREEN, fontSize: 12 }}>↗</span>}
+    </div>
+  )
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
-        {stats.map((s, i) => (
-          <div key={i} style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '13px 15px' }}>
-            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase' as const, color: 'var(--color-text-muted)' }}>{s.l}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 17, color: s.c || 'var(--color-text-primary)', marginTop: 6 }}>{s.v}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 999, background: '#F7931A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>₿</div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, color: 'var(--color-text-primary)' }}>Bitcoin</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-muted)', letterSpacing: '0.08em' }}>BTC</span>
+            </div>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 1 }}>Ledger</div>
           </div>
-        ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: '#EFC435', fontSize: 13 }}>★</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16, color: 'var(--color-text-primary)' }}>$73,540.00</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', padding: '3px 9px', borderRadius: 999, border: '1px solid rgba(226,96,78,0.34)', background: 'rgba(226,96,78,0.08)', fontFamily: 'var(--font-mono)', fontSize: 11, color: RED }}>↘ -0.34%</span>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
+        <Stat l="Current Value" v="$123,494.11" />
+        <Stat l="Holdings (Qty)" v="1.67927809" />
+        <Stat l="Avg Price" v="$33,385.47" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+        <Stat l="Unrealized P/L" v="+$67,430.63" c={GREEN} arrow />
+        <Stat l="Realized P/L" v="$0.0000" />
+        <Stat l="Total P/L" v="+$67,430.63" c={GREEN} arrow />
       </div>
       <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 18 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 15, color: 'var(--color-text-secondary)', marginBottom: 8 }}>Portfolio value</div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--color-text-primary)' }}>$123,494.11</div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: GREEN, marginTop: 4 }}>↗ 3.70% ($4,745.50)</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Value</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 24, color: 'var(--color-text-primary)', marginTop: 4, letterSpacing: '-0.01em' }}>$123,494.11</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'rgb(84, 204, 114)', marginTop: 4 }}>3.70% ($4,745.50)</div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: 230 }}>
+            {ranges.map((r) => {
+              const on = r === '7D'
+              return <span key={r} style={{ padding: '4px 9px', borderRadius: 6, fontFamily: 'var(--font-mono)', fontSize: 10, color: on ? PURP : 'var(--color-text-secondary)', border: `1px solid ${on ? 'var(--color-accent-purple-muted)' : 'transparent'}` }}>{r}</span>
+            })}
+          </div>
+        </div>
+        <div style={{ position: 'relative', height: 180 }}>
+          {yLabels.map((lab, i) => (
+            <div key={i} style={{ position: 'absolute', left: 0, right: 0, top: `${(i / (yLabels.length - 1)) * 100}%`, display: 'flex', alignItems: 'center', gap: 8, transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--color-text-muted)', width: 74, flexShrink: 0 }}>{lab}</span>
+              <span style={{ flex: 1, borderTop: '1px dashed #22243A' }} />
+            </div>
+          ))}
+          <svg viewBox="0 0 600 200" preserveAspectRatio="none" style={{ position: 'absolute', left: 82, top: 0, width: 'calc(100% - 82px)', height: '100%', display: 'block', overflow: 'visible' }}>
+            <defs>
+              <linearGradient id="rpFill2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={PURP} stopOpacity="0.22" />
+                <stop offset="100%" stopColor={PURP} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={linePath + ` L 600,200 L 0,200 Z`} fill="url(#rpFill2)" />
+            <path d={linePath} fill="none" stroke={PURP} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          </svg>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingLeft: 82 }}>
+          {xLabels.map((d, i) => <span key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--color-text-muted)' }}>{d}</span>)}
+        </div>
       </div>
     </div>
   )
 }
 
+/* 06 · Venue integration */
 function PrevCustody() {
   const venues = [
     { n: 'Coinbase', k: 'Exchange' }, { n: 'Kraken', k: 'Exchange' },
@@ -264,11 +426,15 @@ function PrevCustody() {
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>{v.n}</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--color-text-muted)', marginTop: 4, letterSpacing: '0.04em' }}>{v.k}</div>
             </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-success)', letterSpacing: '0.14em', textTransform: 'uppercase' as const, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-success)', boxShadow: '0 0 8px var(--color-success)' }} /> works
-            </span>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-success)', letterSpacing: '0.14em', textTransform: 'uppercase' as const, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--color-success)', boxShadow: '0 0 8px var(--color-success)' }} />
+              works
+            </div>
           </div>
         ))}
+      </div>
+      <div style={{ marginTop: 14, padding: '14px 18px', background: 'rgba(94,84,192,0.08)', border: '1px solid var(--color-accent-purple-muted)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: 1.6, letterSpacing: '0.02em' }}>
+        <span style={{ color: 'var(--color-accent-purple-hover)' }}>NO ACCESS NEEDED ·</span> LedgerOne never touches your funds or keys. You trade on your own exchange and record it here.
       </div>
     </div>
   )
@@ -276,11 +442,11 @@ function PrevCustody() {
 
 const FEATURE_TABS = [
   { id: 'ledger', ix: '01', label: 'Capital ledger', eyebrow: 'Capital ledger', title: 'Every move, recorded in one place.', body: 'A complete record of what you bought, sold, and why. Execute each trade on your exchange in line with your LedgerOne strategy, then record it here in seconds — maintaining a single, accurate history for tax season and portfolio review.', bullets: ['Log your trades in a few taps', 'Logs every buy, sell, and rule it follows', 'Keeps your full history in one place', 'Download as CSV or PDF anytime'], Preview: PrevLedger },
-  { id: 'planning', ix: '02', label: 'Allocation framework', eyebrow: 'Allocation framework', title: 'Your goals, turned into a plan.', body: "Specify your intended allocation and risk tolerance, and LedgerOne translates them into a precise plan — target holdings for each asset, entry points, and profit-taking levels.", bullets: ['Splits your money into clear buckets', 'Sets a safe min and max for each asset', 'Test your plan against 8 years of history', 'See exactly what changes when you adjust it'], Preview: PrevAllocation },
-  { id: 'rules', ix: '03', label: 'Rules engine', eyebrow: 'Rules engine', title: 'Your rules, enforced without exception.', body: "Define the parameters you're comfortable with — position sizing, profit-taking, and when to stay on the sidelines — and LedgerOne enforces them with discipline.", bullets: ['12 ready-made rule templates to build from', 'Apply rules to a single asset or your entire portfolio', 'Receive alerts before any threshold is breached', 'Every change versioned and auditable'], Preview: PrevRules },
-  { id: 'agent', ix: '04', label: 'Allocation agent', eyebrow: 'Allocation agent', title: "It runs your plan, so you don't have to watch.", body: "LedgerOne keeps an eye on your portfolio around the clock and acts on the plan you set — buying, selling, and taking profit at the right moments. Then it tells you exactly what it did.", bullets: ['Watches your portfolio 24/7', 'Buys and sells at the targets you set', 'Plain-language summary of every action', 'Shows the tax impact before it acts'], Preview: PrevAgent },
-  { id: 'reporting', ix: '05', label: 'Reporting', eyebrow: 'Reporting', title: 'Your books and taxes, done for you.', body: 'Gains, losses, short- vs. long-term, and how you\'re doing against the market — all worked out automatically as you go. Export it whenever you or your accountant needs it.', bullets: ['Tracks your gains and losses live', 'Short- and long-term tax breakdown', "See how you're doing vs. the market", 'Export to PDF, CSV, or your accountant'], Preview: PrevReporting },
-  { id: 'custody', ix: '06', label: 'Venue integration', eyebrow: 'Venue integration', title: 'Works with whatever exchange you use.', body: 'LedgerOne is exchange-agnostic. You place trades on the exchange or wallet you already trust, then record them here — so your strategy and full history stay in one place, no matter where you trade.', bullets: ['Compatible with any exchange or wallet', 'Trade where you already do — nothing to move', 'Record each trade manually in seconds', 'Direct exchange sync coming soon'], Preview: PrevCustody },
+  { id: 'planning', ix: '02', label: 'Allocation framework', eyebrow: 'Allocation framework', title: 'Your goals, turned into a plan.', body: 'Specify your intended allocation and risk tolerance, and LedgerOne translates them into a precise plan — target holdings for each asset, entry points, and profit-taking levels.', bullets: ['Splits your money into clear buckets', 'Sets a safe min and max for each asset', 'Test your plan against 8 years of history', 'See exactly what changes when you adjust it'], Preview: PrevAllocation },
+  { id: 'rules', ix: '03', label: 'Rules engine', eyebrow: 'Rules engine', title: 'Your rules, enforced without exception.', body: "Define the parameters you're comfortable with — position sizing, profit-taking, and when to stay on the sidelines — and LedgerOne enforces them with discipline. No emotional decisions, no deviations.", bullets: ['12 ready-made rule templates to build from', 'Apply rules to a single asset or your entire portfolio', 'Receive alerts before any threshold is breached', 'Every change versioned and auditable'], Preview: PrevRules },
+  { id: 'agent', ix: '04', label: 'Allocation agent', eyebrow: 'Allocation agent', title: "It runs your plan, so you don't have to watch.", body: 'LedgerOne keeps an eye on your portfolio around the clock and acts on the plan you set — buying, selling, and taking profit at the right moments. Then it tells you exactly what it did. No constant approvals, no stress.', bullets: ['Watches your portfolio 24/7', 'Buys and sells at the targets you set', 'Plain-language summary of every action', 'Shows the tax impact before it acts'], Preview: PrevAgent },
+  { id: 'reporting', ix: '05', label: 'Reporting', eyebrow: 'Reporting', title: 'Your books and taxes, done for you.', body: "Gains, losses, short- vs. long-term, and how you're doing against the market — all worked out automatically as you go. Export it whenever you or your accountant needs it.", bullets: ['Tracks your gains and losses live', 'Short- and long-term tax breakdown', "See how you're doing vs. the market", 'Export to PDF, CSV, or your accountant'], Preview: PrevReporting },
+  { id: 'custody', ix: '06', label: 'Venue integration', eyebrow: 'Venue integration', title: 'Works with whatever exchange you use.', body: 'LedgerOne is exchange-agnostic. You place trades on the exchange or wallet you already trust, then record them here — so your strategy and full history stay in one place, no matter where you trade. Direct exchange sync is on the roadmap.', bullets: ['Compatible with any exchange or wallet', 'Trade where you already do — nothing to move', 'Record each trade manually in seconds', 'Direct exchange sync coming soon'], Preview: PrevCustody },
 ]
 
 function FeatureTabs() {

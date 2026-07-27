@@ -26,7 +26,7 @@ type HistoryPoint = { t: number; p: number | null }
 type HistoryPayload = { id: string; currency: string; points: HistoryPoint[] }
 
 // snapshot may carry rank and market_cap; both are optional and we must be resilient
-type SnapshotRow = { id: string; rank?: number | null; market_cap?: number | null }
+type SnapshotRow = { id: string; rank?: number | null; market_cap?: number | null; total_volume?: number | null }
 type SnapshotPayload = { rows?: SnapshotRow[] }
 
 const DEFAULT_DAYS = 90
@@ -93,10 +93,11 @@ async function fetchHistory(id: string, days: number, interval: string, currency
 type SnapshotRich = {
   rank: Map<string, number | null>
   marketCap: Map<string, number | null>
+  volume: Map<string, number | null>
 }
 
 async function fetchSnapshot(ids: string[]): Promise<SnapshotRich | null> {
-  if (!ids.length) return { rank: new Map(), marketCap: new Map() }
+  if (!ids.length) return { rank: new Map(), marketCap: new Map(), volume: new Map() }
   const url = `${baseUrl()}/api/snapshot?ids=${encodeURIComponent(ids.join(','))}`
   try {
     const res = await fetch(url, { cache: 'no-store' })
@@ -105,11 +106,13 @@ async function fetchSnapshot(ids: string[]): Promise<SnapshotRich | null> {
     const rows: SnapshotRow[] = Array.isArray(j) ? j as SnapshotRow[] : (j.rows ?? [])
     const rank = new Map<string, number | null>()
     const marketCap = new Map<string, number | null>()
+    const volume = new Map<string, number | null>()
     for (const r of rows) {
       rank.set(r.id, (typeof r.rank === 'number') ? r.rank : null)
       marketCap.set(r.id, (typeof r.market_cap === 'number') ? r.market_cap : null)
+      volume.set(r.id, (typeof r.total_volume === 'number') ? r.total_volume : null)
     }
-    return { rank, marketCap }
+    return { rank, marketCap, volume }
   } catch {
     return null
   }
@@ -211,13 +214,15 @@ function isFiniteNum(x: unknown): x is number {
 
 /* ---------- factor mappers for the refinements (conservative brackets) --- */
 
-// correlation → factor (unchanged bands, but source now last-90 obs)
+// correlation → factor. Bands assume a BTC-inclusive, value-weighted average (BTC counts at
+// ρ=1.00), which runs higher than a non-BTC-only figure. Kept in step with the UI bands in
+// src/app/portfolio/page.tsx (corrAgg) — change both together.
 const corrFactor = (c: number | null): number => {
   if (c == null || !Number.isFinite(c)) return 1.00
-  if (c <= 0.40) return 1.00
-  if (c <= 0.60) return 1.05
-  if (c <= 0.80) return 1.15
-  return 1.25
+  if (c < 0.70) return 0.90
+  if (c < 0.85) return 1.00
+  if (c < 0.95) return 1.10
+  return 1.20
 }
 
 // crash-day median drop → tail factor
@@ -229,13 +234,14 @@ function tailFactorFromCrashMedian(medianDrop: number): number {
   return 1.35                            // highly tail-sensitive
 }
 
-// depth proxy via market_cap^0.8 as % of BTC depth → factor
-function liqFactorFromPctOfBTCDepth(p: number): number {
-  // p is ratio (e.g., 0.5 means 50% of BTC's depth proxy)
-  if (p >= 0.50) return 1.00
-  if (p >= 0.25) return 1.20
-  if (p >= 0.10) return 1.40
-  return 1.80
+// days-to-liquidate → factor. Days = position value ÷ (20% of daily traded volume).
+// Under a day means you can exit into normal flow; a week-plus means the exit itself is a risk.
+function liqFactorFromDaysToLiquidate(days: number): number {
+  if (!Number.isFinite(days) || days < 0) return 1.00
+  if (days <= 0.5) return 1.00   // out within a session
+  if (days <= 2)   return 1.15   // a couple of days of normal volume
+  if (days <= 5)   return 1.40   // a trading week
+  return 1.80                     // exit would move the market against you
 }
 
 /* ----------------------- Auto-fallback window helper ---------------------- */
@@ -429,6 +435,34 @@ export async function GET(req: NextRequest) {
   const riskContrib: Record<string, number> = {}
   for (const k of Object.keys(rcRaw)) riskContrib[k] = rcSum > 0 ? rcRaw[k] / rcSum : 0
 
+  // ---------- L6 (Loss risk): historical VaR / Expected Shortfall ----------
+  // Rebuild the portfolio's own daily return series from today's weights, then read
+  // the 5% left tail off it directly. No distribution assumed — these are real days.
+  // returns[i][k] covers ts[k] → ts[k+1], so day k maps to ts[k + 1].
+  const nObs = returns[0]?.length ?? 0
+  const portDaily: { r: number; t: number }[] = []
+  for (let k = 0; k < nObs; k++) {
+    // Convert each asset to a simple return FIRST, then weight. Weighting in log space and
+    // exponentiating once is a geometric approximation that overstates losses on large moves —
+    // precisely the days this metric is built to measure.
+    let r = 0
+    for (let i = 0; i < w.length; i++) r += w[i] * Math.expm1(returns[i][k])
+    if (!isFiniteNum(r)) continue
+    portDaily.push({ r, t: ts[k + 1] ?? ts[ts.length - 1] })
+  }
+
+  let var95: number | null = null
+  let es95: number | null = null
+  let worstDays: { t: number; r: number }[] = []
+  if (portDaily.length >= 20) {
+    const sorted = [...portDaily].sort((a, b) => a.r - b.r)
+    const cut = Math.max(1, Math.floor(sorted.length * 0.05))
+    const tail = sorted.slice(0, cut)
+    var95 = sorted[cut - 1].r
+    es95 = tail.reduce((s, d) => s + d.r, 0) / tail.length
+    worstDays = tail.slice(0, 5).map(d => ({ t: d.t, r: Number(d.r) }))
+  }
+
   // Regime mapping (same bands)
   let regime: 'calm' | 'normal' | 'high' | 'stress' = 'normal'
   let multiplier = 1.0
@@ -466,30 +500,43 @@ export async function GET(req: NextRequest) {
   const weightedTailActive = activationShare > 0
   const tailFactorBoll = weightedTailActive ? 1.35 : 1.00
 
-  // Crash-day median (BTC <= -5%) per asset
+  // Crash-day median (BTC <= -5%) per asset.
+  // NOTE: null means "no evidence", which is deliberately NOT the same as a neutral 1.00.
+  // Previously a window containing no BTC crash days defaulted the median to 0, which fell in
+  // the "barely drops" bucket and returned 0.95 — scoring absence of data as a risk discount.
   const btcIdx = alignedIds.indexOf(BTC_ID)
-  let tailCrashWeighted = 1.0
+  let tailCrashWeighted: number | null = null
+  let crashDayCount = 0
   if (btcIdx >= 0) {
     const T = returns[0]?.length ?? 0
     const btcR = returns[btcIdx]
     const crashIndex: number[] = []
     for (let t = 0; t < T; t++) if (btcR[t] <= -0.05) crashIndex.push(t)
-    let sumW = 0, accFactor = 0
-    for (let i = 0; i < alignedIds.length; i++) {
-      if (!ids.includes(alignedIds[i])) continue
-      const ri = returns[i]
-      const drops: number[] = crashIndex.map(t => ri[t]).filter(x => Number.isFinite(x))
-      const med = drops.length ? (drops.sort((a,b)=>a-b)[Math.floor(drops.length/2)]) : 0
-      const f = tailFactorFromCrashMedian(med)
-      perAssetTail[alignedIds[i]].crashMedian = Number(med)
-      perAssetTail[alignedIds[i]].crashFactor = Number(f)
-      const wi = w[i]
-      if (wi > 0) { sumW += wi; accFactor += wi * f }
+    crashDayCount = crashIndex.length
+    // A median over a single observation is that observation, not a central tendency.
+    if (crashIndex.length >= 2) {
+      let sumW = 0, accFactor = 0
+      for (let i = 0; i < alignedIds.length; i++) {
+        if (!ids.includes(alignedIds[i])) continue
+        const ri = returns[i]
+        const drops: number[] = crashIndex.map(t => ri[t]).filter(x => Number.isFinite(x))
+        if (drops.length < 2) continue
+        drops.sort((a, b) => a - b)
+        const med = drops[Math.floor(drops.length / 2)]
+        const f = tailFactorFromCrashMedian(med)
+        perAssetTail[alignedIds[i]].crashMedian = Number(med)
+        perAssetTail[alignedIds[i]].crashFactor = Number(f)
+        const wi = w[i]
+        if (wi > 0) { sumW += wi; accFactor += wi * f }
+      }
+      if (sumW > 0) tailCrashWeighted = accFactor / sumW
     }
-    if (sumW > 0) tailCrashWeighted = accFactor / sumW
   }
-  // Blend (geometric mean) so UI number remains stable but richer
-  const tailFactor = Math.sqrt(tailFactorBoll * tailCrashWeighted)
+  // With no crash evidence the Bollinger signal stands on its own. Blending it against a
+  // neutral 1.00 would halve it in log terms for no reason.
+  const tailFactor = tailCrashWeighted == null
+    ? tailFactorBoll
+    : Math.sqrt(tailFactorBoll * tailCrashWeighted)
 
   // ---------- L4 (Correlation: value-weighted corr vs BTC, last 90 obs) ----------
   let avgCorrVsBtc: number | null = null
@@ -524,7 +571,7 @@ export async function GET(req: NextRequest) {
   // ---------- L5 (Liquidity): rank-tier mix + market_cap^0.8 depth proxy ----------
   const snapshot = await fetchSnapshot(Array.from(new Set([...ids, BTC_ID])))
   const ranks = snapshot?.rank ?? new Map<string, number | null>()
-  const marketCap = snapshot?.marketCap ?? new Map<string, number | null>()
+  const volume = snapshot?.volume ?? new Map<string, number | null>()
 
   // Tier mix from ranks (existing approach, unchanged)
   let blue = 0, large = 0, medium = 0, small = 0, unranked = 0
@@ -551,29 +598,44 @@ export async function GET(req: NextRequest) {
     + 0.55 * small
     + 0.65 * unranked
 
-  // Depth proxy: market_cap^0.8 vs BTC → per-asset factor, then weighted avg
-  const btcCap = marketCap.get(BTC_ID)
-  let liqDepthWeighted = 1.2 // safe middle default
-  if (typeof btcCap === 'number' && btcCap > 0) {
+  // Days-to-liquidate: the actual exit measure. How long would it take to sell each position
+  // without dominating the tape? Institutions cap participation at ~20% of daily volume.
+  //
+  // This replaces the old market_cap^0.8 depth proxy, which was derived from the same ranks as
+  // the Structural factor — the two correlated at 0.99 and multiplied together, charging twice
+  // for one fact. Traded volume is genuinely independent of market cap, and unlike a rank tier
+  // it responds to POSITION SIZE: $5k of a thin coin is liquid, $5m of it is not.
+  const PARTICIPATION = 0.20
+  const perAssetLiq: Record<string, { valueUsd: number; volume24h: number | null; days: number | null }> = {}
+  let daysWeighted: number | null = null
+  let liqCoverage = 0
+  {
     let sumW = 0, acc = 0
-    const depthBtc = Math.pow(btcCap, 0.8)
     for (let i = 0; i < alignedIds.length; i++) {
       const id = alignedIds[i]
       if (!ids.includes(id)) continue
-      const cap = marketCap.get(id)
       const wi = w[i]
-      if (typeof cap === 'number' && cap > 0 && wi > 0) {
-        const depthCoin = Math.pow(cap, 0.8)
-        const pct = Math.max(0, Math.min(5, depthCoin / depthBtc))
-        const f = liqFactorFromPctOfBTCDepth(pct)
-        sumW += wi; acc += wi * f
-      }
+      if (!(wi > 0)) continue
+      const vol = volume.get(id)
+      const valueUsd = wi * totalValue
+      const days = (typeof vol === 'number' && vol > 0)
+        ? valueUsd / (PARTICIPATION * vol)
+        : null
+      perAssetLiq[id] = { valueUsd: Number(valueUsd), volume24h: (typeof vol === 'number' ? vol : null), days: days == null ? null : Number(days) }
+      if (days != null) { sumW += wi; acc += wi * days }
     }
-    if (sumW > 0) liqDepthWeighted = acc / sumW
+    if (sumW > 0) {
+      daysWeighted = acc / sumW
+      liqCoverage = sumW // share of portfolio value we actually have volume for
+    }
   }
 
-  // Blend rank-tier factor with depth-proxy factor (geometric mean for stability)
-  const liquidityFactor = Math.sqrt(liquidityFactorTier * liqDepthWeighted)
+  // Blend the tier view with the days-to-liquidate view. When volume is unavailable for the
+  // whole portfolio we fall back to the tier factor alone rather than inventing a default.
+  const liquidityFactorDays = daysWeighted == null ? null : liqFactorFromDaysToLiquidate(daysWeighted)
+  const liquidityFactor = liquidityFactorDays == null
+    ? liquidityFactorTier
+    : Math.sqrt(liquidityFactorTier * liquidityFactorDays)
 
   // ---------- Compose response ----------
   const resp = {
@@ -590,7 +652,16 @@ export async function GET(req: NextRequest) {
       activationShare: Number(activationShare),
       weightedTailActive,
       factor: Number(tailFactor),
+      crashDays: crashDayCount,
+      crashEvidence: tailCrashWeighted != null,
       perAsset: perAssetTail
+    },
+    l6: {
+      var95: var95 == null ? null : Number(var95),
+      es95: es95 == null ? null : Number(es95),
+      observations: portDaily.length,
+      windowDays: usedDays ?? daysReq,
+      worstDays
     },
     l4: {
       avgCorrVsBtc: (avgCorrVsBtc == null ? null : Number(avgCorrVsBtc)),
@@ -599,7 +670,11 @@ export async function GET(req: NextRequest) {
     },
     l5: {
       tierWeights: { blue: Number(blue), large: Number(large), medium: Number(medium), small: Number(small), unranked: Number(unranked) },
-      factor: Number(liquidityFactor)
+      factor: Number(liquidityFactor),
+      daysToLiquidate: daysWeighted == null ? null : Number(daysWeighted),
+      volumeCoverage: Number(liqCoverage),
+      participationRate: PARTICIPATION,
+      perAsset: perAssetLiq
     },
     cov: { ids: alignedIds, window: { days: (usedDays ?? daysReq), interval } },
     updatedAt: new Date().toISOString(),
@@ -616,7 +691,7 @@ export async function GET(req: NextRequest) {
           activationShare, weightedTailActive, tailFactorBoll, tailCrashWeighted, final: tailFactor
         },
         corr: { windowObs: Math.min(90, returns[0]?.length ?? 0), avgCorrVsBtc, l4Factor },
-        liq: { liquidityFactorTier, liqDepthWeighted, blended: liquidityFactor }
+        liq: { liquidityFactorTier, daysWeighted, liquidityFactorDays, liqCoverage, blended: liquidityFactor }
       } : undefined
     }
   }

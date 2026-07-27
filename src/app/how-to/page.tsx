@@ -1,1217 +1,467 @@
-'use client'
-
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Sora, DM_Sans, JetBrains_Mono } from 'next/font/google'
 import {
-  Info, BookOpen, Video, ImageIcon, CheckCircle2, ListChecks, HelpCircle,
-  LayoutDashboard, BarChart2, RefreshCw, Layers, Wallet, Cpu, ExternalLink, Bell
+  LayoutDashboard,
+  Wallet,
+  BarChart3,
+  FileSpreadsheet,
+  ScrollText,
+  Gauge,
+  Settings as SettingsIcon,
+  Eye,
+  Calculator,
+  Layers,
+  Repeat,
+  ChevronDown,
+  ArrowUpRight,
+  ArrowRight,
 } from 'lucide-react'
+import '@/app/planner/planner-skin.css'
+import './how-to-skin.css'
 
-/**
- * HOW TO USE — Institutional layout
- * Clean, scannable structure with sticky in-page TOC, short video slots, and annotated screenshot slots.
- * Order per request:
- *  1) Configure Buy Planner
- *  2) Add or import trades (buying is done on that coin’s page → Add Trade tab)
- * Plus:
- *  - Alerts appear on the Dashboard
- *  - Buy Planner row turns YELLOW when it’s time to buy
- *  - Buy Planner row turns GREEN when the level is filled
- */
+const sora = Sora({ subsets: ['latin'], weight: ['400', '600', '700', '800'], variable: '--ht-sora', display: 'swap' })
+const dmSans = DM_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--ht-dmsans', display: 'swap' })
+const jbMono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--ht-jbmono', display: 'swap' })
 
-const SECTIONS = [
-  { id: 'intro',       label: 'Overview',            icon: BookOpen },
-  { id: 'quickstart',  label: 'Quick Start',         icon: ListChecks },
-  { id: 'walkthrough', label: 'Learn the Features',  icon: LayoutDashboard },
-  { id: 'videos',      label: 'Tutorial Videos',     icon: Video },
-  { id: 'shots',       label: 'Screenshots',         icon: ImageIcon },
-  { id: 'faq',         label: 'FAQ',                 icon: HelpCircle },
-  { id: 'resources',   label: 'Resources',           icon: ExternalLink },
-]
+/* ── Live demo: real planner-skin ladder ──────────────────────────────── */
+function DemoLadder() {
+  const Row = ({
+    lvl, target, planned, missing, pct, width, cls,
+  }: { lvl: number; target: string; planned: string; missing: string; pct: string; width: string; cls?: string }) => (
+    <tr className={cls}>
+      <td className="lvl"><span className="ix">{lvl}</span></td>
+      <td className="tgt">{target}</td>
+      <td className="num amt">{planned}</td>
+      <td className="num amt">{missing}</td>
+      <td>
+        <div className="ldr-prog">
+          <div className="ldr-prog-track"><div className="ldr-prog-fill" style={{ width }} /></div>
+          <span className="ldr-prog-pct">{pct}</span>
+        </div>
+      </td>
+    </tr>
+  )
+  return (
+    <div className="pl" style={{ padding: 0 }}>
+      <div className="pl-ladder" style={{ margin: 0, border: 0, background: 'transparent' }}>
+        <div className="ldr-scroll">
+          <table className="ldr" style={{ minWidth: 520 }}>
+            <thead>
+              <tr>
+                <th><span className="th-l">Lvl</span></th>
+                <th><span className="th-l">Target</span></th>
+                <th className="!text-right"><span className="th-l !justify-end">Planned&nbsp;$</span></th>
+                <th className="!text-right"><span className="th-l !justify-end">Missing&nbsp;$</span></th>
+                <th className="r"><span className="th-l">Progress</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <Row lvl={1} target="$62,000" planned="$2,000" missing="$0" pct="100%" width="100%" cls="done" />
+              <Row lvl={2} target="$58,000" planned="$2,000" missing="$800" pct="60%" width="60%" cls="alert" />
+              <Row lvl={3} target="$54,000" planned="$2,000" missing="$2,000" pct="0%" width="0%" />
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
 
+function DemoBanner() {
+  return (
+    <div className="pl" style={{ padding: 0 }}>
+      <div className="pl-banner" style={{ margin: 0 }}>
+        <span className="dot" aria-hidden="true" />
+        <b className="alert-txt">Actionable now</b>
+        <span className="sep">·</span>
+        <span><b className="tabular-nums">1</b> row</span>
+        <span className="sep">·</span>
+        <span>Buy <b className="tabular-nums">$9,447.19</b></span>
+        <span className="sep">@</span>
+        <span><b className="tabular-nums">$1,931.69</b></span>
+      </div>
+    </div>
+  )
+}
+
+/* ── Reference accordion ──────────────────────────────────────────────── */
+function Accordion({
+  icon, title, sub, children, open = false,
+}: { icon: React.ReactNode; title: string; sub: string; children: React.ReactNode; open?: boolean }) {
+  return (
+    <details className="ht-acc" open={open}>
+      <summary>
+        <span className="ht-acc-ic">{icon}</span>
+        <span className="ht-acc-titles">
+          <span className="ht-acc-title">{title}</span>
+          <span className="ht-acc-sub">{sub}</span>
+        </span>
+        <ChevronDown className="ht-acc-chev h-4 w-4" />
+      </summary>
+      <div className="ht-acc-body">{children}</div>
+    </details>
+  )
+}
+
+function Spec({ rows }: { rows: { term: string; def: React.ReactNode }[] }) {
+  return (
+    <div className="ht-spec">
+      {rows.map((r, i) => (
+        <div key={i} className="ht-spec-row">
+          <div className="ht-spec-term">{r.term}</div>
+          <div className="ht-spec-def">{r.def}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Feature({
+  icon, title, href, children,
+}: { icon: React.ReactNode; title: string; href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="ht-feat">
+      <ArrowUpRight className="ht-feat-arrow h-4 w-4" />
+      <div className="ht-feat-head"><span className="ht-feat-ic">{icon}</span>{title}</div>
+      <div className="ht-feat-body">{children}</div>
+    </Link>
+  )
+}
+
+function Faq({ q, children }: { q: string; children: React.ReactNode }) {
+  return (
+    <details className="ht-faq">
+      <summary>{q}<ChevronDown className="ht-faq-chev h-4 w-4" /></summary>
+      <div className="ht-faq-body">{children}</div>
+    </details>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────── */
 export default function HowToPage() {
-  const [active, setActive] = useState<string>('intro')
-
-  useEffect(() => {
-    // Observe section in view to highlight TOC
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const e = entries.find((x) => x.isIntersecting)
-        if (e?.target?.id) setActive(e.target.id)
-      },
-      { rootMargin: '-40% 0px -55% 0px', threshold: [0, 0.25, 0.5, 1] }
-    )
-    SECTIONS.forEach(s => {
-      const el = document.getElementById(s.id)
-      if (el) obs.observe(el)
-    })
-    return () => obs.disconnect()
-  }, [])
-
   return (
-    <div className="w-full px-4 py-6 md:px-8" data-how-to-page>
-      {/* Header */}
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">How to Use</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            A guided path from configuring your Buy Planner to taking profit with your Sell Planner.
+    <div className={`ht ${sora.variable} ${dmSans.variable} ${jbMono.variable}`}>
+      {/* ── Hero ── */}
+      <header className="ht-hero">
+        <div className="ht-hero-aurora" aria-hidden="true" />
+        <div className="ht-hero-grid" aria-hidden="true" />
+        <div className="ht-hero-inner">
+          <span className="ht-eyebrow">LedgerOne · Operating Manual</span>
+          <h1 className="ht-h1">From first open to a running Buy &amp; Sell Planner.</h1>
+          <p className="ht-lead">
+            LedgerOne never places orders. It builds your accumulation and distribution ladders,
+            signals the exact moment to act, and keeps an auditable record of everything you execute.
+            Here&apos;s the full workflow — and how to read the app once it&apos;s live.
+          </p>
+          <div className="ht-hero-actions">
+            <Link href="/planner" className="ht-btn ht-btn-primary">Open the Planner <ArrowRight className="h-4 w-4" /></Link>
+            <Link href="/dashboard" className="ht-btn ht-btn-ghost">Back to Dashboard</Link>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Part 1 · Workflow ── */}
+      <section className="ht-section" aria-label="Your first session">
+        <div className="ht-section-head">
+          <span className="ht-section-eyebrow">01 — Get started</span>
+          <h2 className="ht-section-title">Your first session, end to end</h2>
+          <p className="ht-section-sub">
+            One linear path. Five steps take you from an empty account to a fully configured pair of
+            planners with your first trade recorded.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/" className="text-slate-300 hover:text-white underline-offset-4 hover:underline">
-            ← Back to Dashboard
-          </Link>
+
+        <div className="ht-flow">
+          <div className="ht-step">
+            <div className="ht-step-node">1</div>
+            <div className="ht-step-body">
+              <span className="ht-step-tag">Step 01 · Select</span>
+              <h3 className="ht-step-title">Pick a coin</h3>
+              <div className="ht-step-text">
+                <p>Open a coin from the sidebar list or search. Everything in LedgerOne is planned
+                  <strong> per coin</strong> — each asset gets its own budget, ladders, and history.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="ht-step">
+            <div className="ht-step-node">2</div>
+            <div className="ht-step-body">
+              <span className="ht-step-tag">Step 02 · Accumulate</span>
+              <h3 className="ht-step-title">Build the Buy Planner</h3>
+              <div className="ht-step-text">
+                <p>Open <span className="ht-kbd">Planner</span>. Set your <strong>Total Budget</strong>, choose a <strong>Risk Profile</strong>,
+                  then click <span className="ht-kbd">Save New Plan</span></p>
+                <p className="ht-muted">A ladder of target prices appears, each with a planned amount.
+                  Changed your mind? Edit the inputs and click <span className="ht-kbd">Edit Current Plan</span></p>
+              </div>
+            </div>
+          </div>
+
+          <div className="ht-step">
+            <div className="ht-step-node">3</div>
+            <div className="ht-step-body">
+              <span className="ht-step-tag">Step 03 · Record</span>
+              <h3 className="ht-step-title">Log your first trade</h3>
+              <div className="ht-step-text">
+                <p>When you buy on your exchange, return to the coin page →
+                  <strong> Add Trade</strong>. Enter the exact filled <strong>Price</strong> and
+                  <strong> Quantity</strong> (buys accept USD or tokens — the lock icon switches modes),
+                  then click <span className="ht-kbd">Add Trade</span>.</p>
+                <p className="ht-muted">The <strong>Update planner</strong> toggle is on by default, so
+                  the trade fills your ladder. Turn it off to record to your portfolio only. Bulk history
+                  imports via <span className="ht-kbd">CSV</span>.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="ht-step">
+            <div className="ht-step-node">4</div>
+            <div className="ht-step-body">
+              <span className="ht-step-tag">Step 04 · Distribute</span>
+              <h3 className="ht-step-title">Generate the Sell Planner</h3>
+              <div className="ht-step-text">
+                <p>On the <span className="ht-kbd">Planner</span> page, scroll to the Sell Planner, set <strong>Coin Volatility</strong>{' '}
+                  and <strong>Sell Intensity</strong>, then click <span className="ht-kbd">Generate Ladder</span>.
+                  Requires at least one recorded buy for the coin — the ladder distributes only what you currently hold.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="ht-step">
+            <div className="ht-step-node">5</div>
+            <div className="ht-step-body">
+              <span className="ht-step-tag">Step 05 · Done</span>
+              <h3 className="ht-step-title">You&apos;re live</h3>
+              <div className="ht-step-text">
+                <p>From here the app watches prices for you. When a level triggers you&apos;ll see a
+                  <strong> yellow row</strong> on the planner and an <strong>alert</strong> on the
+                  Dashboard. The next section shows exactly what that looks like.</p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Content + Right TOC */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_288px] gap-6">
-        {/* MAIN CONTENT */}
-        <div className="space-y-10">
-           {/* Overview / Intro */}
-          <section id="intro" aria-label="Overview" className="scroll-mt-24">
-            <Card>
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-                <div className="min-w-0">
-                  <SectionTitle icon={<BookOpen className="h-5 w-5" />} title="Overview" />
-                  <p className="text-slate-300 text-sm leading-6 mt-2">
-                    Start with a Buy Plan, then record fills and take profits with a Sell Plan. Keep it simple:
-                    configure, wait for alerts/fills, execute, and track performance.
-                  </p>
-                  <ul className="mt-3 space-y-2 text-sm text-slate-300">
-                    <li className="flex items-start gap-2"><Check className="mt-0.5" /> <strong>Configure Buy Planner first.</strong></li>
-                    <li className="flex items-start gap-2"><Check className="mt-0.5" /> Then <strong>add trades per coin</strong> from that coin’s page → <em>Add Trade</em> tab.</li>
-                    <li className="flex items-start gap-2"><Check className="mt-0.5" /> Later, create a <strong>Sell Planner</strong> and follow alerts to realize gains.</li>
-                                        <li className="flex items-start gap-2"><Check className="mt-0.5" /> <strong>It is strongly recommended to adhere to the plan and avoid discretionary deviations.</strong></li>
+      <hr className="ht-rule" />
 
-                  </ul>
-                </div>
+      {/* ── Part 2 · Reading the app ── */}
+      <section className="ht-section" aria-label="Reading the app">
+        <div className="ht-section-head">
+          <span className="ht-section-eyebrow">02 — Read the signals</span>
+          <h2 className="ht-section-title">The app speaks in rows and alerts</h2>
+          <p className="ht-section-sub">
+            Every planner communicates through row color and progress. Below is a live sample rendered
+            with the exact component styling of your real planners.
+          </p>
+        </div>
 
-                {/* Intro Video placeholder (16:9). Replace with your embed */}
-                <div className="w-full md:w-[480px] aspect-video rounded-xl bg-[rgb(28,29,31)] border border-[rgba(255,255,255,0.06)] overflow-hidden grid place-items-center">
-                  <div className="text-xs text-slate-400 p-4 text-center leading-5">
-                    Drop your 2–3 min intro video here (Buy → Fills → Sell workflow).<br/>
-                    {/* Example:
-                    <iframe
-                      className="w-full h-full"
-                      src="https://www.youtube.com/embed/VIDEO_ID"
-                      title="LedgerOne Intro"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    /> */}
-                    <Video className="mx-auto mt-2 h-6 w-6 opacity-70" />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </section>
+        <div className="ht-window">
+          <div className="ht-window-bar">
+            <div className="ht-window-dots" aria-hidden="true"><i /><i /><i /></div>
+            <div className="ht-window-title">buy-planner · bitcoin</div>
+          </div>
+          <div className="ht-window-body"><DemoLadder /></div>
+        </div>
 
-          {/* Quick Start (ORDER: #1 Buy Planner, #2 Add/Import Trades) */}
-          <section id="quickstart" aria-label="Quick Start" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<ListChecks className="h-5 w-5" />} title="Quick Start" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                {/* #1 Configure Buy Planner */}
-                          <ChecklistCard
-                  title="1) Configure a Buy Planner"
-                                   items={[
-                    'Open the Buy/Sell Planner page for the asset you want to accumulate.',
-                    'Set your Total Budget and Choose a Risk Profile.',
-                    'Click “Save New” to generate your Buy Planner for the current cycle.',
-                    'Made a mistake? Just update the values and click Save New.',
-                  ]}
+        <div className="ht-signal-grid">
+          <div className="ht-signal">
+            <div className="ht-signal-head"><span className="ht-signal-dot" style={{ color: '#3ECFA4', background: '#3ECFA4' }} />Green row</div>
+            <div className="ht-signal-text">Level filled to 100%. Nothing to do — it&apos;s complete.</div>
+          </div>
+          <div className="ht-signal">
+            <div className="ht-signal-head"><span className="ht-signal-dot" style={{ color: '#EFC435', background: '#EFC435' }} />Yellow row</div>
+            <div className="ht-signal-text">Price reached this level. Time to act: execute at your exchange, then record it in Add Trade.</div>
+          </div>
+          <div className="ht-signal">
+            <div className="ht-signal-head"><span className="ht-signal-dot" style={{ color: '#6C7189', background: '#6C7189' }} />Plain row</div>
+            <div className="ht-signal-text">Level not reached yet. Waiting for price.</div>
+          </div>
+        </div>
 
-                  icon={<Layers className="h-4 w-4" />}
-                />
+        <div style={{ marginTop: 28 }}>
+          <div className="ht-window">
+            <div className="ht-window-bar">
+              <div className="ht-window-dots" aria-hidden="true"><i /><i /><i /></div>
+              <div className="ht-window-title">dashboard · alert banner</div>
+            </div>
+            <div className="ht-window-body"><DemoBanner /></div>
+          </div>
+        </div>
 
+        <div className="ht-alertlist">
+          <div className="ht-alertrow">
+            <span className="ht-pill ht-pill-buy">Buy</span>
+            <span>Price dropped to a Buy Planner level. Execute the buy at your exchange, then record it in Add Trade. The row turns <b>green</b> once the planned amount is filled.</span>
+          </div>
+          <div className="ht-alertrow">
+            <span className="ht-pill ht-pill-sell">Sell</span>
+            <span>Price rose to a Sell Planner level. Execute the sell, then record it in Add Trade — sells attach to the <b>Active</b> planner by default, or pick an older version.</span>
+          </div>
+          <div className="ht-alertrow">
+            <span className="ht-pill ht-pill-cycle">New Cycle</span>
+            <span>The market moved enough that your plan is out of date. Open <span className="ht-kbd">Planner</span>, review budget and risk, and <b>Save New Plan</b>. Your previous Sell Planner freezes as a numbered version; a fresh one goes active.</span>
+          </div>
+        </div>
 
-                {/* #2 Add or import trades */}
-                <ChecklistCard
-                  title="2) Add or import trades"
-                  items={[
-                    'To buy a coin: go to that coin’s page → “Add Trade” tab.',
-                    'Enter the exact quantity and price shown in your exchange’s filled order.',
-                    'Or import multiple with CSV (Portfolio → CSV → Import).',
-                  ]}
-                  icon={<Wallet className="h-4 w-4" />}
-                />
+        <div className="ht-loop">
+          <b>The loop never changes:</b> alert fires <code>→</code> execute at your exchange <code>→</code> record it in Add Trade <code>→</code> the row fills and turns green.
+        </div>
+      </section>
 
-                <ChecklistCard
-                  title="3) Create a Sell Planner"
-                  items={[
-                    'Open the Buy/Sell Planner page for your coin.',
-'Set the Coin Volatility and choose your Sell Intensity.',
-                    'Only once a Buy has been recorded, Click Generate Ladder.',
-                    'Alerts will appear on the Dashboard when it is Time To Sell.',
-                     'Made a mistake? Just update the values and Generate Ladder again.'
-                  ]}
-                  icon={<BarChart2 className="h-4 w-4" />}
-                />
+      <hr className="ht-rule" />
 
-                <ChecklistCard
-                  title="4) Update Coin Cycle"
-                  items={[
-                   'When a New Cycle alert appears, click it to open that coin’s Buy/Sell Planner.',
-    'Enter your New Budget and New Risk Metric, then click Generate New.',
-    'Your previous Sell Planner is saved automatically and a new one is created.',
-    'No Sell Planner updates are needed after the first setup.',
-                  ]}
-                  icon={<RefreshCw className="h-4 w-4" />}
+      {/* ── Part 3 · Deep reference ── */}
+      <section className="ht-section" aria-label="Reference">
+        <div className="ht-section-head">
+          <span className="ht-section-eyebrow">03 — Reference</span>
+          <h2 className="ht-section-title">Every input, in depth</h2>
+          <p className="ht-section-sub">
+            Expand any control for the exact meaning of each field, state, and setting.
+          </p>
+        </div>
 
-                />
-              </div>
-
-              {/* Tiny legend for planner row states */}
-              <div className="mt-4 text-xs text-slate-300 flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center gap-1"><Bell className="h-3.5 w-3.5" /> Alerts surface on the Dashboard.</span>
-<Legend showCycle />
-              </div>
-            </Card>
-          </section>
-
-          {/* Learn the Features (linkable blocks) */}
-<section id="walkthrough" aria-label="Learn the Features" className="scroll-mt-24">
-  {/* Title + description (no full card behind the tiles) */}
-  <div className="px-1">
-    <SectionTitle icon={<LayoutDashboard className="h-5 w-5" />} title="Learn the Features" />
-    <p className="text-slate-300 text-sm leading-6 mt-2">
-      Short guides with a 2–3 min clip and an annotated screenshot. Keep it simple and action-driven.
-    </p>
-  </div>
-
-  {/* Floating tiles */}
-  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
-    <GuideTile
-      href="#guide-buy-planner"
-      title="Buy Planner"
-      blurb="Institutional-style accumulation ladder."
-    />
-
-    <GuideTile
-      href="#guide-add-trade"
-      title="Add a Trade (per coin)"
-      blurb="Record your external executed orders."
-    />
-
-    <GuideTile
-      href="#guide-sell-planner"
-      title="Sell Planner"
-      blurb="Institutional-style scale out ladder"
-    />
-
-    <GuideTile
-      href="#New Cycle"
-      title="New Coin Cycle"
-      blurb="LedgerOne’s cycle detection system."
-    />
-
-    <GuideTile
-      href="#guide-risk"
-      title="Risk Score (What it means)"
-      blurb="Quantifiable portfolio risk metric."
-    />
-
-    <GuideTile
-      href="#guide-shortcuts"
-      title="Shortcuts & Tips"
-      blurb="Search, sorting, keyboard hints."
-    />
-  </div>
-
-  {/* End Learn the Features section here (tiles stay standalone/floating) */}
-</section>
-
-{/* Detailed Guide Sections (separate floating cards per feature) */}
-<section aria-label="Detailed Guides" className="scroll-mt-24 mt-6 space-y-6">
-
-                          <GuideDetail id="guide-buy-planner" title="Buy Planner">
-                  <TwoCol>
-                    <VideoSlot label="2–3 min: Configure Buy Planner" />
-                    <ShotSlot label="Generated ladder + fill tracking (yellow/green states)" />
-                  </TwoCol>
-
-                  <p className="mt-3 text-sm text-slate-300 leading-6">
-                    The Buy Planner is a rules-based accumulation framework. You define a fixed capital budget and select a risk profile; LedgerOne
-                    then constructs a ladder of pre-defined levels from the current cycle, tracks fills against each tranche, and
-                    displays execution signals through Dashboard alerts and yellow rows on the planner.
-                  </p>
-
-                <Bullets items={[
-  'Navigate to the Buy/Sell Planner page',
-    'Configure: set your Total Budget and select a Risk Profile to define your accumulation approach for this cycle.',
-  'Execute: when a row turns yellow (“time to buy”), place the buy with your exchange/broker, then record the fill under that coin → Add Trade.',
-  'Track: the planner shows what is planned versus what has been filled, keeping you accountable and consistent.',
-'Governance: Risk Profile defines how cautious or assertive your plan is.',
-]}/>
-
-                  <div className="mt-4">
-                    <BuyPlannerInstitutionalGuide />
-                  </div>
-
-                  <div className="mt-3"><LegendBuyPlanner /></div>
-                </GuideDetail>
-
-
-<GuideDetail id="guide-add-trade" title="Add a Trade (per coin)">
-  <TwoCol>
-    <VideoSlot label="1–2 min: Add a trade on a coin page" />
-    <ShotSlot label="Coin page → Add Trade tab (annotated)" />
-  </TwoCol>
-
-  <p className="mt-3 text-sm text-slate-300 leading-6">
-    Add Trade is your book of record for executed orders. LedgerOne does not place orders; it records what you executed
-    and uses those entries to keep holdings, planner progress, realized/unrealized P&L, and reporting accurate and auditable.
-  </p>
-
-  <Bullets items={[
-    'Navigate to the coin you executed on → open the Add Trade tab.',
-    'Select Side (Buy / Sell).',
-    'Enter the exact filled Price and Quantity. For Buys, Quantity can be entered as USD or Tokens (use the lock icon to unlock and switch modes). For Sells, Quantity is recorded in Tokens.',
-    'Optionally add Fee and set the correct Date/Time to keep sequencing and reporting clean.',
-    'Sell attribution: sells default to the Active Sell Planner, but you can override and select a Frozen planner version so the correct ladder’s progress updates.',
-    'Click Add Trade and confirm the success message; holdings and planner fill states refresh immediately.',
-    'For historical backfills or bulk entry, use Portfolio → CSV → Import.',
-  ]}/>
-
-  <div className="mt-4">
-    <AddTradeInstitutionalGuide />
-  </div>
-</GuideDetail>
-
-
-              <GuideDetail id="guide-sell-planner" title="Sell Planner">
-  <TwoCol>
-    <VideoSlot label="2–3 min: Create Sell Planner" />
-    <ShotSlot label="Sell checkpoints + fill tracking (yellow/green states)" />
-  </TwoCol>
-
-  <p className="mt-3 text-sm text-slate-300 leading-6">
-    The Sell Planner is a structured distribution framework. It defines how you scale out of a position in a controlled,
-    repeatable way, with clear execution prompts, progress tracking, and Sell alerts—so profits are taken systematically
-    rather than emotionally.
-  </p>
-
- <Bullets
-  items={[
-    'Navigate: open the Buy/Sell Planner page for the coin and switch to the Sell Planner section.',
-    'Configure: choose Coin Volatility and Sell Intensity, then click Generate Ladder to produce your Sell Planner.',
-'Execute: when a row turns yellow (“time to sell”), execute the sell with your exchange/broker, then record it under that coin → Add Trade (select Active or the relevant Frozen planner version so fills apply to the correct ladder).',
-    'Track: the planner shows progress through fill percentage; a row turns green (“level filled”) once that level is complete.',
-    'Governance: Coin Volatility and Sell Intensity define how patient or assertive your distribution plan is.',
-  ]}
-/>
-
-
-  <div className="mt-3 rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.03)] p-3">
-    <div className="text-sm font-medium text-slate-200">Planner versioning</div>
-   <div className="mt-1 text-sm text-slate-300 leading-6 space-y-2">
-  <p>
-    LedgerOne uses planner versioning to keep sell planning consistent and auditable over time.
-  </p>
-
-  <div className="space-y-1">
-    <div className="font-semibold text-slate-200">When you generate a new Buy Planner</div>
-    <ul className="list-disc list-inside space-y-1">
-   <li>
-  If you already have an active <span className="font-semibold text-slate-200">Sell Planner</span>, it now gets <span className="font-semibold text-slate-200">locked</span> as a prior version
-  (it remains available and does not change).
-</li>
-<li>
-  A new <span className="font-semibold text-slate-200">Sell Planner</span> becomes active for the current cycle using the same <span className="font-semibold text-slate-200">inputted</span> settings as your
-  previous planner. You can adjust inputs and click{' '}
-  <span className="font-semibold text-slate-200">Generate Ladder</span> to update the new version.
-</li>
-
-    </ul>
-  </div>
-
-  <div className="space-y-1">
-    <div className="font-semibold text-slate-200">How tracking works</div>
-    <ul className="space-y-1">
-      <li className="flex gap-2">
-        <span className="text-slate-400">→</span>
-        <span>
-          Each Sell Planner is tracked <span className="font-semibold text-slate-200">independently</span>.
-        </span>
-      </li>
-      <li className="flex gap-2">
-        <span className="text-slate-400">→</span>
-        <span>
-          Only sells you record and <span className="font-semibold text-slate-200">attach to a specific planner</span>{' '}
-          update that planner’s row states and progress.
-        </span>
-      </li>
-      <li className="flex gap-2">
-        <span className="text-slate-400">→</span>
-        <span>
-          This prevents activity from being <span className="font-semibold text-slate-200">mixed across versions</span>.
-        </span>
-      </li>
-    </ul>
-  </div>
-</div>
-
-  </div>
-  <div className="mt-4">
-    <SellPlannerInstitutionalGuide />
-  </div>
-
-  <div className="mt-3">
-    <LegendSellPlanner />
-  </div>
-</GuideDetail>
-
-
-<GuideDetail id="New Cycle" title="New Coin Cycle">
-  <TwoCol>
-    <VideoSlot label="1–2 min: New Cycle alert workflow" />
-    <ShotSlot label="Create New Cycle alert + refreshed planner (annotated)" />
-  </TwoCol>
-
-  <p className="mt-3 text-sm text-slate-300 leading-6">
-    LedgerOne identifies when an asset enters a new major price cycle and surfaces a{' '}
-    <span className="font-semibold text-slate-200">Create New Cycle</span> alert. A cycle refresh is a governance step:
-    it resets your accumulation plan for the current phase while preserving prior-cycle sell planning history for clean,
-    auditable tracking.
-  </p>
-
-  <div className="mt-3 text-sm text-slate-300 leading-6 space-y-3">
-    <div className="space-y-1">
-      <div className="font-semibold text-slate-200">What you do</div>
-      <ul className="list-disc list-inside space-y-1">
-        <li>Open the alert to navigate directly to the coin’s Buy/Sell Planner.</li>
-        <li>
-          Review and update your Buy Planner inputs for the new cycle (especially{' '}
-          <span className="font-semibold text-slate-200">Total Budget</span> and{' '}
-          <span className="font-semibold text-slate-200">Risk Profile</span>), then click{' '}
-          <span className="font-semibold text-slate-200">Save New</span>.
-        </li>
-      </ul>
-    </div>
-
-    <div className="space-y-1">
-      <div className="font-semibold text-slate-200">What LedgerOne does automatically</div>
-      <ul className="space-y-1">
-        <li className="flex gap-2">
-          <span className="text-slate-400">→</span>
-          <span>
-            Creates a <span className="font-semibold text-slate-200">new Buy Planner</span> ladder for the updated cycle so
-            future tracking reflects the refreshed plan.
-          </span>
-        </li>
-        <li className="flex gap-2">
-          <span className="text-slate-400">→</span>
-          <span>
-            Locks the prior <span className="font-semibold text-slate-200">Sell Planner</span> as history (frozen), and a
-            new Sell Planner version becomes active for the new cycle.
-          </span>
-        </li>
-        <li className="flex gap-2">
-          <span className="text-slate-400">→</span>
-          <span>
-            Maintains <span className="font-semibold text-slate-200">clean attribution</span> so new activity is tracked
-            against the current cycle rather than blended into prior versions.
-          </span>
-        </li>
-      </ul>
-    </div>
-  </div>
-
-  <div className="mt-3">
-    <LegendRiskScore />
-  </div>
-</GuideDetail>
-
-
-            <GuideDetail id="guide-risk" title="Risk Score (What it means)">
-  <TwoCol>
-    <VideoSlot label="2–3 min: Interpreting the Risk Card" />
-    <ShotSlot label="Combined Risk card screenshot" />
-  </TwoCol>
-
-<p className="mt-3 text-sm text-slate-300 leading-6">
-  The Risk Score is a standardized, portfolio-grade metric that summarizes your portfolio’s risk conditions into a single,
-  comparable score. It decomposes risk into five components (Structural, Volatility, Tail Risk, Correlation, Liquidity)
-  and rolls them up into a <span className="font-semibold text-slate-200">Total Combined Risk</span> number plus a level
-  badge (Low / Moderate / High / Very High).
-</p>
-
-<Bullets
-  items={[
-    'Interpretation: higher score = higher-risk regime; lower score = more stable conditions.',
-    'Purpose: governance and allocation consistency—used to compare, size, and review exposure (not an execution signal).',
-    'How to use it: treat “Very High” as a caution regime (sizing discipline, concentration review), not a buy/sell trigger.',
-  ]}
-/>
-
-  <div className="mt-4">
-    <RiskScoreInstitutionalGuide />
-  </div>
-
-  <div className="mt-3">
-    <LegendRiskScore />
-  </div>
-</GuideDetail>
-
-
-
-             <GuideDetail id="guide-shortcuts" title="Shortcuts & Tips">
-  <TwoCol>
-    <VideoSlot label="1–2 min: Tips montage" />
-    <ShotSlot label="Holdings search & sort callouts" />
-  </TwoCol>
-
-  <Bullets items={[
-    'Header Calculator: use the calculator in the top header to add up totals across planner rows (toggle Tokens / $). Use Copy to paste the total where needed.',
-    'Quick portfolio import: if you already hold a position and you do not have every individual fill, add a single Buy trade using the total Tokens you hold and your average entry price. This initializes holdings and cost basis immediately.',
-    'Best practice: if you later import full history (CSV) or add individual trades, auditability and metrics become more precise. Use the “average entry” method when you do not have the full fill-by-fill record.',
-    'Use Holdings search to filter by name or symbol.',
-    'Sort by QTY/value to surface concentration quickly.',
-    'Switch timeframe tabs to analyze performance windows.',
-  ]}/>
-</GuideDetail>
-
-          </section>
-
-          {/* Tutorial Videos gallery */}
-          <section id="videos" aria-label="Tutorial Videos" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<Video className="h-5 w-5" />} title="Tutorial Videos" />
-              <p className="text-slate-300 text-sm leading-6 mt-2">
-                Keep videos short (2–5 min) and focused. Title them clearly—for example “Configure Buy Planner,”
-                “Add a Trade on Coin Page,” or “Understanding the Risk Score.”
-              </p>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <VideoThumb title="Configure Buy Planner" />
-                <VideoThumb title="Add Trade on Coin Page" />
-                <VideoThumb title="Create Sell Planner Targets" />
-                <VideoThumb title="Exposure & Risk Explained" />
-                <VideoThumb title="Charts & Timeframes" />
-                <VideoThumb title="CSV Import" />
-              </div>
-            </Card>
-          </section>
-
-          {/* Screenshots (annotated) */}
-          <section id="shots" aria-label="Screenshots" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<ImageIcon className="h-5 w-5" />} title="Screenshots with Callouts" />
-              <p className="text-slate-300 text-sm leading-6 mt-2">
-                Use callouts to highlight controls and interpretations. Keep file sizes modest for fast loads.
-              </p>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <ShotThumb caption="Coin page → Add Trade tab" />
-                <ShotThumb caption="Buy planner levels — generated ladder" />
-                <ShotThumb caption="Sell planner targets — tiers & fills" />
-                <ShotThumb caption="Risk score — combined metric" />
-                <ShotThumb caption="Holdings table — sorting & search" />
-                <ShotThumb caption="Portfolio growth — timeframe tabs" />
-              </div>
-            </Card>
-          </section>
-
-          {/* FAQ */}
-          <section id="faq" aria-label="FAQ" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<HelpCircle className="h-5 w-5" />} title="FAQ" />
-              <div className="mt-4 divide-y divide-slate-700/40">
-                <Faq q="Where do I buy a coin / add a buy?" a="Go to that coin’s page (e.g., /coins/bitcoin), then open the “Add Trade” tab to record your executed buy. For multiple, use Portfolio → CSV → Import." />
-                <Faq q="Should I configure the Buy Planner before adding trades?" a="Yes. Configure your Buy Plan first so alerts and ladders are ready. Then add trades (on coin pages) as you execute." />
-                <Faq q="How will I know when it’s time to buy or when a level is filled?" a="You’ll see Alerts on the Dashboard. Your Buy Planner row turns yellow when it’s time to buy, and turns green once that level is filled." />
-                <Faq q="How are risk factors combined?" a="Combined score = Σ(weight×structure) × vol × tail × corr × liq. It’s benchmarked to BTC regimes and liquidity tiers." />
-                <Faq q="Can I use legacy price endpoints?" a="No. This app uses the NEW data core only: /api/prices and /api/price-history." />
-              </div>
-            </Card>
-          </section>
-
-          {/* Resources */}
-          <section id="resources" aria-label="Resources" className="scroll-mt-24">
-            <Card>
-              <SectionTitle icon={<ExternalLink className="h-5 w-5" />} title="Resources" />
-              <ul className="mt-2 text-sm text-slate-300 space-y-2">
-                <li>• CSV template & import guide</li>
-                <li>• Risk methodology explainer (PDF)</li>
-                <li>• Release notes & changes</li>
-                <li>• Support & contact</li>
+        <Accordion icon={<Layers className="h-4 w-4" />} title="Buy Planner" sub="Budget, risk profile, and row states" open>
+          <div className="ht-mini">Key inputs</div>
+          <Spec rows={[
+            { term: 'Total Budget (USD)', def: 'The maximum capital you’ll deploy for this asset in the current cycle. Keeps planning disciplined and prevents adding risk by accident through unstructured buying.' },
+            { term: 'Risk Profile', def: (
+              <ul>
+                <li><strong>Conservative</strong> — most patient pacing; reduces drawdown risk and avoids over-deployment during volatility.</li>
+                <li><strong>Moderate</strong> — balanced pacing for disciplined accumulation; typical for larger, liquid core positions.</li>
+                <li><strong>Aggressive</strong> — faster accumulation and higher exposure velocity when conviction is high.</li>
               </ul>
-            </Card>
-          </section>
+            ) },
+          ]} />
+          <div className="ht-mini">Execution &amp; tracking</div>
+          <Spec rows={[
+            { term: 'Yellow row — time to buy', def: 'An execution signal: market price reached this level’s targeted buy. Execute externally, then record the fill under Coin → Add Trade so the row can update.' },
+            { term: 'Green row — level filled', def: 'A completion state: buys recorded while this planner is active count toward the level’s fill percentage. At 100%, the row turns green.' },
+            { term: 'Off-Plan', def: 'Buys recorded away from designated levels are tagged Off-Plan and don’t contribute to completion — keeping attribution clean and surfacing discretionary deviations.' },
+            { term: 'Alerts', def: 'Buy alerts surface on the Dashboard when levels become actionable. New Cycle alerts indicate it’s time to refresh the plan for the current market phase.' },
+          ]} />
+          <div className="ht-note">LedgerOne does not place orders. Execute buys externally, then log the exact fill price and quantity under Coin → Add Trade.</div>
+        </Accordion>
 
-          {/* Footer note */}
-          <div className="text-xs text-slate-400 flex items-center gap-2">
-            <Info className="h-4 w-4" />
-            This page is safe to expand anytime with more videos, images, and FAQs.
-          </div>
-        </div>
+        <Accordion icon={<Wallet className="h-4 w-4" />} title="Add a Trade" sub="Your book of record for executed orders">
+          <div className="ht-mini">Key fields</div>
+          <Spec rows={[
+            { term: 'Side', def: 'Buy or Sell. Determines how position and realized results update, supporting accurate, auditable performance reporting.' },
+            { term: 'Quantity', def: (<><p>Enter the filled quantity to keep an accurate record of executed size.</p><ul><li><strong>Buys</strong> can be entered as USD or tokens (lock icon switches modes).</li><li><strong>Sells</strong> are recorded in tokens.</li></ul></>) },
+            { term: 'Execution price', def: 'The filled price from your exchange order — the record of execution value.' },
+            { term: 'Timestamp', def: 'The execution time. Defaults to now for immediate entries; accurate timestamps keep sequencing and reporting reliable.' },
+          ]} />
+          <div className="ht-mini">Planner attribution</div>
+          <Spec rows={[
+            { term: 'Buys (automatic)', def: 'Buy entries auto-tag to the active planner for that coin — no manual selection needed.' },
+            { term: 'Sells (choose version)', def: 'Sells default to the Active Sell Planner, but you can assign them to any Frozen version so the correct ladder’s progress updates. If Planner [2] is signaling, attribute the sell to Planner [2].' },
+            { term: 'Update planner toggle', def: 'On by default so the trade fills your ladder. Switch it off to record to your portfolio only, without touching any planner.' },
+          ]} />
+        </Accordion>
 
-        {/* RIGHT STICKY IN-PAGE NAV */}
-        <aside className="hidden xl:block">
-          <div className="sticky top-20 rounded-xl bg-[rgb(28,29,31)] border border-[rgba(255,255,255,0.06)] p-3">
-            <div className="text-xs font-semibold text-slate-300 mb-2">On this page</div>
-            <nav className="space-y-1">
-              {SECTIONS.map(s => {
-                const Icon = s.icon
-                const isActive = active === s.id
-                return (
-                  <a
-                    key={s.id}
-                    href={`#${s.id}`}
-                    className={[
-                      'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition',
-                      isActive
-                        ? 'bg-[rgba(137,128,213,0.12)] text-[rgb(205,195,255)] ring-1 ring-[rgba(167,128,205,0.35)]'
-                        : 'text-slate-300 hover:text-white hover:bg-[rgba(255,255,255,0.06)]'
-                    ].join(' ')}
-                  >
-                    <Icon className="h-4 w-4 opacity-80" />
-                    <span>{s.label}</span>
-                  </a>
-                )
-              })}
-            </nav>
-          </div>
-        </aside>
-      </div>
-    </div>
-  )
-}
+        <Accordion icon={<BarChart3 className="h-4 w-4" />} title="Sell Planner" sub="Structured distribution and versioning">
+          <div className="ht-mini">Settings</div>
+          <Spec rows={[
+            { term: 'Coin Volatility', def: 'Sets how broad the plan should be. More volatile assets generally benefit from a wider, more patient distribution.' },
+            { term: 'Sell Intensity', def: 'Sets how assertively the plan reduces exposure — from gradual trimming to faster reduction.' },
+          ]} />
+          <div className="ht-mini">Signals &amp; versioning</div>
+          <Spec rows={[
+            { term: 'Yellow / Green rows', def: 'Yellow = the next planned sell checkpoint is active; execute the sell. Green = that level is 100% filled by attributed sells.' },
+            { term: 'Freezing', def: 'When you save a new Buy Planner, any active Sell Planner locks as a numbered version (still visible next to the Active tab, tracked independently). A fresh Active planner is created for the new cycle.' },
+          ]} />
+        </Accordion>
 
-/* ——— Small building blocks (no external UI libs) ——— */
+        <Accordion icon={<Repeat className="h-4 w-4" />} title="New Coin Cycle" sub="Refreshing your plan for a new phase">
+          <div className="ht-mini">What you do</div>
+          <Spec rows={[
+            { term: 'Open the alert', def: 'It navigates straight to the coin’s Buy/Sell Planner.' },
+            { term: 'Refresh inputs', def: 'Review your Total Budget and Risk Profile for the new cycle, then click Save New Plan.' },
+          ]} />
+          <div className="ht-mini">What LedgerOne does automatically</div>
+          <Spec rows={[
+            { term: 'New Buy ladder', def: 'Builds a fresh Buy Planner for the updated cycle so future tracking reflects the refreshed plan.' },
+            { term: 'Locks prior Sell Planner', def: 'The previous Sell Planner freezes as history; a new version becomes active for the new cycle.' },
+            { term: 'Clean attribution', def: 'New activity tracks against the current cycle rather than blending into prior versions.' },
+          ]} />
+        </Accordion>
 
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl bg-[rgb(28,29,31)] border border-[rgba(255,255,255,0.06)] p-4">
-      {children}
-    </div>
-  )
-}
-
-function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="grid place-items-center rounded-lg bg-[rgba(255,255,255,0.06)] h-9 w-9">
-        {icon}
-      </div>
-      <div className="font-semibold">{title}</div>
-    </div>
-  )
-}
-
-function Check({ className }: { className?: string }) {
-  return <CheckCircle2 className={['h-4 w-4 text-emerald-400', className].filter(Boolean).join(' ')} />
-}
-
-function ChecklistCard({
-  title, items, icon,
-}: { title: string; items: string[]; icon?: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-[rgba(255,255,255,0.06)] p-3 bg-[rgb(34,35,39)]">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="h-8 w-8 rounded-md bg-[rgba(255,255,255,0.06)] grid place-items-center">
-          {icon ?? <Cpu className="h-4 w-4" />}
-        </div>
-        <div className="font-medium">{title}</div>
-      </div>
-      <ul className="space-y-1.5 text-sm text-slate-300">
-        {items.map((t, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <Check className="mt-0.5" />
-            <span>{t}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function GuideTile({ href, title, blurb }: { href: string; title: string; blurb: string }) {
-  return (
-    <a
-      href={href}
-className="block rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] p-3 hover:bg-[rgb(54,55,56)] transition"
-    >
-      <div className="font-medium">{title}</div>
-      <div className="text-sm text-slate-400 mt-1">{blurb}</div>
-    </a>
-  )
-}
-
-function GuideDetail({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section id={id} className="scroll-mt-24">
-      <Card>
-        <div className="text-sm font-semibold text-slate-200">{title}</div>
-        <div className="mt-3 space-y-4">{children}</div>
-      </Card>
-    </section>
-  )
-}
-
-function TwoCol({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
-}
-
-function VideoSlot({ label = 'Short walkthrough video (2–3 min)' }: { label?: string }) {
-  return (
-    <div className="aspect-video rounded-md bg-[rgb(28,29,31)] border border-[rgba(255,255,255,0.06)] overflow-hidden grid place-items-center">
-      <div className="text-xs text-slate-400 p-3 text-center leading-5">
-        {label}<br/>
-        {/* Example:
-        <iframe
-          className="w-full h-full"
-          src="https://www.youtube.com/embed/VIDEO_ID"
-          title="How-To"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        /> */}
-        <Video className="mx-auto mt-2 h-5 w-5 opacity-70" />
-      </div>
-    </div>
-  )
-}
-
-function ShotSlot({ label = 'Annotated screenshot' }: { label?: string }) {
-  return (
-    <div className="h-[220px] rounded-md bg-[rgb(28,29,31)] border border-[rgba(255,255,255,0.06)] overflow-hidden grid place-items-center">
-      <div className="text-xs text-slate-400 p-3 text-center leading-5">
-        {label}<br/>
-        {/* Drop a <Image /> or <img /> here. Keep width <= 1600px for performance. */}
-        <ImageIcon className="mx-auto mt-2 h-5 w-5 opacity-70" />
-      </div>
-    </div>
-  )
-}
-
-function VideoThumb({ title }: { title: string }) {
-  return (
-    <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] overflow-hidden">
-      <div className="aspect-video bg-[rgb(28,29,31)] grid place-items-center">
-        <Video className="h-6 w-6 opacity-70" />
-      </div>
-      <div className="p-3 text-sm font-medium">{title}</div>
-    </div>
-  )
-}
-
-function ShotThumb({ caption }: { caption: string }) {
-  return (
-    <div className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] overflow-hidden">
-      <div className="h-[160px] bg-[rgb(28,29,31)] grid place-items-center">
-        <ImageIcon className="h-6 w-6 opacity-70" />
-      </div>
-      <div className="p-3 text-sm text-slate-300">{caption}</div>
-    </div>
-  )
-}
-
-function Faq({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="py-3">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full text-left flex items-center justify-between gap-4"
-      >
-        <span className="font-medium text-slate-200 text-sm">{q}</span>
-        <span className="text-slate-400">{open ? '−' : '+'}</span>
-      </button>
-      {open && <p className="mt-2 text-sm text-slate-300 leading-6">{a}</p>}
-    </div>
-  )
-}
-
-/* Small legend / badges */
-function BadgeYellow({ label = 'yellow' }: { label?: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-yellow-400/20 text-yellow-200 ring-1 ring-yellow-400/30">
-      {label}
-    </span>
-  )
-}
-
-function BadgeGreen({ label = 'green' }: { label?: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30">
-      {label}
-    </span>
-  )
-}
-
-/** Matches the New Cycle alert purple badge in src/components/common/AlertsTooltip.tsx */
-function BadgeCycle({ label = 'create new cycle' }: { label?: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[rgb(63,56,126)]/35 text-[rgb(214,210,255)] ring-1 ring-[rgb(136,128,213)]/60">
-      {label}
-    </span>
-  )
-}
-
-/** Matches Sell badge red (rose) used in src/components/common/AlertsTooltip.tsx */
-function BadgeRed({ label = 'sell' }: { label?: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30">
-      {label}
-    </span>
-  )
-}
-
-function Legend({ showCycle = false }: { showCycle?: boolean }) {
-  return (
-    <div className="inline-flex items-center gap-2 text-xs">
-      <span className="text-slate-400">Planner row states:</span>
-      <BadgeYellow label="time to buy" />
-      <BadgeGreen label="level filled" />
-
-      <span className="text-slate-400">Alerts:</span>
-      <BadgeGreen label="Buy" />
-      <BadgeRed label="Sell" />
-      {showCycle ? <BadgeCycle label="create new cycle" /> : null}
-    </div>
-  )
-}
-/** Sell Planner card legend ONLY: show Sell alert pill */
-function LegendSellPlanner() {
-  return (
-    <div className="inline-flex items-center gap-2 text-xs">
-      <span className="text-slate-400">Planner row states:</span>
-      <BadgeYellow label="time to buy" />
-      <BadgeGreen label="level filled" />
-
-      <span className="text-slate-400">Alerts:</span>
-      <BadgeRed label="Sell" />
-    </div>
-  )
-}
-/* ─────────────────────────────────────────────────────────────
-   Institutional definitions: Buy Planner (How-To)
-   ───────────────────────────────────────────────────────────── */
-
-type DefItem = { term: React.ReactNode; definition: React.ReactNode }
-
-function MiniHeading({ children }: { children: any }) {
-  return (
-    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-      {children}
-    </div>
-  )
-}
-
-function DefGrid({ items }: { items: DefItem[] }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {items.map((it, idx) => (
-        <div
-          key={idx}
-          className="rounded-lg border border-[rgba(255,255,255,0.06)] bg-[rgb(34,35,39)] p-3 shadow-[0_10px_25px_rgba(0,0,0,0.25)]"
-        >
-          <div className="text-sm font-medium text-slate-200">{it.term}</div>
-          <div className="mt-1 text-sm text-slate-300 leading-6">{it.definition}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-
-function BuyPlannerInstitutionalGuide() {
-  return (
-<div className="space-y-4">
-        <MiniHeading>Key inputs</MiniHeading>
-        <DefGrid
-          items={[
-            {
-  term: <span className="font-bold text-slate-100">Total Budget (USD)</span>,
-              definition:
-                'The maximum capital you are willing to deploy for this asset in the current cycle. This keeps planning disciplined and prevents “adding risk by accident” through unstructured buying.',
-            },
-       {
-  term: <span className="font-bold text-slate-100">Risk Profile</span>,
-  definition: (
-    <div className="space-y-2">
-
-<ul className="list-disc list-inside space-y-1">
-  <li>
-    <span className="font-semibold text-slate-200">Conservative:</span>{' '}
-    Highest caution and most patient pacing. Designed to reduce drawdown risk and avoid over-deployment during volatility.
-  </li>
-  <li>
-    <span className="font-semibold text-slate-200">Moderate:</span>{' '}
-    Balanced pacing for disciplined accumulation—typically appropriate for larger, more liquid assets and core positions.
-  </li>
-  <li>
-    <span className="font-semibold text-slate-200">Aggressive:</span>{' '}
-    Faster accumulation and higher exposure velocity. Optimized for building position size efficiently when conviction is high.
-  </li>
-</ul>
-
-    </div>
-  ),
-},
-
-
-
-            
-          ]}
-        />
-
-     <MiniHeading>Execution and tracking</MiniHeading>
-<DefGrid
-  items={[
-    {
-      term: <span className="font-bold text-slate-100">Planner row state: “time to buy” (yellow)</span>,
-      definition:
-        'An execution signal: when a ladder row turns yellow, market price has reached that level’s targeted buy. Execute the buy externally, then record the fill under Coin → Add Trade so the row can update.',
-    },
-    {
-      term: <span className="font-bold text-slate-100">Planner row state: “level filled” (green)</span>,
-      definition:
-        'A completion state: buys you record while this Buy Planner is active count toward the level’s fill percentage. When fill reaches 100%, the ladder row turns green, confirming the level is complete.',
-    },
-    {
-      term: <span className="font-bold text-slate-100">Off-Plan</span>,
-      definition:
-        'Buys recorded away from this planner’s designated levels are tagged Off-Plan and do not contribute to level completion. This keeps plan attribution clean and highlights discretionary deviations.',
-    },
-    {
-      term: <span className="font-bold text-slate-100">Alerts: Buy / Create New Cycle</span>,
-      definition:
-        'Buy alerts surface on the Dashboard when one or more levels become actionable. Create New Cycle alerts indicate it’s time to refresh your Buy Planner so it stays aligned with the current market phase.',
-    },
-  ]}
-/>
-
-
-        <div className="text-xs text-slate-400 leading-5">
-          Practical rule: execute buys externally, then log the exact fill price/quantity under{' '}
-          <span className="text-slate-300">Coin → Add Trade</span>. LedgerOne does not place orders; it provides the plan,
-          the accounting, and the governance layer.
-        </div>
-      </div>
-  
-  )
-}
-function AddTradeInstitutionalGuide() {
-  return (
-<div className="space-y-4">
-        <MiniHeading>What this is</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Trade record</span>,
-              definition:
-                'A single, timestamped entry representing an executed buy or sell. This is the source of truth for what actually happened in your portfolio.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Why it matters</span>,
-              definition:
-                'Trade records drive accurate holdings, cost tracking, and planner completion. Clean inputs produce clean reporting.',
-            },
-          ]}
-        />
-
-        <MiniHeading>Key fields and what they mean</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Side</span>,
-              definition:
-                'Whether the execution was a Buy or a Sell. This determines how the position and realized results update; supporting accurate, auditable performance reporting.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Quantity</span>,
-              definition: (
-  <div className="space-y-2">
-    <p>
-      Execute the buy/sell externally, then enter the filled quantity here to maintain an accurate record of executed
-      size and exposure.
-    </p>
-
-    <ul className="list-disc list-inside space-y-1">
-      <li>
-        <span className="font-semibold text-slate-200">Buys</span> are recorded as a USD amount.
-      </li>
-      <li>
-        <span className="font-semibold text-slate-200">Sells</span> are recorded as a token amount.
-      </li>
-    </ul>
-  </div>
-),
-
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Execution price</span>,
-              definition:
-'Execute the buy/sell price externally, then enter the filled price here to keep an accurate record of the execution value.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Timestamp</span>,
-              definition:
-'The execution timestamp. For immediate entries, it defaults to the current date and time; maintaining accurate timestamps supports correct sequencing and reliable historical reporting.',
-            },
-          ]}
-        />
-
-        <MiniHeading>Planner attribution</MiniHeading>
-<DefGrid
-  items={[
-    {
-      term: <span className="font-semibold text-slate-100">Buy attribution (automatic)</span>,
-      definition: (
-        <div className="space-y-2">
-          <p>
-            Buy entries are automatically tagged to the active planner context for that coin, so you do not need to select a Buy Planner manually.
-            This keeps accumulation tracking simple and consistent.
+        <Accordion icon={<Gauge className="h-4 w-4" />} title="Risk Score" sub="A single, comparable portfolio risk metric">
+          <p className="ht-step-text" style={{ marginBottom: 4 }}>
+            A standardized score decomposing portfolio risk into five components, rolled up into a
+            Total Combined Risk number plus a level badge (Low / Moderate / High / Very High). It&apos;s a
+            governance metric — used to size and review exposure, not to time trades.
           </p>
+          <div className="ht-mini">Components</div>
+          <Spec rows={[
+            { term: 'Structural', def: 'Baseline composition risk from the quality/tier mix you hold. More established assets tend to be more resilient.' },
+            { term: 'Volatility', def: 'Realized volatility regime (annualized). Higher volatility means larger swings and a wider range of outcomes.' },
+            { term: 'Tail Risk', def: 'Downside stress sensitivity — how the portfolio behaves during sharp risk-off periods.' },
+            { term: 'Correlation', def: 'Diversification behavior relative to BTC. Higher correlation raises concentration risk.' },
+            { term: 'Liquidity', def: 'Market depth (rank/liquidity), informing sizing discipline and concentration governance.' },
+            { term: 'Total Combined Risk', def: 'One comparable number: Σ(weight × structural) × vol × tail × corr × liq. Use it for sizing and governance, not trade timing.' },
+          ]} />
+        </Accordion>
+
+        <Accordion icon={<Calculator className="h-4 w-4" />} title="Shortcuts &amp; tips" sub="Faster ways to work">
+          <Spec rows={[
+            { term: 'Header calculator', def: 'Add up totals across planner rows (toggle Tokens / $), then Copy the result where you need it.' },
+            { term: 'Quick portfolio import', def: 'Already hold a position without every fill? Add a single Buy using your total tokens and average entry price to initialize holdings and cost basis immediately.' },
+            { term: 'Holdings search & sort', def: 'Filter holdings by name or symbol; sort by quantity or value to surface concentration quickly.' },
+            { term: 'Timeframe tabs', def: 'Switch performance windows on charts to analyze different periods.' },
+          ]} />
+        </Accordion>
+      </section>
+
+      <hr className="ht-rule" />
+
+      {/* ── Features ── */}
+      <section className="ht-section" aria-label="Features">
+        <div className="ht-section-head">
+          <span className="ht-section-eyebrow">04 — Around the app</span>
+          <h2 className="ht-section-title">Everywhere else worth knowing</h2>
         </div>
-      ),
-    },
-    {
-      term: <span className="font-semibold text-slate-100">Sell attribution (select planner version)</span>,
-      definition: (
-        <div className="space-y-2">
-          <p>
-            Sell entries default to the <span className="font-semibold text-slate-200">Active</span> Sell Planner, but you can override to any{' '}
-            <span className="font-semibold text-slate-200">Frozen</span> planner version so the correct ladder’s fills and progress update.
-          </p>
-
-          <ul className="list-disc list-inside space-y-1">
-            <li>
-              If a specific Sell Planner version is signaling (e.g., Planner [2] is yellow), record the sell and assign it to that planner version.
-            </li>
-            <li>
-              This prevents sells from being mixed across versions and keeps reporting auditable.
-            </li>
-          </ul>
+        <div className="ht-feat-grid">
+          <Feature icon={<LayoutDashboard className="h-4 w-4" />} title="Dashboard" href="/dashboard">Holdings, growth, recent trades — and the alerts button, which rings yellow when something needs you.</Feature>
+          <Feature icon={<Wallet className="h-4 w-4" />} title="Portfolio" href="/portfolio">Allocation donut, value history, and CSV export of your full trade record.</Feature>
+          <Feature icon={<BarChart3 className="h-4 w-4" />} title="Planner" href="/planner">The full Buy &amp; Sell workspace for any coin, with plan-history versions.</Feature>
+          <Feature icon={<FileSpreadsheet className="h-4 w-4" />} title="CSV import" href="/csv">Backfill history or bulk-add trades from your exchange export.</Feature>
+          <Feature icon={<ScrollText className="h-4 w-4" />} title="Audit Log" href="/audit">Every trade and planner action, logged and exportable.</Feature>
+          <Feature icon={<Gauge className="h-4 w-4" />} title="Risk Score" href="/dashboard">One number for how far your portfolio sits from its plan.</Feature>
+          <Feature icon={<SettingsIcon className="h-4 w-4" />} title="Display currency" href="/settings">Switch the whole app between USD, CAD, and EUR from the header or Settings.</Feature>
+          <Feature icon={<Eye className="h-4 w-4" />} title="Privacy mode" href="/dashboard">The eye icon masks every amount on screen — for screen-sharing or public spaces.</Feature>
+          <Feature icon={<Calculator className="h-4 w-4" />} title="Calculator" href="/dashboard">Quick position math from the header without leaving the page.</Feature>
         </div>
-      ),
-    },
-    {
-      term: <span className="font-semibold text-slate-100">Off-Plan</span>,
-      definition: (
-        <div className="space-y-2">
-          <p>
-            Trades that do not align with the planner’s intended levels are tracked separately and do not contribute to ladder completion.
-            This preserves clean attribution and prevents discretionary activity from overstating plan progress.
-          </p>
+      </section>
 
-          <ul className="list-disc list-inside">
-            <li>
-              <span className="font-semibold text-slate-200">
-                It is strongly recommended to adhere to the plan and avoid discretionary deviations.
-              </span>
-            </li>
-          </ul>
+      <hr className="ht-rule" />
+
+      {/* ── FAQ ── */}
+      <section className="ht-section" aria-label="FAQ">
+        <div className="ht-section-head">
+          <span className="ht-section-eyebrow">05 — FAQ</span>
+          <h2 className="ht-section-title">Quick answers</h2>
         </div>
-      ),
-    },
-  ]}
-/>
+        <div>
+          <Faq q="Does LedgerOne place trades for me?">No. It plans levels, alerts you, and records what you executed. Every order happens at your exchange or broker.</Faq>
+          <Faq q="Why is a row yellow?">The live price reached that level’s target and the planned amount isn’t filled yet. Execute at your exchange, record it in Add Trade, and the row turns green as it fills.</Faq>
+          <Faq q="I recorded a trade but the planner didn't move.">Check two things: the <strong>Update planner</strong> toggle was on when you added the trade, and — for sells — the trade was attached to the right planner version (Active vs. a frozen number).</Faq>
+          <Faq q="Should I configure the Buy Planner before adding trades?">Yes. Configure your Buy Plan first so alerts and ladders are ready, then add trades as you execute.</Faq>
+          <Faq q="What happens when I save a new Buy Planner?">Your current Sell Planner freezes as a numbered version — its history stays visible and keeps tracking independently. A new Active sell planner is created for the new cycle.</Faq>
+          <Faq q="I typed a trade wrong. How do I fix it?">Open the coin’s trades list, delete the incorrect entry, and re-add it with the exact fill details from your exchange.</Faq>
+        </div>
+      </section>
 
+      {/* ── Closing CTA ── */}
+      <div className="ht-cta">
+        <div>
+          <h3 className="ht-cta-title">Ready when you are.</h3>
+          <p className="ht-cta-sub">Pick a coin, set a budget, and save your first Buy Planner — the rest is just following the signals.</p>
+        </div>
+        <Link href="/planner" className="ht-btn ht-btn-primary ht-btn-lg" style={{ padding: '13px 26px', fontSize: 15 }}>
+          Open the Planner <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
-  )
-}
-
-function SellPlannerInstitutionalGuide() {
-  return (
-      <div className="space-y-4">
-        <MiniHeading>What it does</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Sell Planner</span>,
-              definition:
-                'A coin-level distribution plan that structures how exposure is reduced as the market advances, supported by alerts and completion tracking.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Why it matters</span>,
-              definition:
-                'It converts intention into process—helping you take profits systematically while maintaining consistent exposure management.',
-            },
-          ]}
-        />
-
-        <MiniHeading>Settings (high-level)</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Coin Volatility</span>,
-              definition:
-                'Sets how broad the plan should be based on the asset’s typical behavior—more volatile assets generally benefit from a wider, more patient distribution plan.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Sell Intensity</span>,
-              definition:
-                'Sets how assertively the plan reduces exposure—ranging from gradual trimming to more aggressive exposure reduction.',
-            },
-          ]}
-        />
-
-        <MiniHeading>Execution signals and tracking</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Planner row state: “time to sell” (yellow)</span>,
-              definition:
-                'An execution signal: when a row turns yellow, the next planned sell checkpoint is active. Execute the sell externally; status updates as fills occur.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Planner row state: “level filled” (green)</span>,
-              definition:
-                'A confirmation state: only sells recorded and attributed to this planner contribute to the fill percentage. When fill reaches 100%, the row turns green, confirming completion.',
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Alerts: Sell</span>,
-              definition:
-                'Sell alerts surface when one or more planned sell checkpoints are active, providing a clear prompt to execute.',
-            },
-    
-          ]}
-        />
-
-        <MiniHeading>Attribution discipline</MiniHeading>
-        <DefGrid
-          items={[
-            {
-              term: <span className="font-semibold text-slate-100">Attached to the correct planner</span>,
-              definition: (
-                <div className="space-y-2">
-                  <p>
-                    Only sells attributed to the appropriate planner are recognized for that planner’s completion states.
-                  </p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>
-                      <span className="font-semibold text-slate-200">Sell entries:</span>{' '}
-                      when recording a sell, select the corresponding planner (e.g., if Planner [2] is highlighted in yellow,
-                      attach the sell to Planner 2).
-                    </li>
-                  </ul>
-                </div>
-              ),
-            },
-            {
-              term: <span className="font-semibold text-slate-100">Off-Plan</span>,
-              definition: (
-                <div className="space-y-2">
-                  <p>
-                    Trades not attributed to this planner’s levels are tracked separately and do not contribute to planner
-                    completion. This preserves clean attribution and prevents non-plan activity from overstating progress.
-                  </p>
-                  <ul className="list-disc list-inside">
-                    <li>
-                      <span className="font-semibold text-slate-200">
-                        It is strongly recommended to adhere to the plan and avoid discretionary deviations.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              ),
-            },
-          ]}
-        />
-      </div>
-  )
-}
-function RiskScoreInstitutionalGuide() {
-  return (
-      <div className="space-y-4">
-        <MiniHeading>Risk components (what each metric means)</MiniHeading>
-
-<DefGrid
-  items={[
-    {
-      term: <span className="font-semibold text-slate-100">Structural</span>,
-      definition:
-        'Baseline composition risk derived from the quality/tier mix of what you hold. More established assets tend to be more resilient; thinner assets can be more sensitive to capital flows.',
-    },
-    {
-      term: <span className="font-semibold text-slate-100">Volatility</span>,
-      definition:
-        'Realized volatility regime (annualized). Higher volatility implies larger swings and a wider range of outcomes, which increases position risk if sizing is not controlled.',
-    },
-    {
-      term: <span className="font-semibold text-slate-100">Tail Risk</span>,
-      definition:
-        'Downside stress sensitivity—how the portfolio tends to behave during sharp risk-off periods. When stress conditions are active, tail risk increases.',
-    },
-    {
-      term: <span className="font-semibold text-slate-100">Correlation</span>,
-      definition:
-        'Diversification behavior relative to BTC (portfolio-weighted). Higher correlation increases concentration risk; lower correlation improves diversification.',
-    },
-{
-  term: <span className="font-semibold text-slate-100">Liquidity</span>,
-definition: (
-  <div className="space-y-2">
-    <p>Market depth (rank/liquidity).</p>
-
-    <ul className="list-disc list-inside space-y-1">
-
-    
-      <li>
-        <span className="font-semibold text-slate-200">Implication:</span>{' '}
-        informs sizing discipline and concentration governance for long-term accumulation.
-      </li>
-    </ul>
-  </div>
-),
-},
-
-    {
-      term: <span className="font-semibold text-slate-100">Total Combined Risk</span>,
-      definition:
-        'A single comparable metric that consolidates the above dimensions. Formula (as shown in the Portfolio card): Σ(weight × structural) × vol × tail × corr × liq. Use it for sizing and governance, not trade timing.',
-    },
-  ]}
-/>
-      </div>
-  )
-}
-
-
-/**
- * Buy Planner card legend ONLY:
- * - No Sell pill
- * - Show "create new cycle" next to Alerts
- */
-function LegendBuyPlanner() {
-  return (
-    <div className="inline-flex items-center gap-2 text-xs">
-      <span className="text-slate-400">Planner row states:</span>
-      <BadgeYellow label="time to buy" />
-      <BadgeGreen label="level filled" />
-
-      <span className="text-slate-400">Alerts:</span>
-      <BadgeGreen label="Buy" />
-      <BadgeCycle label="create new cycle" />
     </div>
   )
 }
-
-/** Risk Score card legend ONLY: show New Cycle alert pill */
-function LegendRiskScore() {
-  return (
-    <div className="inline-flex items-center gap-2 text-xs">
-      <span className="text-slate-400">Alerts:</span>
-      <BadgeCycle label="create new cycle" />
-    </div>
-  )
-}
-
-
-/* Bullets helper used in guide sections */
-function Bullets({ items }: { items: string[] }) {
-  return (
-    <ul className="mt-3 space-y-2 text-sm text-slate-300">
-      {items.map((t, i) => (
-        <li key={i} className="flex items-start gap-2">
-          {/* Prevent the icon from shrinking when text wraps */}
-          <Check className="mt-0.5 shrink-0" />
-          <span className="flex-1">{t}</span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-

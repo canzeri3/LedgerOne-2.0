@@ -1,0 +1,200 @@
+/* ============================================================
+   LedgerOne — Audit Log skin (.au scope) · UI only
+   Ported from design-handoff audit.css onto app tokens.
+   ============================================================ */
+.au {
+  --au-bg: rgb(19, 20, 21);
+  --au-surface: rgb(28, 29, 31);
+  --au-surface-2: rgb(32, 33, 35);
+  --au-border: rgb(41, 42, 45);
+  --au-border-strong: rgb(58, 59, 63);
+  --au-text: rgb(226, 228, 235);
+  --au-text-2: rgb(163, 163, 164);
+  --au-text-3: rgb(122, 124, 132);
+  --au-accent: rgb(136, 128, 213);
+  --au-success: #34c98a;
+  --au-danger: #f0705c;
+  --au-warning: #e6a53c;
+  --au-r: 6px;
+  padding-bottom: 48px;
+}
+
+/* ---- page head ---- */
+.au .au-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap; padding: 4px 2px 22px;
+}
+.au .au-head h1 {
+  font-size: clamp(26px, 2.3vw, 34px); font-weight: 700;
+  letter-spacing: -0.025em; line-height: 1.04; margin: 0 0 6px; color: var(--au-text);
+}
+.au .au-head .sub { font-size: 14px; color: var(--au-text-2); max-width: 560px; }
+.au .au-head-meta { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.au .au-count { font-size: 13px; color: var(--au-text-2); }
+.au .au-count b { color: var(--au-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.au .au-pill {
+  font-size: 11.5px; color: var(--au-text-3);
+  border: 1px solid var(--au-border); background: var(--au-surface);
+  padding: 6px 11px; border-radius: var(--au-r);
+}
+
+/* ---- toolbar ---- */
+.au .au-toolbar {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px 16px; background: var(--au-surface);
+  border: 1px solid var(--au-border); border-radius: var(--au-r);
+  margin-bottom: 42px;
+}
+.au .au-search {
+  flex: 1 1 260px; max-width: 480px;
+  display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px;
+  border: 1px solid var(--au-border-strong); border-radius: var(--au-r);
+  background: var(--au-bg); color: var(--au-text-3);
+  transition: border-color 130ms;
+}
+.au .au-search.sm { flex: 0 1 220px; }
+.au .au-search:focus-within { border-color: var(--au-accent); }
+.au .au-search input {
+  flex: 1; border: none; outline: none; background: transparent;
+  color: var(--au-text); font-size: 14px; min-width: 0;
+}
+.au .au-search input::placeholder { color: var(--au-text-3); }
+.au .au-tb-group { display: flex; align-items: center; gap: 9px; flex: none; }
+.au .au-tb-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--au-text-3);
+}
+.au .seg {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px; background: var(--au-bg);
+  border: 1px solid var(--au-border); border-radius: 8px;
+}
+.au .seg button {
+  height: 28px; padding: 0 11px; border: none; background: transparent;
+  border-radius: 6px; color: var(--au-text-3);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.au .seg button:hover { color: var(--au-text); }
+.au .seg button.cur { background: var(--au-surface-2); color: var(--au-text); }
+.au .seg button.cur.accent { background: rgba(136, 128, 213, 0.14); color: rgb(190, 184, 245); }
+
+/* ---- day group ---- */
+.au .au-group { margin-bottom: 18px; }
+.au .au-group-h { display: flex; align-items: baseline; gap: 12px; padding: 2px 4px 10px; }
+.au .au-group-h .d { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; color: var(--au-text); }
+.au .au-group-h .c { font-size: 11.5px; color: var(--au-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---- entries card ---- */
+.au .au-card {
+  background: var(--au-surface); border: 1px solid var(--au-border);
+  border-radius: var(--au-r); overflow: hidden;
+}
+.au .au-row {
+  display: grid; grid-template-columns: 20px 76px 1fr auto;
+  gap: 16px; align-items: start;
+  padding: 9px 22px; border-bottom: 1px solid var(--au-border);
+  cursor: pointer; transition: background 120ms;
+}
+.au .au-row:last-child { border-bottom: none; }
+.au .au-row:hover, .au .au-row.open { background: var(--au-surface-2); }
+.au .au-row.au-noexp { cursor: default; }
+
+.au .au-tog {
+  width: 20px; height: 20px; display: grid; place-items: center; margin-top: 1px;
+  border-radius: 5px; color: var(--au-text-3);
+  transition: transform 170ms, color 120ms, background 120ms;
+}
+.au .au-row:hover .au-tog { color: var(--au-text-2); }
+.au .au-row.open .au-tog { transform: rotate(90deg); color: var(--au-text); background: var(--au-bg); }
+.au .au-noexp .au-tog { visibility: hidden; }
+
+.au .au-time {
+  font-size: 12.5px; color: var(--au-text-3); white-space: nowrap;
+  padding-top: 2px; font-variant-numeric: tabular-nums;
+}
+.au .au-main { min-width: 0; }
+.au .au-line { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 3px; }
+.au .au-action { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--au-text); }
+.au .au-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 500; color: var(--au-text-2);
+  background: var(--au-surface-2); border: 1px solid var(--au-border);
+  padding: 3px 9px; border-radius: 3px; white-space: nowrap;
+}
+.au .au-row:hover .au-chip, .au .au-row.open .au-chip { background: var(--au-bg); }
+.au .au-chip .tk { font-size: 10px; letter-spacing: 0.04em; color: var(--au-text-3); text-transform: uppercase; }
+.au .au-summary { font-size: 13px; color: var(--au-text-2); line-height: 1.5; overflow-wrap: anywhere; }
+.au .au-summary b { color: var(--au-text); font-weight: 600; }
+
+/* right: restore + action badge */
+.au .au-right { display: flex; align-items: center; gap: 12px; padding-top: 2px; }
+.au .au-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 3px;
+  border: 1px solid var(--au-border-strong);
+  background: transparent; color: var(--au-text-2); white-space: nowrap;
+}
+.au .au-badge .bd { width: 5px; height: 5px; border-radius: 1px; background: var(--au-text-3); }
+.au .au-badge.created .bd, .au .au-badge.activated .bd { background: var(--au-success); }
+.au .au-badge.edited .bd { background: var(--au-accent); }
+.au .au-badge.deleted .bd { background: var(--au-danger); }
+.au .au-badge.restored .bd { background: var(--au-warning); }
+
+.au .au-restore {
+  font-size: 12px; font-weight: 500; color: var(--au-text-2);
+  background: transparent; border: 1px solid var(--au-border-strong);
+  padding: 5px 12px; border-radius: var(--au-r);
+  cursor: pointer; white-space: nowrap;
+  transition: border-color 120ms, color 120ms, background 120ms;
+}
+.au .au-restore:hover { color: var(--au-text); border-color: var(--au-text-3); background: var(--au-surface-2); }
+.au .au-restore:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- expanded detail ---- */
+.au .au-detail {
+  grid-column: 1 / -1; margin: 12px 0 2px; padding: 16px 18px;
+  background: var(--au-bg); border: 1px solid var(--au-border);
+  border-radius: var(--au-r); cursor: default;
+}
+.au .au-detail-h {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--au-text-3); margin-bottom: 12px;
+}
+.au .au-changes { display: grid; grid-template-columns: minmax(160px, 230px) 1fr; gap: 11px 24px; }
+.au .au-ch-label { font-size: 13px; color: var(--au-text-3); overflow-wrap: anywhere; }
+.au .au-ch-value { font-size: 13px; color: var(--au-text); font-weight: 500; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.au .au-ch-value .arrow { color: var(--au-text-3); margin: 0 8px; font-weight: 400; }
+.au .au-ch-value .was { color: var(--au-text-3); text-decoration: line-through; font-weight: 400; }
+
+.au .au-empty { text-align: center; padding: 56px 20px; color: var(--au-text-3); font-size: 14px; }
+
+/* status notes */
+.au .au-note { border-radius: var(--au-r); padding: 12px 16px; font-size: 13px; margin-bottom: 14px; }
+.au .au-note.ok { background: rgba(52, 201, 138, 0.1); border: 1px solid rgba(52, 201, 138, 0.25); color: #9fe8c9; }
+.au .au-note.err { background: rgba(240, 112, 92, 0.1); border: 1px solid rgba(240, 112, 92, 0.25); color: #f8b3a8; }
+.au .au-note.plain { background: var(--au-surface); border: 1px solid var(--au-border); color: var(--au-text-2); }
+
+@media (max-width: 720px) {
+  .au .au-row { grid-template-columns: 18px 1fr; gap: 12px; }
+  .au .au-time { grid-column: 2; padding-top: 0; }
+  .au .au-right { grid-column: 2; }
+  .au .au-changes { grid-template-columns: 1fr; gap: 4px 0; }
+}
+
+/* ============================================================
+   AUDIT LOG typography — design-system fonts (uploaded skin).
+   Sora (display) + IBM Plex Sans (ui/body/numbers, tabular via
+   'tnum'). Scoped to .au (audit-only); covers head, toolbar,
+   day groups, entry rows, badges, and detail changes.
+   Display roles mirror the skin's --font-display usage.
+   ============================================================ */
+.au {
+  font-family: var(--font-plex), system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+.au :is(h1, h2, h3, h4, h5, h6),
+.au .au-group-h .d {
+  font-family: var(--font-sora), system-ui, sans-serif;
+}

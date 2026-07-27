@@ -15,7 +15,6 @@ import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 import * as React from 'react'
-import FullScreenPageLoader from '@/components/common/FullScreenPageLoader'
 
 /* ── SortSelect: wrapper owns the card chrome so shape/color match Search input ──
    - Background: rgb(42,43,44) (same as your Search input)
@@ -64,7 +63,9 @@ function SortSelect(props: {
   }
 
   // Visual constants (match Holdings toolbar controls)
-  const CARD_BG = 'rgb(42,43,44)'
+  // Resolves through the --lo-search-bg-exact token (dark :root value is the
+  // same rgb(42,43,44); theme-light.css overrides it for light mode).
+  const CARD_BG = 'var(--lo-search-bg-exact, rgb(42,43,44))'
   const CARD_RADIUS = '0.375rem' // rounded-md
 
   return (
@@ -158,6 +159,96 @@ type Accent = 'pos' | 'neg' | 'neutral'
 
 function kpiAccent(n: number | null | undefined): Accent {
   return n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
+}
+
+/** P&L summary card that toggles its value between $ and % (vs invested basis). */
+function PLSum({ label, usd, invested }: { label: string; usd: number; invested: number }) {
+  const [showPct, setShowPct] = useState(false)
+  const accent = kpiAccent(usd)
+  const cls = accent === 'pos' ? 'pos' : accent === 'neg' ? 'neg' : ''
+  const pct = invested > 0 ? usd / invested : null
+  return (
+    <div className="pf-sum">
+      <div className="pf-label">{label}</div>
+      <div className={`v ${cls}`}>{showPct && pct != null ? fmtPct(pct) : fmtCurrency(usd)}</div>
+      {pct != null && (
+        <button
+          type="button"
+          className={`pf-sum-pct${showPct ? ' on' : ''}`}
+          onClick={() => setShowPct((v) => !v)}
+          aria-label={showPct ? 'Show dollar value' : 'Show percent'}
+          title={showPct ? 'Show $' : 'Show %'}
+        >
+          {showPct ? '$' : '%'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** level → skin color class (presentational) */
+function lvCls(level: string): string {
+  return level === 'Low' ? 'lv-low' : level === 'Moderate' ? 'lv-mod' : 'lv-high'
+}
+
+/** Filled segment count (of 6) for the risk-factor level meter. */
+function levelFill(level: string): number {
+  return level === 'Low' ? 2 : level === 'Moderate' ? 3 : level === 'High' ? 5 : 6
+}
+
+/* ── Allocation treemap (presentational layout math only) ───── */
+type TreemapDatum = { name: string; value: number; color: string; cid: string }
+type TreemapTile = TreemapDatum & { realValue: number; x: number; y: number; w: number; h: number; a: number }
+
+/** readable text color for a given tile background */
+function txtOn(hex: string): string {
+  const c = hex.replace('#', '')
+  if (c.length < 6) return 'rgba(255,255,255,0.96)'
+  const r = parseInt(c.substr(0, 2), 16)
+  const g = parseInt(c.substr(2, 2), 16)
+  const b = parseInt(c.substr(4, 2), 16)
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return lum > 0.62 ? '#16171d' : 'rgba(255,255,255,0.96)'
+}
+
+/** squarified treemap layout in a normalized 100×100 box (presentational) */
+function squarify(data: (TreemapDatum & { realValue: number })[]): TreemapTile[] {
+  const items = data.slice().sort((a, b) => b.value - a.value)
+  const total = items.reduce((s, i) => s + i.value, 0)
+  if (total <= 0) return []
+  let x = 0, y = 0, w = 100, h = 100
+  const scale = (w * h) / total
+  const areas = items.map(i => ({ ...i, a: i.value * scale, x: 0, y: 0, w: 0, h: 0 }))
+  const out: TreemapTile[] = []
+  const worst = (row: typeof areas, len: number) => {
+    const s = row.reduce((t, r) => t + r.a, 0)
+    const mx = Math.max(...row.map(r => r.a))
+    const mn = Math.min(...row.map(r => r.a))
+    return Math.max((len * len * mx) / (s * s), (s * s) / (len * len * mn))
+  }
+  let i = 0
+  while (i < areas.length) {
+    const len = Math.min(w, h)
+    let row = [areas[i]]
+    let j = i + 1
+    while (j < areas.length) {
+      const test = row.concat([areas[j]])
+      if (worst(test, len) <= worst(row, len)) { row = test; j++ } else break
+    }
+    const s = row.reduce((t, r) => t + r.a, 0)
+    const thick = s / len
+    if (w >= h) {
+      let yy = y
+      row.forEach(r => { const hh = r.a / thick; out.push({ ...r, x, y: yy, w: thick, h: hh }); yy += hh })
+      x += thick; w -= thick
+    } else {
+      let xx = x
+      row.forEach(r => { const ww = r.a / thick; out.push({ ...r, x: xx, y, w: ww, h: thick }); xx += ww })
+      y += thick; h -= thick
+    }
+    i = j
+  }
+  return out
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -329,10 +420,29 @@ const CustomTooltip = ({ active, payload }: any) => {
   )
 }
 
-const LegendRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+const LegendRow = ({ label, value }: { label: React.ReactNode; value: React.ReactNode }) => (
   <div className="flex items-center justify-between text-sm">
     <span className="text-slate-300">{label}</span>
     <span className="tabular-nums">{value}</span>
+  </div>
+)
+
+// Plain-English opener for a drill-down: what this factor means in everyday terms.
+const PlainLead = ({ children }: { children: React.ReactNode }) => (
+  <div className="text-sm text-slate-300 leading-relaxed">{children}</div>
+)
+
+// The one number that answers the question the lead just asked.
+const BigStat = ({ value, sub, tone = 'neutral' }: {
+  value: React.ReactNode; sub?: React.ReactNode; tone?: 'neutral' | 'bad' | 'good'
+}) => (
+  <div className={`text-2xl font-semibold tabular-nums ${
+    tone === 'bad' ? 'text-[rgba(189,45,50,1)]'
+    : tone === 'good' ? 'text-emerald-400'
+    : 'text-slate-100'
+  }`}>
+    {value}
+    {sub != null && <span className="ml-2 text-base font-normal text-slate-400">{sub}</span>}
   </div>
 )
 
@@ -792,8 +902,19 @@ export default function PortfolioPage() {
   }, [rows, coinColor])
 
   // ---------------- Exposure & Risk card ----------------
-  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'corr' | 'liq'
-  const [view, setView] = useState<ViewMode>('combined')
+  type ViewMode = 'combined' | 'sector' | 'rank' | 'vol' | 'tail' | 'div' | 'liq' | 'loss'
+  // Drill-down overlay: null = closed; otherwise the factor tab being inspected (UI-only)
+  const [riskDetail, setRiskDetail] = useState<ViewMode | null>(null)
+
+  // Close the risk drill-down with Escape (presentation only)
+  useEffect(() => {
+    if (!riskDetail) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRiskDetail(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [riskDetail])
 
   const { data: snapshot } = useSWR<{ rows?: { id: string; rank?: number | null }[] }>(
     coinIds.length ? ['/portfolio/snapshot', coinKey] : null,
@@ -934,28 +1055,38 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
   // FIX: corrToBTC now takes corrMap as argument (module-level pure fn); use allocAll.data and
   // corrIds as direct deps — no JSON.stringify, no ...spread in deps array
   const corrAgg = useMemo(() => {
-    const total = allocAll.total || 1
-    const weights = allocAll.data.reduce<Record<string, number>>((m, r) => {
-      m[r.cid] = r.value / total
-      return m
-    }, {})
-    let wsum = 0, acc = 0
-    for (const id of corrIds) {
-      if (id === 'bitcoin') continue
-      const c = corrToBTC(id, corrMap)
-      const w = weights[id] ?? 0
-      if (c != null && w > 0) { acc += c * w; wsum += w }
+    // Prefer the server's value-weighted correlation: it counts BTC at its own ρ=1.00 and
+    // weights every holding by position size, so a 90% BTC / 10% XRP portfolio correctly
+    // reads as "almost one bet on BTC" rather than as XRP's correlation alone.
+    const serverAvg = typeof prisk?.l4?.avgCorrVsBtc === 'number' ? prisk.l4.avgCorrVsBtc : null
+
+    let avg = serverAvg
+    if (avg == null) {
+      // Fallback: same weighting rules, computed client-side from the 8 largest non-BTC slots.
+      const total = allocAll.total || 1
+      let wsum = 0, acc = 0
+      for (const r of allocAll.data) {
+        const w = r.value / total
+        if (!(w > 0)) continue
+        const c = r.cid === 'bitcoin' ? 1 : corrToBTC(r.cid, corrMap)
+        if (c == null) continue
+        acc += c * w
+        wsum += w
+      }
+      avg = wsum > 0 ? (acc / wsum) : null
     }
-    const avg = wsum > 0 ? (acc / wsum) : null
+
+    // Bands are set for a BTC-inclusive average, which runs higher than the old
+    // non-BTC-only figure: most real crypto portfolios land between 0.75 and 1.00.
     let factor = 1.00
     let level: 'Diversifier' | 'Neutral' | 'BTC-beta' | 'Ultra-beta'
     if (avg == null) { factor = 1.00; level = 'Neutral' }
-    else if (avg < 0.40) { factor = 0.85; level = 'Diversifier' }
-    else if (avg < 0.65) { factor = 1.00; level = 'Neutral' }
-    else if (avg < 0.85) { factor = 1.15; level = 'BTC-beta' }
-    else { factor = 1.30; level = 'Ultra-beta' }
-    return { avg, factor, level }
-  }, [allocAll.data, allocAll.total, corrIds, corrMap])
+    else if (avg < 0.70) { factor = 0.90; level = 'Diversifier' }
+    else if (avg < 0.85) { factor = 1.00; level = 'Neutral' }
+    else if (avg < 0.95) { factor = 1.10; level = 'BTC-beta' }
+    else { factor = 1.20; level = 'Ultra-beta' }
+    return { avg, factor, level, source: serverAvg != null ? 'server' as const : 'fallback' as const }
+  }, [prisk, allocAll.data, allocAll.total, corrMap])
 
   // FIX: use allocAll.data and rankMap directly as deps — no JSON.stringify
   const liquidityAgg = useMemo(() => {
@@ -990,36 +1121,96 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
 
   const tailLevel: 'Low'|'Moderate'|'High'|'Very High' = L3_active ? 'High' : 'Low'
 
-  // Map correlation to standard Low/Moderate/High/Very High buckets
-  const corrRiskLevel: 'Low'|'Moderate'|'High'|'Very High' =
-    corrAgg.avg == null ? 'Moderate'
-    : corrAgg.avg < 0.40 ? 'Low'
-    : corrAgg.avg < 0.65 ? 'Moderate'
-    : corrAgg.avg < 0.85 ? 'High'
+  // ---- Diversification: does mixing these coins actually reduce risk? ----
+  // Ratio = Σ(weight × each coin's own swing) ÷ portfolio swing.
+  // 1.00 means mixing bought you nothing; above 1.00 means the mix smooths the ride.
+  // This replaces Correlation as a *multiplier*: correlation is already inside the
+  // covariance matrix behind L2's portfolio volatility, so charging for it again
+  // double-counted the same risk.
+  const L2_divRatio = typeof prisk?.l2?.diversificationRatio === 'number' && prisk.l2.diversificationRatio > 0
+    ? prisk.l2.diversificationRatio
+    : null
+  // Share of volatility removed by holding a mix rather than a single asset.
+  const divBenefit = L2_divRatio != null ? (1 - 1 / L2_divRatio) : null
+
+  // Crypto diversification is genuinely weak — even a 5-way altcoin spread only reaches
+  // ~1.07 — so the bands are tuned to that reality, not to equity-portfolio ratios.
+  const divLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    L2_divRatio == null ? 'Moderate'
+    : L2_divRatio >= 1.10 ? 'Low'
+    : L2_divRatio >= 1.05 ? 'Moderate'
+    : L2_divRatio >= 1.02 ? 'High'
     : 'Very High'
 
-  // Liquidity → risk level (higher factor = worse liquidity ⇒ higher risk)
-  const liquidityRiskLevel: 'Low'|'Moderate'|'High'|'Very High' =
-    liquidityAgg.factor <= 1.05 ? 'Low'
-    : liquidityAgg.factor <= 1.25 ? 'Moderate'
-    : liquidityAgg.factor <= 1.55 ? 'High'
+  // ---- Liquidity (server L5): days to exit at 20% of daily volume ----
+  // Prefer the server figure: it blends the rank tier with days-to-liquidate, which depends on
+  // how much you actually hold. The client-side tier-only value is the fallback.
+  const L5_serverFactor = typeof prisk?.l5?.factor === 'number' ? prisk.l5.factor : null
+  const L5_days     = typeof prisk?.l5?.daysToLiquidate === 'number' ? prisk.l5.daysToLiquidate : null
+  const L5_coverage = typeof prisk?.l5?.volumeCoverage === 'number' ? prisk.l5.volumeCoverage : null
+  const L5_partic   = typeof prisk?.l5?.participationRate === 'number' ? prisk.l5.participationRate : 0.20
+  const L5_perAsset = (prisk?.l5?.perAsset ?? {}) as Record<string, { valueUsd: number; volume24h: number | null; days: number | null }>
+
+  const liquidityRiskLevel: 'Low'|'Moderate'|'High'|'Very High' = (() => {
+    const f = L5_serverFactor ?? liquidityAgg.factor
+    return f <= 1.05 ? 'Low' : f <= 1.25 ? 'Moderate' : f <= 1.55 ? 'High' : 'Very High'
+  })()
+
+  // ---- Loss risk (server L6): average loss on the worst 5% of days ----
+  const L6_es    = typeof prisk?.l6?.es95 === 'number' ? prisk.l6.es95 : null
+  const L6_var   = typeof prisk?.l6?.var95 === 'number' ? prisk.l6.var95 : null
+  const L6_obs   = typeof prisk?.l6?.observations === 'number' ? prisk.l6.observations : null
+  const L6_worst = Array.isArray(prisk?.l6?.worstDays) ? prisk.l6.worstDays as { t: number; r: number }[] : []
+  const L6_usd   = L6_es != null ? Math.abs(L6_es) * totals.value : null
+
+  const lossLevel: 'Low'|'Moderate'|'High'|'Very High' =
+    L6_es == null ? 'Moderate'
+    : Math.abs(L6_es) < 0.03 ? 'Low'
+    : Math.abs(L6_es) < 0.05 ? 'Moderate'
+    : Math.abs(L6_es) < 0.08 ? 'High'
     : 'Very High'
 
-  // Combined score (includes Corr & Liquidity)
-  const L4_mult = corrAgg.factor
-  const L5_mult = liquidityAgg.factor
-  const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor * L4_mult * L5_mult
+  // Combined score (Structural × Volatility × Tail × Liquidity)
+  // Correlation is deliberately NOT a term. L2_mult derives from covariance-based portfolio
+  // volatility, which already prices in how much the holdings move together — a separate
+  // correlation multiplier charged for that same risk a second time, and it cancelled out
+  // the genuine risk reduction from shifting weight into BTC.
+  const L5_mult = L5_serverFactor ?? liquidityAgg.factor
+  const combinedScore = sectorAgg.structuralSum * L2_mult * L3_factor * L5_mult
+  // ---- Bands anchored to an absolute reference, not to a score distribution ----
+  // The formula has a natural unit. A portfolio of only BTC/ETH, in normal volatility, with no
+  // tail signal and positions that exit inside a day, multiplies out to exactly:
+  //   structural 1.00 x volatility 1.00 x tail 1.00 x liquidity 1.00 = 1.00
+  // So the score reads as "how many times riskier than blue-chip crypto in normal conditions",
+  // and the thresholds are round multiples of that baseline rather than percentile cutoffs.
+  const RISK_BASELINE = 1.00
+  const BAND_LOW  = 1.25  // within a quarter of baseline
+  const BAND_MOD  = 2.00  // up to twice baseline
+  const BAND_HIGH = 3.00  // up to three times baseline
+  const BAND_TOP  = 5.00  // meter saturation; realistic worst case is ~7
+
   const combinedLevel: 'Low'|'Moderate'|'High'|'Very High' =
-    combinedScore <= 1.30 ? 'Low'
-    : combinedScore <= 2.00 ? 'Moderate'
-    : combinedScore <= 2.80 ? 'High'
+    combinedScore <= BAND_LOW ? 'Low'
+    : combinedScore <= BAND_MOD ? 'Moderate'
+    : combinedScore <= BAND_HIGH ? 'High'
     : 'Very High'
 
-  // Visual meter (presentational)
-  const meterMin = 0.90, meterMax = 3.20
-  const meterPct = ((clamp(combinedScore, meterMin, meterMax) - meterMin) / (meterMax - meterMin)) * 100
+  // Visual meter (presentational). Piecewise so each band owns exactly one quarter of the track
+  // and the marker always sits under its own label. A single linear 0.90–3.20 scale put the
+  // boundaries at 15% / 48% / 91%, so the Low/Moderate/High/Very High ticks misreported where
+  // the levels actually began.
+  const meterPct = (() => {
+    const s = combinedScore
+    const seg = (v: number, lo: number, hi: number) => (v - lo) / (hi - lo)
+    if (!Number.isFinite(s) || s <= RISK_BASELINE * 0.9) return 0
+    if (s <= BAND_LOW)  return seg(s, RISK_BASELINE * 0.9, BAND_LOW) * 25
+    if (s <= BAND_MOD)  return 25 + seg(s, BAND_LOW, BAND_MOD) * 25
+    if (s <= BAND_HIGH) return 50 + seg(s, BAND_MOD, BAND_HIGH) * 25
+    return 75 + clamp(seg(s, BAND_HIGH, BAND_TOP), 0, 1) * 25
+  })()
 
-  // Hold the existing FullScreenPageLoader until all critical data has resolved:
+  // Page readiness (the SWRRouteCover full-screen loader stays up until this is
+  // true on first load):
   //  - user auth confirmed (not still checking session)
   //  - trades + coins SWR calls settled
   //  - first price tick received (or portfolio is empty)
@@ -1029,111 +1220,64 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     !coinsLoading &&
     (coinIds.length === 0 || pricesReady)
 
-  if (!pageReady) return <FullScreenPageLoader />
+  // Once the first load resolves, never blank the page again on background
+  // revalidation — that flicker is what caused the loader to reappear.
+  const [hasBootstrapped, setHasBootstrapped] = useState(false)
+  useEffect(() => {
+    if (pageReady) setHasBootstrapped(true)
+  }, [pageReady])
+
+  // The full-screen loader is owned solely by SWRRouteCover; render nothing
+  // (the cover is on top) until the first data is ready.
+  if (!hasBootstrapped && !pageReady) return null
 
   return (
-    <div data-portfolio-page className="relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto space-y-6">
-      {/* Title */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Portfolio</h1>
-        <div className="flex items-center gap-2">
-          <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
-            Audit Log
-          </a>
+    <div data-portfolio-page className="pf relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto">
+      {/* ── Hero value band ── */}
+      <div className="pf-hero flex items-start justify-between gap-4">
+        <div>
+          <div className="pf-label">Portfolio Value</div>
+          <div className="v">{fmtCurrency(totals.value)}</div>
+          <div className="pf-perf-delta">
+            <span className={`chip ${totals.delta24Usd >= 0 ? 'pos' : 'neg'}`}>
+              {totals.delta24Usd >= 0 ? '▲' : '▼'}{' '}
+              {totals.delta24Pct != null ? fmtPct(totals.delta24Pct) : '—'}
+            </span>
+            <span className={totals.delta24Usd >= 0 ? 'pos' : 'neg'}>
+              {totals.delta24Usd >= 0 ? '+' : '−'}
+              {fmtCurrency(Math.abs(totals.delta24Usd))}
+            </span>
+            <span className="ctx">· past 24 hours</span>
+          </div>
+        </div>
+        <a href="/audit" className="inline-flex items-center justify-center rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 text-xs">
+          Audit Log
+        </a>
+      </div>
+
+      {/* ── Summary ledger strip ── */}
+      <div className="pf-summary">
+        <PLSum label="Total P&L" usd={totals.total} invested={totals.invested} />
+        <PLSum label="Unrealized P&L" usd={totals.unreal} invested={totals.invested} />
+        <PLSum label="Realized P&L" usd={totals.realized} invested={totals.invested} />
+        <div className="pf-sum">
+          <div className="pf-label">Money Invested</div>
+          <div className="v">{fmtCurrency(totals.invested)}</div>
+        </div>
+        <div className="pf-sum pf-sum-sq">
+          <div className="pf-label">Positions</div>
+          <div className="v">
+            {allocAll.data.length}
+            <span className="sub">assets</span>
+          </div>
         </div>
       </div>
 
-            {/* KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        {/* No toggle on these two – always show $ */}
-        <StatCard
-          label="Portfolio Value"
-          value={fmtCurrency(totals.value)}
-          accent="neutral"
-        />
-        <StatCard
-          label="Money Invested"
-          value={fmtCurrency(totals.invested)}
-          sub="Cost basis of current holdings"
-          accent="neutral"
-        />
 
-        {/* Unrealized P&L – $ / % of invested */}
-        <StatCard
-          label="Unrealized P&L"
-          value={fmtCurrency(totals.unreal)}
-          pctValue={totals.invested > 0 ? fmtPct(totals.unreal / totals.invested) : '—'}
-          accent={kpiAccent(totals.unreal)}
-          icon={
-            kpiAccent(totals.unreal) === 'pos'
-              ? 'up'
-              : kpiAccent(totals.unreal) === 'neg'
-                ? 'down'
-                : undefined
-          }
-          enablePctToggle
-        />
-
-        {/* Realized P&L – $ / % of invested */}
-        <StatCard
-          label="Realized P&L"
-          value={fmtCurrency(totals.realized)}
-          pctValue={totals.invested > 0 ? fmtPct(totals.realized / totals.invested) : '—'}
-          accent={kpiAccent(totals.realized)}
-          icon={
-            kpiAccent(totals.realized) === 'pos'
-              ? 'up'
-              : kpiAccent(totals.realized) === 'neg'
-                ? 'down'
-                : undefined
-          }
-          enablePctToggle
-        />
-
-        {/* Total P&L – $ / % of invested */}
-        <StatCard
-          label="Total P&L"
-          value={fmtCurrency(totals.total)}
-          pctValue={totals.invested > 0 ? fmtPct(totals.total / totals.invested) : '—'}
-          accent={kpiAccent(totals.total)}
-          icon={
-            kpiAccent(totals.total) === 'pos'
-              ? 'up'
-              : kpiAccent(totals.total) === 'neg'
-                ? 'down'
-                : undefined
-          }
-          enablePctToggle
-        />
-
-        {/* 24h Change – $ / % over previous 24h value */}
-        <StatCard
-          label="24h Change"
-          value={
-            totals.delta24Pct == null
-              ? `${fmtCurrency(totals.delta24Usd)}`
-              : `${fmtCurrency(totals.delta24Usd)} (${fmtPct(totals.delta24Pct)})`
-          }
-          pctValue={totals.delta24Pct != null ? fmtPct(totals.delta24Pct) : '—'}
-          sub={totals.delta24Pct == null ? '24h % unavailable' : 'vs previous 24h value'}
-          accent={kpiAccent(totals.delta24Usd)}
-          icon={
-            kpiAccent(totals.delta24Usd) === 'pos'
-              ? 'up'
-              : kpiAccent(totals.delta24Usd) === 'neg'
-                ? 'down'
-                : undefined
-          }
-          enablePctToggle
-        />
-      </div>
-
-
-      {/* Exposure & Risk (left) + Allocation donut (right) */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* LEFT: Exposure & Risk card */}
-        <div className="lg:col-span-2">
-<div className="relative rounded-md bg-[rgb(28,29,31)] overflow-hidden min-h-[380px] md:min-h-[460px]">
+      {/* Portfolio Risk (left) + Allocation treemap (right) */}
+      <div className="pf-cols">
+        {/* LEFT: Portfolio Risk card */}
+        <section className="pf-card relative overflow-hidden min-h-[380px]">
   {!canViewPortfolioRisk && (
 <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(15,16,18,0.82)] backdrop-blur-md rounded-md ring-1 ring-inset ring-[rgba(114,108,172,0.40)]">
       <div className="mx-6 max-w-[520px] text-center">
@@ -1144,7 +1288,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
 
         <div className="mt-3 text-base font-semibold text-slate-50">Portfolio Risk Metrics are Locked</div>
         <div className="mt-2 text-sm leading-6 text-slate-300">
-          Upgrade your plan to unlock Complete Exposure &amp; Risk Metrics (structural, volatility, tail risk, correlation, liquidity).
+          Upgrade your plan to unlock Complete Exposure &amp; Risk Metrics (structural, volatility, tail risk, liquidity, diversification, expected shortfall).
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-2">
@@ -1161,16 +1305,67 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
       </div>
     </div>
   )}
-            <div className="px-4 py-3 flex items-center justify-between">
-              <div className="text-sm font-medium">Exposure & Risk Metric</div>
-              <div className="flex items-center gap-2">
-                <Pill active={view==='combined'} onClick={()=>setView('combined')}>Portfolio Risk</Pill>
-                <Pill active={view==='sector'} onClick={()=>setView('sector')}>Structural</Pill>
-                <Pill active={view==='vol'} onClick={()=>setView('vol')}>Volatility</Pill>
-                <Pill active={view==='tail'} onClick={()=>setView('tail')}>Tail Risk</Pill>
-                <Pill active={view==='corr'} onClick={()=>setView('corr')}>Correlation</Pill>
-                <Pill active={view==='liq'} onClick={()=>setView('liq')}>Liquidity</Pill>
-                <Pill active={view==='rank'} onClick={()=>setView('rank')}>Rank</Pill>
+            <div className="pf-card-h">
+              <span className="ttl">Portfolio Risk</span>
+              <span className="meta">
+                {prisk?.updatedAt
+                  ? `as of ${new Date(prisk.updatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                  : priskErr ? 'fallback (BTC proxy)' : 'initializing…'}
+              </span>
+            </div>
+
+            {/* Combined index + meter + clickable factor table (values computed above) */}
+            <div className="pf-risk-body">
+              <div className="pf-risk-score">
+                <div>
+                  <div className="pf-label">Combined Risk Index</div>
+                  <div className="big" style={{ marginTop: 8 }}>{combinedScore.toFixed(3)}</div>
+                </div>
+                <span className={`lvl-pill ${lvCls(combinedLevel)}`}>{combinedLevel}</span>
+              </div>
+
+              <div className="pf-meter">
+                <div className="pf-meter-bar">
+                  <span className="pf-meter-knob" style={{ left: `${meterPct}%` }} />
+                </div>
+                <div className="pf-meter-ticks">
+                  <span>Low</span><span>Moderate</span><span>High</span><span>Very High</span>
+                </div>
+              </div>
+
+              <div className="pf-rk-table">
+                <div className="pf-rk-eyebrow">Risk Factors</div>
+                <div className="pf-rk-grid">
+                  {([
+                    { f: 'Structural', note: `${sectorAgg.score} score`, level: structuralLevel, tab: 'sector' as ViewMode },
+                    { f: 'Volatility', note: L2_annVol != null ? `σ ${(L2_annVol * 100).toFixed(1)}%` : 'σ —', level: volatilityLevel, tab: 'vol' as ViewMode },
+                    { f: 'Tail', note: L3_active ? 'active' : 'inactive', level: tailLevel, tab: 'tail' as ViewMode },
+                    { f: 'Diversification', note: divBenefit != null ? 'smoother ride' : 'mix benefit', level: divLevel, tab: 'div' as ViewMode },
+                    { f: 'Liquidity', note: L5_days != null ? (L5_days < 1 ? '< 1 day to exit' : `~${L5_days < 10 ? L5_days.toFixed(1) : Math.round(L5_days)} days to exit`) : 'by coin size', level: liquidityRiskLevel, tab: 'liq' as ViewMode },
+                    { f: 'Expected Shortfall', note: L6_usd != null ? `≈ ${fmtCurrency(L6_usd)} on a bad day` : 'worst 5% of days', level: lossLevel, tab: 'loss' as ViewMode },
+                  ]).map((r) => (
+                    <div
+                      key={r.f}
+                      className="pf-rk-cell"
+                      role="button"
+                      tabIndex={0}
+                      title={r.note}
+                      onClick={() => setRiskDetail(r.tab)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRiskDetail(r.tab) } }}
+                    >
+                      <span className="nm">{r.f}</span>
+                      <span className="note">{r.note}</span>
+                      <div className="foot">
+                        <span className={`pf-rk-seg ${lvCls(r.level)}`} aria-hidden="true">
+                          {[0, 1, 2, 3, 4, 5].map((i) => (
+                            <i key={i} className={i < levelFill(r.level) ? 'on' : ''} />
+                          ))}
+                        </span>
+                        <span className={`pf-rk-lvl ${lvCls(r.level)}`}>{r.level}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1178,28 +1373,147 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
             <div className="group/ermtip pointer-events-auto absolute bottom-2 right-2">
               <Info className="h-5 w-5 text-slate-400 hover:text-slate-200" aria-label="Exposure & Risk info" />
               <div className="pointer-events-none absolute bottom-7 right-0 z-10 max-w-[85vw] w-[26rem] md:w-[28rem] rounded-md border border-[rgb(42,43,45)] bg-[rgb(24,25,27)] px-4 py-3 text-sm leading-relaxed text-slate-100 shadow-xl opacity-0 transition-opacity group-hover/ermtip:opacity-100">
-                A professional-grade crypto risk score based on market structure, volatility, correlation, tail-events, and liquidity — benchmarked against real Bitcoin regimes and crypto liquidity tiers.
+                A professional-grade crypto risk score based on market structure, volatility, tail-events, and liquidity — benchmarked against real Bitcoin regimes and crypto liquidity tiers. Diversification and expected shortfall are shown alongside it for context.
               </div>
             </div>
 
-            <div className="p-4 space-y-4">
+            {/* Drill-down overlay: Exposure & Risk Metric detail (same data blocks as before) */}
+            {riskDetail && (
+              <div className="rk-overlay" onClick={() => setRiskDetail(null)}>
+                <div className="rk-panel" onClick={(e) => e.stopPropagation()}>
+                  <button className="rk-close" onClick={() => setRiskDetail(null)} aria-label="Close">×</button>
+                  <div className="rk-panel-h">
+                    <span className="ttl">Exposure &amp; Risk Metric</span>
+                    <div className="rk-tabs">
+                      {([
+                        { id: 'combined' as ViewMode, label: 'Portfolio Risk' },
+                        { id: 'sector' as ViewMode, label: 'Structural' },
+                        { id: 'vol' as ViewMode, label: 'Volatility' },
+                        { id: 'tail' as ViewMode, label: 'Tail Risk' },
+                        { id: 'div' as ViewMode, label: 'Diversification' },
+                        { id: 'liq' as ViewMode, label: 'Liquidity' },
+                        { id: 'loss' as ViewMode, label: 'Expected Shortfall' },
+                        { id: 'rank' as ViewMode, label: 'Rank' },
+                      ]).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          className={`rk-tab${t.id === riskDetail ? ' active' : ''}`}
+                          onClick={() => setRiskDetail(t.id)}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rk-body space-y-4">
               {/* SECTOR (Layer 1) */}
-              {view === 'sector' && (
+              {riskDetail === 'sector' && (
                 <>
-                  <LegendRow label="BlueChip (Ranks 1–2)" value={fmtPct(sectorAgg.blue)} />
-                  <LegendRow label="Large Cap (Ranks 3–10)" value={fmtPct(sectorAgg.large)} />
-                  <LegendRow label="Medium Cap (Ranks 11–20)" value={fmtPct(sectorAgg.medium)} />
-                  <LegendRow label="Small Cap (Ranks 21–50)" value={fmtPct(sectorAgg.small)} />
-                  <LegendRow label="Unranked / >50" value={fmtPct(sectorAgg.unranked)} />
+                  <PlainLead>
+                    This is about <span className="text-slate-100 font-medium">what you own</span>, not
+                    how it&apos;s moving. Large, established coins tend to survive rough markets. Smaller
+                    ones fall harder and some never recover.
+                  </PlainLead>
+
+                  <BigStat
+                    value={fmtPct(sectorAgg.blue + sectorAgg.large)}
+                    sub="of your money is in top-10 coins"
+                  />
+
+                  <div className="text-xs text-slate-400 pt-1">Where your money sits by coin size:</div>
+                  <LegendRow label="Biggest 2 coins" value={fmtPct(sectorAgg.blue)} />
+                  <LegendRow label="Top 10" value={fmtPct(sectorAgg.large)} />
+                  <LegendRow label="Ranked 11–20" value={fmtPct(sectorAgg.medium)} />
+                  <LegendRow label="Ranked 21–50" value={fmtPct(sectorAgg.small)} />
+                  <LegendRow
+                    label="Outside the top 50"
+                    value={
+                      <span className={sectorAgg.unranked > 0.2 ? 'text-[rgba(189,120,45,1)]' : undefined}>
+                        {fmtPct(sectorAgg.unranked)}
+                      </span>
+                    }
+                  />
+
                   <CardFooter
                     left={<RiskBadge score={sectorAgg.score} label={sectorAgg.label} />}
-                    right={<>Score = Σ(weight × structural multiplier) × 100</>}
+                    right={<>Structural score = Σ(weight × size multiplier) × 100</>}
                   />
                 </>
               )}
 
+              {/* BAD DAY LOSS (Layer 6) */}
+              {riskDetail === 'loss' && (
+                <>
+                  {L6_es == null ? (
+                    <div className="text-sm text-slate-400">
+                      Not enough price history yet to measure this. It needs about 20 days of
+                      overlapping history across your holdings.
+                    </div>
+                  ) : (
+                    <>
+                      <PlainLead>
+                        Roughly one day in twenty is a <span className="text-slate-100 font-medium">bad
+                        day</span> — a drop of {fmtPct(Math.abs(L6_var ?? 0))} or worse. This is what
+                        those days have actually cost you on average.
+                      </PlainLead>
+
+                      <BigStat
+                        tone="bad"
+                        value={`−${fmtCurrency(L6_usd ?? 0)}`}
+                        sub={`${(Math.abs(L6_es) * 100).toFixed(1)}% of ${fmtCurrency(totals.value)}`}
+                      />
+
+                      <LegendRow
+                        label="A bad day starts at"
+                        value={<span className="font-medium">−{fmtPct(Math.abs(L6_var ?? 0))}</span>}
+                      />
+                      <LegendRow
+                        label="Days of history measured"
+                        value={<span className="font-medium">{L6_obs ?? '—'}</span>}
+                      />
+
+                      {L6_worst.length > 0 && (
+                        <>
+                          <div className="text-xs text-slate-400 pt-1">
+                            Your worst days in that window — actual history, not a forecast:
+                          </div>
+                          {L6_worst.map((d) => (
+                            <LegendRow
+                              key={d.t}
+                              label={new Date(d.t).toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric', year: 'numeric',
+                              })}
+                              value={
+                                <span className="text-[rgba(189,45,50,1)]">
+                                  −{fmtCurrency(Math.abs(d.r) * totals.value)}
+                                  <span className="ml-2 text-slate-400">
+                                    {(Math.abs(d.r) * 100).toFixed(1)}%
+                                  </span>
+                                </span>
+                              }
+                            />
+                          ))}
+                        </>
+                      )}
+
+                      <CardFooter
+                        left={
+                          <LevelBadge
+                            title="Expected Shortfall"
+                            level={lossLevel}
+                            value={`−${(Math.abs(L6_es) * 100).toFixed(1)}%`}
+                          />
+                        }
+                        right={<>ES 95%, historical simulation · the Basel-standard successor to VaR</>}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+
               {/* RANK */}
-              {view === 'rank' && (
+              {riskDetail === 'rank' && (
                 <>
                   {allocAll.data.length === 0 ? (
                     <div className="text-sm text-slate-400">No holdings to display.</div>
@@ -1239,13 +1553,35 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
               )}
 
               {/* VOLATILITY */}
-              {view === 'vol' && (
+              {riskDetail === 'vol' && (
                 <>
-                  <LegendRow label="30d Annualized Volatility" value={L2_annVol != null ? `${(L2_annVol*100).toFixed(1)}%` : '—'} />
-                  <LegendRow label="Regime" value={<span className="font-medium capitalize">{L2_regime}</span>} />
-                  <LegendRow label="Multiplier" value={<span className="font-medium">×{L2_mult.toFixed(2)}</span>} />
-                  <LegendRow label="Window" value="45 days · daily" />
-                  <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
+                  <PlainLead>
+                    How much your portfolio <span className="text-slate-100 font-medium">swings</span>.
+                    This counts moves in both directions — big up days and big down days are the same
+                    thing here.
+                  </PlainLead>
+
+                  <BigStat
+                    value={L2_annVol != null ? `${(L2_annVol * 100).toFixed(1)}%` : '—'}
+                    sub="typical swing over a year"
+                  />
+
+                  <LegendRow
+                    label="Current conditions"
+                    value={
+                      <span className="font-medium">
+                        {L2_regime === 'calm' ? 'Calm'
+                          : L2_regime === 'normal' ? 'Normal for crypto'
+                          : L2_regime === 'high' ? 'Choppy'
+                          : 'Stressed'}
+                      </span>
+                    }
+                  />
+                  <LegendRow
+                    label="For comparison"
+                    value={<span className="text-slate-400">US stocks sit near 15–20%</span>}
+                  />
+                  <LegendRow label="Measured over" value="Last 45 days of daily prices" />
                   <CardFooter
                     left={
                       <LevelBadge
@@ -1254,21 +1590,33 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                         value={`×${L2_mult.toFixed(2)}`}
                       />
                     }
-                    right={<>Mapping: &lt;55% → 0.90 · 55–80% → 1.00 · 80–110% → 1.25 · &gt;110% → 1.60 {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
+                    right={<>Annualized realized volatility · &lt;55% → 0.90 · 55–80% → 1.00 · 80–110% → 1.25 · &gt;110% → 1.60 {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
                   />
                 </>
               )}
 
               {/* TAIL RISK */}
-              {view === 'tail' && (
+              {riskDetail === 'tail' && (
                 <>
-                  <LegendRow
-                    label="Tail Status"
-                    value={L3_active ? <span className="text-rose-400 font-medium">Active</span> : <span className="text-emerald-400 font-medium">Inactive</span>}
+                  <PlainLead>
+                    A warning light, not a forecast. It checks whether your coins are
+                    <span className="text-slate-100 font-medium"> breaking down right now</span> —
+                    trading below their normal range. This is the one factor that reacts today.
+                  </PlainLead>
+
+                  <BigStat
+                    value={L3_active ? 'Breaking down' : 'Holding normal range'}
+                    tone={L3_active ? 'bad' : 'good'}
                   />
-                  <LegendRow label="Tail Factor" value={<span className="font-medium">×{L3_factor.toFixed(2)}</span>} />
-                  <LegendRow label="Activation Share (value-weighted)" value={<span className="font-medium">{fmtPct(L3_share)}</span>} />
-                  <LegendRow label="Endpoint" value={prisk ? '/api/portfolio-risk' : '/api/price-history'} />
+
+                  <LegendRow
+                    label="Share of your money affected"
+                    value={<span className="font-medium">{fmtPct(L3_share)}</span>}
+                  />
+                  <LegendRow
+                    label="What counts as breaking down"
+                    value={<span className="text-slate-400">Price below its 20-day normal range</span>}
+                  />
                   <CardFooter
                     left={
                       <LevelBadge
@@ -1277,43 +1625,164 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                         value={`×${L3_factor.toFixed(2)}`}
                       />
                     }
-                    right={<>{prisk ? 'Weighted by portfolio' : 'Rule: price < (SMA20 − 2×SD20) ⇒ 1.35; else 1.00'} {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
+                    right={<>Bollinger breakdown · price &lt; (SMA20 − 2×SD20), weighted by position {priskErr && <span className="ml-1 text-[rgba(189,45,50,1)]">(fallback)</span>}</>}
                   />
                 </>
               )}
 
-              {/* CORRELATION */}
-              {view === 'corr' && (
+              {/* DIVERSIFICATION */}
+              {riskDetail === 'div' && (
                 <>
-                  <LegendRow
-                    label="Average 90d correlation vs BTC (value-weighted)"
-                    value={corrAgg.avg == null ? '—' : corrAgg.avg.toFixed(2)}
-                  />
-                  <LegendRow label="Correlation Factor" value={<span className="font-medium">×{L4_mult.toFixed(2)}</span>} />
-                  <LegendRow label="Profile" value={<span className="font-medium">{corrAgg.avg == null ? 'Neutral' : corrAgg.level}</span>} />
-                  <LegendRow label="Window" value="90 days · daily (useHistory)" />
+                  <PlainLead>
+                    Does owning several coins actually make your ride
+                    <span className="text-slate-100 font-medium"> smoother</span> than owning just
+                    one? This compares your portfolio&apos;s swings against the swings of the coins
+                    inside it.
+                  </PlainLead>
+
+                  {divBenefit == null ? (
+                    <div className="text-sm text-slate-400">
+                      Not enough overlapping price history yet to measure this.
+                    </div>
+                  ) : (
+                    <>
+                      <BigStat
+                        tone={divBenefit >= 0.05 ? 'good' : 'neutral'}
+                        value={`${(divBenefit * 100).toFixed(0)}% smoother`}
+                        sub={
+                          divBenefit >= 0.10 ? 'your mix is doing real work'
+                          : divBenefit >= 0.05 ? 'your mix helps a little'
+                          : 'your mix barely helps'
+                        }
+                      />
+
+                      <LegendRow
+                        label="What that means"
+                        value={
+                          <span className="text-slate-400">
+                            Your swings are {(divBenefit * 100).toFixed(0)}% smaller than your coins&apos; own
+                          </span>
+                        }
+                      />
+                      <LegendRow
+                        label="How your coins move together"
+                        value={
+                          <span className="text-slate-400">
+                            {corrAgg.avg == null ? '—'
+                              : corrAgg.avg >= 0.95 ? `${corrAgg.avg.toFixed(2)} — effectively one bet`
+                              : corrAgg.avg >= 0.85 ? `${corrAgg.avg.toFixed(2)} — mostly one bet`
+                              : corrAgg.avg >= 0.70 ? `${corrAgg.avg.toFixed(2)} — partly spread out`
+                              : `${corrAgg.avg.toFixed(2)} — genuinely spread out`}
+                          </span>
+                        }
+                      />
+                      <LegendRow
+                        label="Measured over"
+                        value={corrAgg.source === 'server' ? 'Last 45 days of daily prices' : 'Last 95 days of daily prices'}
+                      />
+
+                      <div className="text-xs text-slate-400 leading-relaxed pt-1">
+                        This row is <span className="text-slate-300">information only</span> — it
+                        doesn&apos;t add to your risk score. How much your coins move together is
+                        already built into the Volatility figure, so counting it again would charge
+                        you twice for the same thing. In crypto almost everything follows Bitcoin, so
+                        even a well-spread portfolio rarely gets more than about 10% smoother.
+                      </div>
+                    </>
+                  )}
+
                   <CardFooter
                     left={
                       <LevelBadge
-                        title="Correlation"
-                        level={corrRiskLevel}
-                        value={`×${L4_mult.toFixed(2)}`}
+                        title="Diversification"
+                        level={divLevel}
+                        value={L2_divRatio != null ? L2_divRatio.toFixed(2) : '—'}
                       />
                     }
-                    right={<span className="text-slate-400 text-[11px]">Source: new data core /api/price-history via useHistory</span>}
+                    right={<span className="text-slate-400 text-[11px]">Diversification ratio = Σ(weight × asset vol) ÷ portfolio vol</span>}
                   />
                 </>
               )}
 
               {/* LIQUIDITY */}
-              {view === 'liq' && (
+              {riskDetail === 'liq' && (
                 <>
-                  <LegendRow label="Liquidity Factor (rank-proxy)" value={<span className="font-medium">×{L5_mult.toFixed(2)}</span>} />
-                  <LegendRow label="BlueChip (1–2)" value={fmtPct(liquidityAgg.bands.blue)} />
-                  <LegendRow label="Large (3–10)" value={fmtPct(liquidityAgg.bands.large)} />
-                  <LegendRow label="Medium (11–20)" value={fmtPct(liquidityAgg.bands.medium)} />
-                  <LegendRow label="Small (21–50)" value={fmtPct(liquidityAgg.bands.small)} />
-                  <LegendRow label="Unranked / >50" value={fmtPct(liquidityAgg.bands.unranked)} />
+                  <PlainLead>
+                    How easily you could <span className="text-slate-100 font-medium">actually sell</span>.
+                    Big coins have deep, steady buyers. Small ones can be hard to exit in a panic —
+                    the price moves against you on the way out.
+                  </PlainLead>
+
+                  {L5_days != null ? (
+                    <>
+                      <BigStat
+                        tone={L5_days > 2 ? 'bad' : 'neutral'}
+                        value={
+                          L5_days < 1
+                            ? 'Under a day'
+                            : `${L5_days < 10 ? L5_days.toFixed(1) : Math.round(L5_days)} days`
+                        }
+                        sub="to sell out at a normal pace"
+                      />
+
+                      <LegendRow
+                        label="Assumed selling pace"
+                        value={
+                          <span className="text-slate-400">
+                            {fmtPct(L5_partic)} of each coin&apos;s daily volume
+                          </span>
+                        }
+                      />
+                      {L5_coverage != null && L5_coverage < 0.999 && (
+                        <LegendRow
+                          label="Volume data covers"
+                          value={
+                            <span className={L5_coverage < 0.8 ? 'text-[rgba(189,120,45,1)]' : 'text-slate-400'}>
+                              {fmtPct(L5_coverage)} of your holdings
+                            </span>
+                          }
+                        />
+                      )}
+
+                      {Object.keys(L5_perAsset).length > 0 && (
+                        <>
+                          <div className="text-xs text-slate-400 pt-1">How long each position would take:</div>
+                          {Object.entries(L5_perAsset)
+                            .sort((a, b) => (b[1].days ?? -1) - (a[1].days ?? -1))
+                            .slice(0, 6)
+                            .map(([id, d]) => (
+                              <LegendRow
+                                key={id}
+                                label={id}
+                                value={
+                                  d.days == null ? <span className="text-slate-500">no volume data</span> : (
+                                    <span className={d.days > 2 ? 'text-[rgba(189,120,45,1)]' : undefined}>
+                                      {d.days < 1 ? '< 1 day' : `${d.days < 10 ? d.days.toFixed(1) : Math.round(d.days)} days`}
+                                    </span>
+                                  )
+                                }
+                              />
+                            ))}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <BigStat
+                        value={fmtPct(liquidityAgg.bands.blue + liquidityAgg.bands.large)}
+                        sub="of your money is in easy-to-exit coins"
+                      />
+                      <div className="text-xs text-slate-400 pt-1">
+                        Trading-volume data unavailable — falling back to coin size:
+                      </div>
+                      <LegendRow label="Very easy — biggest 2 coins" value={fmtPct(liquidityAgg.bands.blue)} />
+                      <LegendRow label="Easy — top 10" value={fmtPct(liquidityAgg.bands.large)} />
+                      <LegendRow label="Moderate — ranked 11–20" value={fmtPct(liquidityAgg.bands.medium)} />
+                      <LegendRow label="Harder — ranked 21–50" value={fmtPct(liquidityAgg.bands.small)} />
+                      <LegendRow label="Hardest — outside the top 50" value={fmtPct(liquidityAgg.bands.unranked)} />
+                    </>
+                  )}
+
                   <CardFooter
                     left={
                       <LevelBadge
@@ -1322,13 +1791,13 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                         value={`×${L5_mult.toFixed(2)}`}
                       />
                     }
-                    right={<span className="text-slate-400 text-[11px]">Proxy for exit depth by cap tier · No extra API; uses snapshot ranks</span>}
+                    right={<span className="text-slate-400 text-[11px]">Days to liquidate at {fmtPct(L5_partic)} participation, blended with cap tier</span>}
                   />
                 </>
               )}
 
               {/* COMBINED */}
-              {view === 'combined' && (
+              {riskDetail === 'combined' && (
                 <div className="space-y-4">
                   <div className="relative rounded-lg bg-[rgb(24,25,27)] border border-[rgb(42,43,45)] p-4">
                     <div className="flex items-center justify-between">
@@ -1343,7 +1812,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                       </div>
                       <div className="hidden sm:block text-right">
                         <div className="text-[11px] text-slate-400">Formula</div>
-                        <div className="text-xs text-slate-300">Σ(weight × structural) × vol × tail × corr × liq</div>
+                        <div className="text-xs text-slate-300">Σ(weight × structural) × vol × tail × liq</div>
                         <div className="mt-1 text-[11px] text-slate-400">
                           {prisk?.updatedAt
                             ? `as of ${new Date(prisk.updatedAt).toLocaleString()}`
@@ -1375,6 +1844,31 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                     </div>
                   </div>
 
+                  {/* What the number is measured against */}
+                  <div className="rounded-lg border border-[rgb(42,43,45)] p-4 space-y-3">
+                    <PlainLead>
+                      <span className="text-slate-100 font-medium">1.00</span> is the yardstick: a
+                      portfolio of only Bitcoin and Ethereum, in normal market conditions, that you
+                      could sell within a day. Your score says how many times riskier than that you are.
+                    </PlainLead>
+                    <LegendRow
+                      label={<span className="text-emerald-400">Low</span>}
+                      value={<span className="text-slate-400">up to {BAND_LOW.toFixed(2)} — about the same as holding major coins</span>}
+                    />
+                    <LegendRow
+                      label={<span className="text-[rgba(207,180,45,1)]">Moderate</span>}
+                      value={<span className="text-slate-400">{BAND_LOW.toFixed(2)}–{BAND_MOD.toFixed(2)} — up to twice the baseline</span>}
+                    />
+                    <LegendRow
+                      label={<span className="text-[rgba(189,120,45,1)]">High</span>}
+                      value={<span className="text-slate-400">{BAND_MOD.toFixed(2)}–{BAND_HIGH.toFixed(2)} — two to three times the baseline</span>}
+                    />
+                    <LegendRow
+                      label={<span className="text-[rgba(189,45,50,1)]">Very High</span>}
+                      value={<span className="text-slate-400">above {BAND_HIGH.toFixed(2)} — several risks compounding</span>}
+                    />
+                  </div>
+
                   {/* Bottom 5 tiles */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                     <StatTile
@@ -1396,10 +1890,10 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                       footer={<LevelBadge title="Level" level={tailLevel} value={L3_active ? 'Active' : 'Inactive'} />}
                     />
                     <StatTile
-                      label="Correlation"
-                      value={`×${L4_mult.toFixed(2)}`}
-                      rightHint="ρ"
-                      footer={<LevelBadge title="Level" level={corrRiskLevel} value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`} />}
+                      label="Diversification"
+                      value={divBenefit != null ? `−${(divBenefit * 100).toFixed(0)}%` : '—'}
+                      rightHint="info"
+                      footer={<LevelBadge title="Level" level={divLevel} value={corrAgg.avg == null ? '—' : `ρ=${corrAgg.avg.toFixed(2)}`} />}
                     />
                     <StatTile
                       label="Liquidity"
@@ -1418,75 +1912,76 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                   />
                 </div>
               )}
-            </div>
-          </div>
-        </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
 
-        {/* RIGHT: Allocation donut */}
-<div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div className="text-sm font-medium">Allocation by Asset</div>
-            <span className="text-[11px] text-slate-400">All assets</span>
+        {/* RIGHT: Allocation treemap */}
+        <section className="pf-card">
+          <div className="pf-card-h">
+            <span className="ttl">Allocation</span>
+            <span className="meta">{allocAll.data.length} assets</span>
           </div>
 
           {allocAll.data.length === 0 ? (
             <div className="p-6 text-sm text-slate-400">No holdings yet to display allocation.</div>
           ) : (
-            <div className="relative h-[18rem] sm:h-[20rem] md:h-[22rem] lg:h-[22rem] p-3">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={allocAll.data}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius="62%"
-                    outerRadius="86%"
-                    stroke="rgba(15,23,42,0.4)"
-                    strokeWidth={1}
-                    isAnimationActive
-                  >
-                    {allocAll.data.map((d, i) => (
-                      <Cell key={d.name + i} fill={d.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none', zIndex: 60 }} />
-                </PieChart>
-              </ResponsiveContainer>
-
-              <div className="pointer-events-none absolute inset-0 grid place-items-center z-0">
-                <div className="text-center">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
-                  <div className="text-lg font-semibold tabular-nums text-slate-100">{fmtCurrency(allocAll.total)}</div>
-                </div>
+            <div className="pf-alloc-body">
+              <div className="pf-treemap">
+                {squarify(
+                  allocAll.data.map((d) => ({
+                    ...d,
+                    realValue: d.value,
+                    /* floor each tile to a minimum area so small holdings stay visible */
+                    value: Math.max(d.value, allocAll.total * 0.075),
+                  }))
+                ).map((t) => {
+                  const pct = allocAll.total > 0 ? (t.realValue / allocAll.total) * 100 : 0
+                  const big = t.w > 24 && t.h > 20
+                  return (
+                    <div
+                      className="pf-tile"
+                      key={t.cid}
+                      style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`, background: t.color }}
+                    >
+                      <div className="pf-tile-in" style={{ color: txtOn(t.color) }}>
+                        <div className="top">
+                          <div className="tk">{t.name}</div>
+                        </div>
+                        <div className="bot">
+                          <div className={`pc${big ? '' : ' sm'}`}>{pct.toFixed(1)}%</div>
+                          {big && <div className="val">{fmtCurrency(t.realValue)}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
             {/* HOLDINGS */}
-      <div className="rounded-md bg-[rgb(28,29,31)] overflow-visible">
-        <div className="px-4 py-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="text-lg font-medium">Holdings</div>
-              <span className="hidden sm:inline text-xs text-slate-400">
-                • {filteredSorted.length} shown
-              </span>
+      <div className="pf-hold">
+        <div className="pf-hold-h">
+            <div className="title-wrap">
+              <h2>Holdings</h2>
+              <span className="count">{filteredSorted.length} shown</span>
             </div>
 
-            <div className="relative z-[70] flex items-center gap-2 w-full md:w-auto lo-dropdown-layer">
+            <div className="pf-hold-tools relative z-[70] lo-dropdown-layer">
               {/* Search */}
-              <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <label className="pf-search">
+                <Search className="h-4 w-4" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search coin or symbol…"
-                  className="w-full pl-8 pr-2 py-2 rounded-md border border-[rgba(255,255,255,0.06)] bg-[rgb(42,43,44)] text-sm outline-none focus:ring-2 focus:ring-slate-600/40"
-                  style={{ height: 38 }}
                 />
-              </div>
+              </label>
 
               {/* Sort select */}
               <SortSelect
@@ -1510,9 +2005,8 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
               <button
                 type="button"
                 onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                className="pf-ctrl"
                 title={`Direction: ${sortDir}`}
-                style={{ height: 38, minWidth: 120 }}
               >
                 <ArrowUpDown className="h-4 w-4" />
                 {sortDir.toUpperCase()}
@@ -1522,9 +2016,8 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
               <button
                 type="button"
                 onClick={() => setDense((d) => !d)}
-                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                className="pf-ctrl"
                 title={dense ? 'Comfortable rows' : 'Compact rows'}
-                style={{ height: 38, minWidth: 120 }}
               >
                 {dense ? (
                   <ChevronDown className="h-4 w-4" />
@@ -1534,54 +2027,40 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                 {dense ? 'Compact' : 'Comfort'}
               </button>
 
-                 {/* Holdings P&L mode: uses same card style as Compact/Comfort */}
+              {/* Holdings P&L mode */}
               <button
                 type="button"
                 onClick={() => setHoldingsPctMode((v) => !v)}
-                className="inline-flex items-center gap-1 px-2 rounded-md border border-[rgb(42,43,45)] bg-[rgb(42,43,44)] text-sm hover:bg-[rgb(42,43,44)]/90"
+                className="pf-ctrl"
                 title={holdingsPctMode ? 'Show values and P&L in $' : 'Show values and P&L as %'}
-                style={{ height: 38 }}
               >
-                <span
-                  className={
-                    holdingsPctMode ? 'font-semibold text-slate-400' : 'font-semibold text-slate-100'
-                  }
-                >
-                  $
+                <span className="seg-mini">
+                  <span className={!holdingsPctMode ? 'a' : ''}>$</span>
+                  <span className="k">/</span>
+                  <span className={holdingsPctMode ? 'a' : ''}>%</span>
                 </span>
-                <span className="text-slate-500">/</span>
-                <span
-                  className={
-                    holdingsPctMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-400'
-                  }
-                >
-                  %
-                </span>
-                <span className="ml-1 text-slate-400">P&amp;L</span>
+                <span className="k">P&amp;L</span>
               </button>
-
-
             </div>
-          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-sm">
+        <div className="pf-hold-card">
+          <table className={`tbl ${dense ? 'is-compact' : 'is-comfort'}`}>
             <thead>
-              <tr className="border-t border-[rgb(42,43,45)] bg-[rgb(24,25,27)] text-xs text-slate-400">
-                <th className="py-2.5 pl-4 pr-2 text-left font-normal">Asset</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Qty</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Avg Cost</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Value</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Money Invested</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Unrealized P&amp;L</th>
-                <th className="py-2.5 pr-2 text-right font-normal">Realized P&amp;L</th>
-                <th className="py-2.5 pr-4 text-right font-normal">Total P&amp;L</th>
+              <tr>
+                <th>Asset</th>
+                <th className="num">Qty</th>
+                <th className="num">Avg Cost</th>
+                <th className="num">Value</th>
+                <th className="num">Money Invested</th>
+                <th className="num">Unrealized P&amp;L</th>
+                <th className="num">Realized P&amp;L</th>
+                <th className="num">Total P&amp;L</th>
               </tr>
             </thead>
             <tbody>
               {filteredSorted.map((r) => {
-                const rowPad = dense ? 'py-1.5' : 'py-2.5'
+                const rowPad = dense ? 'py-1.5' : 'py-3.5'
                 const basis = r.costBasisRemaining || 0
 
                 return (
@@ -1595,76 +2074,61 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                       }
                     }}
                     tabIndex={0}
-                    className="group cursor-pointer outline-none border-t border-[rgb(42,43,45)] bg-[rgb(28,29,31)] hover:bg-[rgb(26,27,28)] focus:bg-[rgb(19,20,21)]"
+                    className="outline-none"
                   >
                     {/* Coin */}
-                    <td className={`${rowPad} pl-4 pr-2`}>
-                      <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 md:h-8 md:w-8">
-                          <CoinLogo
-                            symbol={r.symbol}
-                            name={r.name}
-                            className="h-5 w-5 md:h-7 md:w-7 shadow-none"
-                          />
-                        </div>
-
+                    <td className={rowPad}>
+                      <div className="asset-cell">
+                        <CoinLogo
+                          symbol={r.symbol}
+                          name={r.name}
+                          className="h-6 w-6 md:h-7 md:w-7 shadow-none"
+                        />
                         <div className="min-w-0">
-                          <div className="font-medium truncate">{r.name}</div>
-                          <div className="text-[11px] text-slate-400 -mt-0.5">{r.symbol}</div>
+                          <div className="an truncate">{r.name}</div>
+                          <div className="at">{r.symbol}</div>
                         </div>
                       </div>
                     </td>
 
                     {/* Qty */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                    <td className={`num ${rowPad}`}>
                       {r.qty.toLocaleString()}
                     </td>
 
                     {/* Avg Cost */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                    <td className={`num muted ${rowPad}`}>
                       {fmtCurrency(r.avg)}
                     </td>
 
                     {/* Value – $ or % of portfolio */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                    <td className={`num ${rowPad}`}>
                       {holdingsPctMode && totals.value > 0 && r.value > 0
                         ? fmtPct(r.value / totals.value)
                         : fmtCurrency(r.value)}
                     </td>
 
                     {/* Money Invested (always $) */}
-                    <td className={`${rowPad} pr-2 text-right tabular-nums`}>
+                    <td className={`num ${rowPad}`}>
                       {fmtCurrency(r.costBasisRemaining)}
                     </td>
 
                     {/* Unrealized – $ or % vs basis */}
-                    <td
-                      className={`${rowPad} pr-2 text-right tabular-nums ${
-                        r.unrealUsd >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
-                      }`}
-                    >
+                    <td className={`num ${rowPad} ${r.unrealUsd >= 0 ? 'pos' : 'neg'}`}>
                       {holdingsPctMode && basis > 0
                         ? fmtPct(r.unrealUsd / basis)
                         : fmtCurrency(r.unrealUsd)}
                     </td>
 
                     {/* Realized – $ or % vs basis */}
-                    <td
-                      className={`${rowPad} pr-2 text-right tabular-nums ${
-                        r.realizedUsd >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
-                      }`}
-                    >
+                    <td className={`num ${rowPad} ${r.realizedUsd >= 0 ? 'pos' : 'neg'}`}>
                       {holdingsPctMode && basis > 0
                         ? fmtPct(r.realizedUsd / basis)
                         : fmtCurrency(r.realizedUsd)}
                     </td>
 
                     {/* Total P&L – $ or % vs basis */}
-                    <td
-                      className={`${rowPad} pr-4 text-right tabular-nums ${
-                        r.totalPnl >= 0 ? 'text-emerald-400' : 'text-[rgba(189,45,50,1)]'
-                      }`}
-                    >
+                    <td className={`num ${rowPad} ${r.totalPnl >= 0 ? 'pos' : 'neg'}`}>
                       {holdingsPctMode && basis > 0
                         ? fmtPct(r.totalPnl / basis)
                         : fmtCurrency(r.totalPnl)}
@@ -1675,12 +2139,29 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
 
               {filteredSorted.length === 0 && (
                 <tr>
-                  <td className="py-6 px-4 text-slate-400 text-sm" colSpan={8}>
-                    No results. Try adjusting your search or sort.
+                  <td colSpan={8}>
+                    <div className="pf-empty">
+                      No results. Try adjusting your search or sort.
+                    </div>
                   </td>
                 </tr>
               )}
             </tbody>
+
+            {filteredSorted.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td><span className="lbl">Total</span></td>
+                  <td className="num muted">—</td>
+                  <td className="num muted">—</td>
+                  <td className="num">{fmtCurrency(totals.value)}</td>
+                  <td className="num">{fmtCurrency(totals.invested)}</td>
+                  <td className={`num ${totals.unreal >= 0 ? 'pos' : 'neg'}`}>{fmtCurrency(totals.unreal)}</td>
+                  <td className={`num ${totals.realized >= 0 ? 'pos' : 'neg'}`}>{fmtCurrency(totals.realized)}</td>
+                  <td className={`num ${totals.total >= 0 ? 'pos' : 'neg'}`}>{fmtCurrency(totals.total)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

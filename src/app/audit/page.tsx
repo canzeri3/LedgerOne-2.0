@@ -1,8 +1,9 @@
 'use client'
 
 import useSWR, { mutate as mutateGlobal } from 'swr'
-import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Fragment, useMemo, useState } from 'react'
+import { ChevronRight, Search } from 'lucide-react'
+import './audit-skin.css'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { restoreSellPlannerFromAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
@@ -199,6 +200,60 @@ function canRestoreFromAudit(row: LogRow): boolean {
   return !!details?.undo_available && !details?.restored_at && !!planner?.id
 }
 
+/* ── presentational helpers (skin only) ─────────────────────── */
+
+/** Map a free-form action string to a badge tone class. */
+function badgeCls(action: string): string {
+  const a = (action || '').toLowerCase()
+  if (a.includes('restor')) return 'restored'
+  if (a.includes('delet') || a.includes('remov') || a.includes('archiv')) return 'deleted'
+  if (a.includes('creat') || a.includes('rotat') || a.includes('insert') || a.includes('new')) return 'created'
+  if (a.includes('deactiv') || a.includes('paus') || a.includes('freez') || a.includes('froz')) return 'paused'
+  if (a.includes('activ')) return 'activated'
+  if (a.includes('edit') || a.includes('updat') || a.includes('chang')) return 'edited'
+  return ''
+}
+
+/** Local-midnight key for grouping rows by day. */
+function dayKeyOf(ts: string): string {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function dayHeading(ts: string): string {
+  const d = new Date(ts)
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const today = new Date()
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const diff = Math.round((t0.getTime() - day.getTime()) / 86_400_000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Yesterday'
+  return day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
+function timeOf(ts: string): string {
+  return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** snake_case / camelCase key → readable label. */
+function labelize(k: string): string {
+  const s = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim()
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** Render one detail value: primitives plain, objects as compact text. */
+function detailValue(v: any): string {
+  if (v == null) return '—'
+  if (typeof v === 'string') return v || '—'
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  try {
+    const s = JSON.stringify(v)
+    return s.length > 220 ? s.slice(0, 220) + '…' : s
+  } catch {
+    return String(v)
+  }
+}
+
 export default function AuditPage() {
   const { user } = useUser()
 
@@ -247,6 +302,21 @@ export default function AuditPage() {
       return true
     })
   }, [data, q, entity, coin])
+
+  // Visual-only grouping: by local day, preserving order (newest first)
+  const groups = useMemo(() => {
+    const out: Array<{ key: string; heading: string; items: LogRow[] }> = []
+    for (const r of filtered) {
+      const key = dayKeyOf(r.created_at)
+      let g = out.find((x) => x.key === key)
+      if (!g) {
+        g = { key, heading: dayHeading(r.created_at), items: [] }
+        out.push(g)
+      }
+      g.items.push(r)
+    }
+    return out
+  }, [filtered])
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
@@ -361,241 +431,181 @@ export default function AuditPage() {
   const shown = filtered.length
 
   return (
-    <div className="px-3 sm:px-4 md:px-8 lg:px-10 py-5 md:py-8 max-w-screen-2xl mx-auto space-y-5 md:space-y-6" data-audit-page>
-      {/* Header (Planner/Dashboard pattern) */}
-      <div className="space-y-2">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-[rgb(41,42,45)]/80 pb-3">
-          <div className="min-w-0">
-            <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90 leading-tight">
-              Audit Log
-            </h1>
-            <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)]">
-              A chronological record of actions and system events for your account.
-            </p>
+    <div className="au px-3 sm:px-4 md:px-8 lg:px-10 py-5 md:py-8 max-w-screen-2xl mx-auto" data-audit-page>
+      {/* Page head */}
+      <div className="au-head">
+        <div className="min-w-0">
+          <h1>Audit Log</h1>
+          <div className="sub">
+            A chronological record of every change you have made to your planners.
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-[rgb(163,163,164)]">
-              Showing <span className="text-slate-100 font-medium">{shown}</span> of{' '}
-              <span className="text-slate-100 font-medium">{total}</span>
-            </span>
-
-            <span className="hidden sm:inline-flex items-center rounded-lg bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-2 py-1 text-[11px] text-[rgb(163,163,164)]">
-              Last 200 entries
-            </span>
-          </div>
+        <div className="au-head-meta">
+          <span className="au-count">
+            Showing <b>{shown}</b> of <b>{total}</b>
+          </span>
+          <span className="au-pill">Last 200 entries</span>
         </div>
       </div>
 
-      {/* Main card (more depth / appeal) */}
-      <section className="rounded-2xl bg-[rgb(28,29,31)] ring-1 ring-inset ring-[rgb(41,42,45)]/70 shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
-        {/* Controls (higher contrast + clearer grouping) */}
-        <div className="p-3 sm:p-4 md:p-5 border-b border-[rgb(41,42,45)]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.00))]">
-          <div className="flex flex-col gap-3 md:gap-3.5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col gap-3 md:gap-3.5 lg:flex-row lg:items-center lg:flex-1">
-              {/* Search */}
-              <div className="relative w-full lg:max-w-[560px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[rgb(186,186,188)]" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search action, entity, coin, or details…"
-                  className="w-full rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 pl-10 pr-3 py-2.5 text-base text-slate-100 placeholder:text-[rgb(150,150,152)] hover:bg-[rgb(18,19,21)]/85 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] md:text-[14px]"
-                />
-              </div>
+      {/* Toolbar */}
+      <div className="au-toolbar">
+        <label className="au-search">
+          <Search className="h-4 w-4" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by action, planner, or coin…"
+          />
+        </label>
 
-              {/* Entity filter */}
-              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                <div className="text-[11px] uppercase tracking-wide text-[rgb(186,186,188)] whitespace-nowrap">
-                  Entity
-                </div>
-                <select
-                  value={entity}
-                  onChange={(e) => setEntity(e.target.value as any)}
-                  className="w-full sm:w-auto rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-base text-slate-100 hover:bg-[rgb(18,19,21)]/85 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] md:text-[14px]"
-                >
-                  <option value="all">All</option>
-                  {ENTITIES.map((e) => (
-                    <option key={e} value={e}>
-                      {prettyEntity(e)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Coin filter */}
-              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                <div className="text-[11px] uppercase tracking-wide text-[rgb(186,186,188)] whitespace-nowrap">
-                  Coin
-                </div>
-                <input
-                  value={coin}
-                  onChange={(e) => setCoin(e.target.value)}
-                  placeholder="e.g., bitcoin"
-                  className="w-full sm:w-[260px] rounded-xl bg-[rgb(18,19,21)]/70 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-3 py-2.5 text-base text-slate-100 placeholder:text-[rgb(150,150,152)] hover:bg-[rgb(18,19,21)]/85 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] md:text-[14px]"
-                />
-              </div>
-            </div>
-
-            <div className="text-[12px] leading-relaxed text-[rgb(163,163,164)]">
-              Tip: search matches action, entity, coin, and JSON fields.
-            </div>
+        <div className="au-tb-group">
+          <span className="au-tb-label">Entity</span>
+          <div className="seg">
+            <button
+              type="button"
+              className={entity === 'all' ? 'cur accent' : ''}
+              onClick={() => setEntity('all')}
+            >
+              All
+            </button>
+            {ENTITIES.map((e) => (
+              <button
+                key={e}
+                type="button"
+                className={entity === e ? 'cur accent' : ''}
+                onClick={() => setEntity(e)}
+              >
+                {prettyEntity(e).replace(' Planner', '').replace('Sell Level', 'Levels')}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Body */}
-        <div className="p-2 sm:p-2.5 md:p-3">
-          {restoreErr ? (
-            <div className="mb-3 rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200">
-              {restoreErr}
-            </div>
-          ) : null}
+        <div className="au-tb-group">
+          <span className="au-tb-label">Coin</span>
+          <label className="au-search sm">
+            <input
+              value={coin}
+              onChange={(e) => setCoin(e.target.value)}
+              placeholder="e.g., bitcoin"
+            />
+          </label>
+        </div>
+      </div>
 
-          {restoreMsg ? (
-            <div className="mb-3 rounded-md bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/25 px-4 py-3 text-[13px] text-emerald-200">
-              {restoreMsg}
-            </div>
-          ) : null}      
-              {error && (
-            <div className="rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200">
-              Error loading logs.
-            </div>
-          )}
+      {/* Status notes */}
+      {restoreErr ? <div className="au-note err">{restoreErr}</div> : null}
+      {restoreMsg ? <div className="au-note ok">{restoreMsg}</div> : null}
+      {error && <div className="au-note err">Error loading logs.</div>}
+      {restoreStatus && (
+        <div className={restoreStatus.type === 'success' ? 'au-note ok' : 'au-note err'}>
+          {restoreStatus.text}
+        </div>
+      )}
+      {!data && !error && <div className="au-note plain">Loading…</div>}
 
-          {restoreStatus && (
-            <div
-              className={
-                restoreStatus.type === 'success'
-                  ? 'mb-3 rounded-md bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/25 px-4 py-3 text-[13px] text-emerald-200'
-                  : 'mb-3 rounded-md bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 px-4 py-3 text-[13px] text-rose-200'
-              }
-            >
-              {restoreStatus.text}
-            </div>
-          )}
+      {data && filtered.length === 0 && (
+        <div className="au-empty">No matching activity. Try a different search or filter.</div>
+      )}
 
-          {!data && !error && (
+      {/* Day groups */}
+      {groups.map((g) => (
+        <div className="au-group" key={g.key}>
+          <div className="au-group-h">
+            <span className="d">{g.heading}</span>
+            <span className="c">
+              {g.items.length} {g.items.length === 1 ? 'event' : 'events'}
+            </span>
+          </div>
 
-            <div className="rounded-md bg-[rgb(21,22,24)]/35 ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-4 py-3 text-[13px] text-slate-200">
-              Loading…
-            </div>
-          )}
+          <div className="au-card">
+            {g.items.map((row) => {
+              const isOpen = expanded.has(row.id)
+              const safeDetails = sanitizeAuditDetails(row.details ?? {})
+              const restoreTarget = getRestoreTarget(row)
+              const detailEntries =
+                safeDetails && typeof safeDetails === 'object' && !Array.isArray(safeDetails)
+                  ? Object.entries(safeDetails)
+                  : []
+              const hasDetail = detailEntries.length > 0
 
-          {data && filtered.length === 0 && (
-            <div className="rounded-md bg-[rgb(21,22,24)]/35 ring-1 ring-inset ring-[rgb(41,42,45)]/70 px-4 py-6 text-[13px] text-slate-200">
-              No matching audit entries.
-              <div className="text-[12px] text-[rgb(120,120,121)] mt-1">
-                Try clearing filters or adjusting search terms.
-              </div>
-            </div>
-          )}
+              return (
+                <div
+                  key={row.id}
+                  className={`au-row${isOpen ? ' open' : ''}${hasDetail ? '' : ' au-noexp'}`}
+                  onClick={hasDetail ? () => toggleExpanded(row.id) : undefined}
+                >
+                  <span className="au-tog" aria-hidden="true">
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
 
-          {filtered.length > 0 && (
-            <div className="divide-y divide-[rgb(41,42,45)]/70">
-              {filtered.map((row) => {
-                const isOpen = expanded.has(row.id)
-                const safeDetails = sanitizeAuditDetails(row.details ?? {})
-                const restoreTarget = getRestoreTarget(row)
+                  <span className="au-time">{timeOf(row.created_at)}</span>
 
-                return (
-                  <div
-                    key={row.id}
-                    className="px-2.5 py-3 sm:px-3 md:px-4 md:py-4 hover:bg-[rgba(255,255,255,0.02)] transition-colors"
-                  >
-                    <div className="flex items-start gap-2.5 sm:gap-3">
+                  <div className="au-main">
+                    <div className="au-line">
+                      <span className="au-action">{row.action}</span>
+                      <span className="au-chip">{prettyEntity(row.entity)}</span>
+                      {row.coingecko_id ? (
+                        <span className="au-chip">
+                          <span className="tk">{row.coingecko_id}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="au-summary">{summarizeDetails(safeDetails)}</div>
+
+                    {isOpen && hasDetail && (
+                      <div className="au-detail" onClick={(ev) => ev.stopPropagation()}>
+                        <div className="au-detail-h">What changed</div>
+                        <div className="au-changes">
+                          {detailEntries.map(([k, v]) => (
+                            <Fragment key={k}>
+                              <div className="au-ch-label">{labelize(k)}</div>
+                              <div className="au-ch-value">{detailValue(v)}</div>
+                            </Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="au-right" onClick={(ev) => ev.stopPropagation()}>
+                    {restoreTarget ? (
                       <button
                         type="button"
-                        onClick={() => toggleExpanded(row.id)}
-                        className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 hover:bg-[rgb(18,19,21)]/80 focus:outline-none focus:ring-[rgb(136,128,213)]/70 focus:ring-2"
-                        aria-label={isOpen ? 'Collapse details' : 'Expand details'}
-                        title={isOpen ? 'Collapse details' : 'Expand details'}
+                        className="au-restore"
+                        onClick={() => restorePlannerFromLog(row)}
+                        disabled={restoringId === row.id}
                       >
-                        {isOpen ? (
-                          <ChevronDown className="h-4 w-4 text-slate-100" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-slate-100" />
-                        )}
+                        {restoringId === row.id ? 'Restoring…' : 'Restore'}
                       </button>
+                    ) : null}
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
-                            <div className="text-[12px] text-[rgb(176,176,178)] whitespace-nowrap">
-                              {fmtTime(row.created_at)}
-                            </div>
+                    {canRestoreFromAudit(row) && (
+                      <button
+                        type="button"
+                        className="au-restore"
+                        onClick={() => onRestore(row)}
+                        disabled={restoreBusyId === row.id}
+                      >
+                        {restoreBusyId === row.id ? 'Restoring…' : 'Restore'}
+                      </button>
+                    )}
 
-                            <span className="inline-flex items-center rounded-lg bg-[rgba(255,255,255,0.02)] ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-2 py-0.5 text-[12px] text-slate-100">
-                              {prettyEntity(row.entity)}
-                            </span>
-
-                            {row.coingecko_id ? (
-                              <span className="inline-flex items-center rounded-lg bg-[rgba(255,255,255,0.02)] ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-2 py-0.5 text-[12px] text-slate-100">
-                                {row.coingecko_id}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-lg bg-transparent ring-1 ring-inset ring-[rgb(58,60,66)]/50 px-2 py-0.5 text-[12px] text-[rgb(140,140,142)]">
-                                — coin —
-                              </span>
-                            )}
-                          </div>
-
-                            <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            {restoreTarget ? (
-                              <button
-                                type="button"
-                                onClick={() => restorePlannerFromLog(row)}
-                                disabled={restoringId === row.id}
-                                className="inline-flex items-center rounded-lg bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 px-2.5 py-1 text-[12px] text-slate-100 hover:bg-[rgb(18,19,21)]/80 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {restoringId === row.id ? 'Restoring…' : 'Restore'}
-                              </button>
-                            ) : null}
-
-                            <div className="text-[13px] sm:text-[14px] text-slate-100 font-medium tracking-tight break-words">
-                              {row.action}
-                            </div>
-                          </div>
-                          
-                            {canRestoreFromAudit(row) && (
-                              <button
-                                type="button"
-                                onClick={() => onRestore(row)}
-                                disabled={restoreBusyId === row.id}
-                                className="inline-flex items-center rounded-lg border border-[rgb(58,60,66)]/70 bg-[rgb(18,19,21)]/60 px-2.5 py-1 text-[12px] text-slate-100 hover:bg-[rgb(18,19,21)]/85 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {restoreBusyId === row.id ? 'Restoring…' : 'Restore'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="mt-1 text-[12px] leading-relaxed text-[rgb(176,176,178)] break-words">
-                          {summarizeDetails(safeDetails)}
-                        </div>
-
-
-                        {isOpen && (
-                          <div className="mt-3 rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-2.5 sm:p-3">
-                            <div className="text-[11px] uppercase tracking-wide text-[rgb(176,176,178)] mb-2">
-                              Details (JSON)
-                            </div>
-                            <pre className="text-[12px] text-slate-100 whitespace-pre-wrap break-words max-h-[320px] overflow-auto sm:max-h-[420px]">
-                              {JSON.stringify(safeDetails ?? {}, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <span className={`au-badge ${badgeCls(row.action)}`}>
+                      <span className="bd" aria-hidden="true" />
+                      {badgeCls(row.action) || 'event'}
+                    </span>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </section>
+      ))}
 
-      <p className="text-[12px] text-[rgb(120,120,121)]">
+      <p className="mt-4 text-[12px] text-[rgb(120,120,121)]">
         Edits, freezes, deletes, and restoration events are logged automatically. Only you can see your own logs (RLS owner-only).
       </p>
     </div>

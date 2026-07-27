@@ -1,0 +1,383 @@
+/* ============================================================
+   LedgerOne — Coin page skin (.coin scope) · UI only
+   Ported from design-handoff coin.css onto app tokens.
+   Ladder styles come from planner-skin.css (.pl scope).
+   ============================================================ */
+.coin {
+  --cn-bg: rgb(19, 20, 21);
+  --cn-surface: rgb(28, 29, 31);
+  --cn-surface-2: rgb(32, 33, 35);
+  --cn-border: rgb(41, 42, 45);
+  --cn-border-strong: rgb(58, 59, 63);
+  --cn-text: rgb(226, 228, 235);
+  --cn-text-2: rgb(163, 163, 164);
+  --cn-text-3: rgb(122, 124, 132);
+  --cn-accent: rgb(136, 128, 213);
+  --cn-accent-text: rgb(190, 184, 245);
+  --cn-accent-tint: rgba(136, 128, 213, 0.14);
+  --cn-success: rgb(116, 170, 98);
+  --cn-success-tint: rgba(116, 170, 98, 0.14);
+  --cn-danger: #f0705c;
+  --cn-danger-tint: rgba(240, 112, 92, 0.13);
+  --cn-warning: #e6a53c;
+  --cn-r: 6px;
+  display: block;
+}
+
+/* shared card */
+.coin .card {
+  background: var(--cn-surface);
+  border: 1px solid var(--cn-border);
+  border-radius: var(--cn-r);
+}
+.coin .card-h {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--cn-border);
+}
+.coin .card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--cn-text); }
+.coin .card-sub { font-size: 12px; color: var(--cn-text-3); margin-left: 9px; }
+.coin .count-chip {
+  font-size: 11.5px; color: var(--cn-text-3); white-space: nowrap;
+  border: 1px solid var(--cn-border); border-radius: 999px; padding: 3px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.coin .pos { color: var(--cn-success); }
+.coin .neg { color: var(--cn-danger); }
+
+/* ============================================================
+   Coin identity header
+   ============================================================ */
+.coin .ch { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 2px 2px 0; }
+.coin .ch-id { display: flex; align-items: center; gap: 14px; }
+.coin .ch-id .nm-wrap { display: flex; flex-direction: column; gap: 2px; }
+.coin .ch-id .nm {
+  font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+  display: flex; align-items: baseline; gap: 9px; color: var(--cn-text);
+}
+.coin .ch-id .nm .tk { font-size: 12.5px; font-weight: 600; color: var(--cn-text-3); letter-spacing: 0.05em; }
+.coin .ch-id .sub { font-size: 12px; color: var(--cn-text-3); }
+.coin .ch-fav {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  background: transparent; border: none; color: var(--cn-text-3);
+  cursor: pointer; transition: color 120ms;
+}
+.coin .ch-fav.on, .coin .ch-fav:hover { color: var(--cn-warning); }
+.coin .ch-spacer { flex: 1; }
+.coin .ch-px { display: flex; align-items: baseline; gap: 12px; }
+.coin .ch-px .v { font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; color: var(--cn-text); }
+.coin .ch-px .l { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cn-text-3); }
+.coin .ch-chg {
+  font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.coin .ch-chg.pos { color: var(--cn-success); background: var(--cn-success-tint); }
+.coin .ch-chg.neg { color: var(--cn-danger); background: var(--cn-danger-tint); }
+
+/* ============================================================
+   KPI band
+   ============================================================ */
+.coin .ck {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+}
+.coin .ck-cell {
+  position: relative;
+  padding: 18px 20px 22px; min-width: 0;
+  background: var(--cn-surface); border: 1px solid var(--cn-border); border-radius: var(--cn-r);
+  box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.5);
+}
+.coin .ck-pct {
+  position: absolute; bottom: 8px; right: 8px;
+  width: 22px; height: 22px; border-radius: 6px;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  color: var(--cn-text-3); background: transparent; border: 1px solid transparent;
+  cursor: pointer; transition: color 120ms, background 120ms, border-color 120ms;
+}
+.coin .ck-pct:hover { color: var(--cn-text); background: var(--cn-surface-2); border-color: var(--cn-border); }
+.coin .ck-pct.on { color: var(--cn-accent-text); background: var(--cn-accent-tint); border-color: transparent; }
+.coin .ck-cell .l { font-size: 11px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase; color: var(--cn-text-3); }
+.coin .ck-cell .v {
+  margin-top: 10px; font-variant-numeric: tabular-nums;
+  font-size: 24px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; color: var(--cn-text);
+}
+.coin .ck-cell .v .sub { font-size: 12.5px; color: var(--cn-text-3); margin-left: 6px; font-weight: 400; }
+.coin .ck-cell .v.pos { color: var(--cn-success); }
+.coin .ck-cell .v.neg { color: var(--cn-danger); }
+@media (max-width: 1180px) {
+  .coin .ck { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 680px) {
+  .coin .ck { grid-template-columns: repeat(2, 1fr); }
+  .coin .ck-cell { padding: 14px 14px 16px; }
+  .coin .ck-cell .v { font-size: 20px; }
+}
+@media (max-width: 380px) {
+  .coin .ck { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Value chart card head + segmented controls
+   ============================================================ */
+.coin .cv-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 20px 22px 6px;
+}
+.coin .cv-head .label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase; color: var(--cn-text-3); }
+.coin .cv-head .v { margin-top: 7px; font-size: 38px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--cn-text); }
+.coin .cv-head .v.pos { color: var(--cn-success); }
+.coin .cv-head .v.neg { color: var(--cn-danger); }
+.coin .cv-head .delta { margin-top: 7px; display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--cn-text-2); font-variant-numeric: tabular-nums; }
+.coin .cv-head .delta .chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.coin .cv-head .delta .chip.pos { color: var(--cn-success); background: var(--cn-success-tint); }
+.coin .cv-head .delta .chip.neg { color: var(--cn-danger); background: var(--cn-danger-tint); }
+.coin .cv-head .delta .ctx { color: var(--cn-text-3); }
+.coin .cv-tools { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+.coin .seg {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px; background: var(--cn-bg);
+  border: 1px solid var(--cn-border); border-radius: 8px;
+}
+.coin .seg button {
+  height: 28px; padding: 0 11px; border: none; background: transparent;
+  border-radius: 6px; color: var(--cn-text-3);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background 120ms, color 120ms;
+}
+.coin .seg button:hover { color: var(--cn-text); }
+.coin .seg button.cur { background: var(--cn-surface-2); color: var(--cn-text); }
+.coin .seg button.cur.accent { background: var(--cn-accent-tint); color: var(--cn-accent-text); }
+
+/* Floating variant — separate outlined pills; the active one gets an accent
+   border + accent text (matches the timeframe/Total P&L design). */
+.coin .seg-float {
+  gap: 8px; padding: 0;
+  background: transparent; border: none;
+  flex-wrap: wrap;
+}
+.coin .seg-float button {
+  height: 28px; padding: 0 13px;
+  border: 1px solid var(--cn-border-strong);
+  background: transparent;
+  border-radius: 999px;
+  color: var(--cn-text-3);
+}
+.coin .seg-float button:hover {
+  color: var(--cn-text);
+  border-color: var(--cn-text-3);
+}
+.coin .seg-float button.cur,
+.coin .seg-float button.cur.accent {
+  border-color: var(--cn-accent);
+  color: var(--cn-accent-text);
+  background: transparent;
+}
+
+/* ============================================================
+   Add Trade
+   ============================================================ */
+.coin .ct-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 17px 22px 0;
+}
+.coin .ct-h .ttl { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--cn-text); }
+.coin .ct-h .plans { font-size: 12px; color: var(--cn-text-3); }
+.coin .ct-h .plans b { color: var(--cn-success); font-weight: 600; }
+.coin .ct-body { padding: 14px 22px 18px; display: flex; flex-direction: column; gap: 12px; }
+.coin .ct-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.coin .ct-side {
+  display: inline-flex; align-items: center; height: 40px;
+  border: 1px solid var(--cn-border-strong); border-radius: var(--cn-r);
+  background: var(--cn-bg); padding: 3px; gap: 3px; flex: none;
+}
+.coin .ct-side button {
+  height: 100%; padding: 0 16px; border: none; border-radius: 4px;
+  background: transparent; color: var(--cn-text-3);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.coin .ct-side button.on-buy { background: var(--cn-success-tint); color: var(--cn-success); }
+.coin .ct-side button.on-sell { background: var(--cn-danger-tint); color: var(--cn-danger); }
+
+.coin .ct-field {
+  display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px;
+  border: 1px solid var(--cn-border-strong); border-radius: var(--cn-r);
+  background: var(--cn-bg); color: var(--cn-text-3); min-width: 0;
+  transition: border-color 130ms;
+}
+.coin .ct-field:focus-within { border-color: var(--cn-accent); }
+.coin .ct-field input {
+  border: none; outline: none; background: transparent;
+  color: var(--cn-text); font-size: 13.5px; min-width: 0; width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.coin .ct-field input::placeholder { color: var(--cn-text-3); }
+.coin .ct-field .pre { font-size: 13px; color: var(--cn-text-3); }
+.coin .ct-field.grow { flex: 1 1 150px; }
+.coin .ct-field input[type="datetime-local"] { color-scheme: dark; font-size: 13px; }
+
+.coin .ct-qlock {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
+  margin-left: -3px; border: none; background: transparent;
+  color: var(--cn-text-3); cursor: pointer; border-radius: 6px;
+  transition: color 120ms;
+}
+.coin .ct-qlock:hover { color: var(--cn-text); }
+.coin .ct-qlock.on { color: var(--cn-accent-text); }
+
+.coin .ct-unit {
+  display: inline-flex; align-self: stretch; align-items: center; gap: 2px;
+  margin-right: -9px; padding: 3px; border-left: 1px solid var(--cn-border);
+}
+.coin .ct-unit button {
+  height: calc(100% - 4px); padding: 0 9px; border: none; border-radius: 4px;
+  background: transparent; color: var(--cn-text-3);
+  font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.coin .ct-unit button.on { background: var(--cn-surface-2); color: var(--cn-text); }
+
+.coin .ct-row.foot { align-items: center; justify-content: space-between; }
+.coin .ct-toggles { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.coin .ct-switch {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 12.5px; color: var(--cn-text-2);
+  cursor: pointer; user-select: none;
+  background: none; border: none; padding: 0;
+}
+.coin .ct-switch .sw {
+  width: 34px; height: 19px; flex: none; border-radius: 999px;
+  border: 1px solid var(--cn-border-strong); background: var(--cn-surface-2);
+  position: relative; transition: background 150ms, border-color 150ms;
+}
+.coin .ct-switch .sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 13px; height: 13px; border-radius: 999px;
+  background: var(--cn-text-3); transition: transform 150ms, background 150ms;
+}
+.coin .ct-switch.on .sw { background: var(--cn-success-tint); border-color: rgba(116, 170, 98, 0.45); }
+.coin .ct-switch.on .sw::after { transform: translateX(15px); background: var(--cn-success); }
+.coin .ct-impact {
+  font-size: 11px; font-weight: 600; color: var(--cn-success);
+  background: var(--cn-success-tint); padding: 4px 10px; border-radius: 999px;
+}
+.coin .ct-acts { display: flex; gap: 10px; align-items: center; }
+
+.coin .ct-lock {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px;
+  border: 1px solid var(--cn-border-strong); border-radius: var(--cn-r);
+  background: var(--cn-surface); color: var(--cn-text-3);
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: border-color 120ms, color 120ms;
+}
+.coin .ct-lock:hover { color: var(--cn-text); border-color: var(--cn-text-3); }
+.coin .ct-lock.on { color: var(--cn-accent-text); border-color: rgba(136, 128, 213, 0.55); background: var(--cn-accent-tint); }
+
+.coin .ct-card.locked {
+  position: sticky; top: 64px; z-index: 30;
+  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.55);
+  border-color: rgba(136, 128, 213, 0.4);
+}
+
+.coin .cbtn {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px;
+  border: 1px solid var(--cn-border-strong); border-radius: var(--cn-r);
+  background: var(--cn-surface); color: var(--cn-text-2);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: border-color 120ms, color 120ms, background 120ms;
+}
+.coin .cbtn:hover { border-color: var(--cn-text-3); color: var(--cn-text); }
+.coin .cbtn-primary { background: rgb(94, 84, 199); border-color: transparent; color: #fff; }
+.coin .cbtn-primary:hover { background: rgb(108, 98, 212); border-color: transparent; color: #fff; }
+
+/* ============================================================
+   Planner sections (collapsible)
+   ============================================================ */
+.coin .pl-phead { cursor: pointer; }
+.coin .pl-phead:hover .pl-title .tt { color: var(--cn-text); }
+.coin .cp-chip {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 4px 11px; border-radius: 999px;
+  border: 1px solid rgba(230, 165, 60, 0.55); color: var(--cn-warning); white-space: nowrap;
+}
+.coin .cp-chip.ok { border-color: rgba(116, 170, 98, 0.45); color: var(--cn-success); }
+.coin .cp-caret {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+  border: 1px solid var(--cn-border); border-radius: var(--cn-r);
+  background: var(--cn-surface-2); color: var(--cn-text-3);
+  transition: transform 160ms, color 120ms;
+}
+.coin .cp-caret.open { transform: rotate(180deg); }
+.coin .pl-phead:hover .cp-caret { color: var(--cn-text); }
+.coin .pl-panel.closed .pl-rail { opacity: 0.45; }
+
+/* ============================================================
+   Trades table
+   ============================================================ */
+.coin .tbl { width: 100%; border-collapse: collapse; }
+.coin .tbl th {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--cn-text-3); text-align: left; padding: 12px 10px;
+  border-bottom: 1px solid var(--cn-border); white-space: nowrap;
+}
+.coin .tbl td {
+  padding: 9px 10px; border-bottom: 1px solid var(--cn-border);
+  font-size: 13.5px; color: var(--cn-text); white-space: nowrap; vertical-align: middle;
+}
+.coin .tbl th:first-child, .coin .tbl td:first-child { padding-left: 20px; }
+.coin .tbl th:last-child, .coin .tbl td:last-child { padding-right: 20px; }
+.coin .tbl th.num, .coin .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.coin .tbl td.muted { color: var(--cn-text-3); }
+.coin .tbl tbody tr:last-child td { border-bottom: none; }
+.coin .tbl tbody tr { transition: background 110ms; }
+.coin .tbl tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+.coin .side-chip {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 999px;
+}
+.coin .side-chip.buy { color: var(--cn-success); background: var(--cn-success-tint); }
+.coin .side-chip.sell { color: var(--cn-danger); background: var(--cn-danger-tint); }
+.coin .date-cell {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--cn-text-3); background: var(--cn-surface-2);
+  padding: 6px 10px 6px 20px !important;
+}
+.coin .row-del {
+  display: inline-grid; place-items: center; width: 26px; height: 26px;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--cn-text-3); cursor: pointer;
+  transition: color 120ms, background 120ms;
+}
+.coin .row-del:hover { color: var(--cn-danger); background: var(--cn-danger-tint); }
+
+/* header gutters to match page sections */
+.coin .ch { padding: 2px 24px 0; }
+
+/* ============================================================
+   COIN PAGE typography — design-system fonts (uploaded skin).
+   Sora (display) + IBM Plex Sans (ui/body/numbers, tabular via
+   'tnum'). Scoped to .coin (coins-only); covers header, KPI
+   band, chart, Add Trade, embedded planner panels & ladders,
+   and Recent Trades. Display roles mirror coin.css/app.css.
+   ============================================================ */
+.coin {
+  font-family: var(--font-plex), system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+.coin :is(h1, h2, h3, h4, h5, h6),
+.coin .ch-id .nm,
+.coin .cv-head .v,
+.coin .ct-h .ttl,
+.coin .card-title,
+.coin .pl-title .tt,
+.coin .pl-modal-title {
+  font-family: var(--font-sora), system-ui, sans-serif;
+}
+/* ticker under the coin name stays in the ui/numeric face (skin: --font-mono) */
+.coin .ch-id .nm .tk {
+  font-family: var(--font-plex), system-ui, sans-serif;
+}

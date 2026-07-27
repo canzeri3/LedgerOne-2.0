@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import ProgressBar from '@/components/common/ProgressBar'
+import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
 import { useLivePrice } from '@/lib/useLivePrice'
 import { usePrice } from '@/lib/dataCore'
 import {
@@ -293,117 +293,120 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-fixed text-left text-sm text-slate-300">
-                                  <thead className="text-[rgba(237, 237, 237, 1)]">
-                  <tr>
-                    <th className="w-1/6 px-3 py-2">Lvl</th>
-                    <th className="w-1/6 px-3 py-2">Target Price</th>
-                    <th className="w-1/6 px-3 py-2">Planned Tokens</th>
-                    <th className="w-1/6 px-3 py-2">Planned USD</th>
-                    <th className="w-1/6 px-3 py-2">Missing USD</th>
-                    <th className="w-1/6 px-3 py-2 text-right">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {v.rows.map((r, i) => {
-                    const green = r.pct >= 0.98
+              <div className="ldr-scroll">
+                <table className="ldr">
+                  <thead>
+                    <tr>
+                      <th>
+                        <span className="th-l">
+                          Lvl <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                      <th>
+                        <span className="th-l">
+                          Target <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                      <th className="!text-right">
+                        <span className="th-l !justify-end">
+                          Planned <Coins className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                      <th className="!text-right">
+                        <span className="th-l !justify-end">
+                          Planned <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                      <th className="!text-right">
+                        <span className="th-l !justify-end">
+                          Missing <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                      <th className="r">
+                        <span className="th-l">
+                          Progress <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {v.rows.map((r, i) => {
+                      const green = r.pct >= 0.98
 
-                    // Display rule:
-                    // - Row can be green at ≥98%
-                    // - But only show 100% when truly fully filled (missing USD ~ 0)
-                    const fullyFilled = r.plannedUsd > 0 && r.missingUsd <= (0.005 + EPS) // ~half-cent tolerance
-                    const pctLabel =
-                      r.plannedUsd > 0
-                        ? (fullyFilled ? 100 : Math.min(99, Math.round(r.pct * 100)))
-                        : 0
-                    const hasLiveRow =
-                      Number.isFinite(livePrice as number) &&
-                      (livePrice as number) > 0
-                    // YELLOW when live price is anywhere from 1.5% below the level or anything above it
-                    const yellow =
-                      !green &&
-                      hasLiveRow &&
-                      r.targetPrice > 0 &&
-                      (livePrice as number) >= r.targetPrice * 0.985
+                      // Display rule:
+                      // - Row can be green at ≥98%
+                      // - But only show 100% when truly fully filled (missing USD ~ 0)
+                      const fullyFilled = r.plannedUsd > 0 && r.missingUsd <= (0.005 + EPS) // ~half-cent tolerance
+                      const pctLabel =
+                        r.plannedUsd > 0
+                          ? (fullyFilled ? 100 : Math.min(99, Math.round(r.pct * 100)))
+                          : 0
+                      const hasLiveRow =
+                        Number.isFinite(livePrice as number) &&
+                        (livePrice as number) > 0
+                      // YELLOW when live price is anywhere from 1.5% below the level or anything above it
+                      const yellow =
+                        !green &&
+                        hasLiveRow &&
+                        r.targetPrice > 0 &&
+                        (livePrice as number) >= r.targetPrice * 0.985
 
-                    const rowClass = green
-                      ? 'text-[rgb(121,171,89)]'
-                      : yellow
-                      ? 'text-[rgb(207,180,45)]'
-                      : ''
+                      const rowClass = green ? 'done' : yellow ? 'alert' : ''
 
-                    return (
-                      <tr
-                        key={i}
-                        className={`border-t border-[rgb(51,52,54)] align-middle ${rowClass}`}
-                      >
-                        <td className="px-3 py-2">{r.level}</td>
-                        <td className="px-3 py-2">
-                          {fmtCurrency(r.targetPrice)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {r.plannedTokens.toFixed(6)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {fmtCurrency(r.plannedUsd)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {fmtCurrency(r.missingUsd)}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end items-center gap-2">
-                            <div className="w-40">
-                              <ProgressBar pct={r.pct} />
+                      return (
+                        <tr key={i} className={rowClass}>
+                          <td className="lvl"><span className="ix">{r.level}</span></td>
+                          <td className="tgt">{fmtCurrency(r.targetPrice)}</td>
+                          <td className="num coins">{r.plannedTokens.toFixed(6)}</td>
+                          <td className="num amt">{fmtCurrency(r.plannedUsd)}</td>
+                          <td className="num amt">{fmtCurrency(r.missingUsd)}</td>
+                          <td>
+                            <div className="ldr-prog">
+                              <div className="ldr-prog-track">
+                                <div
+                                  className="ldr-prog-fill"
+                                  style={{ width: `${(r.pct * 100).toFixed(2)}%` }}
+                                />
+                              </div>
+                              <span className="ldr-prog-pct">{pctLabel}%</span>
                             </div>
-                                                       <span className="w-10 text-right tabular-nums">
-                              {pctLabel}%
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="flex items-center justify-between">
+                          {/* Bottom-left: Average lock ONLY (for this frozen planner) */}
+                          <div className="inline-flex items-center gap-2">
+                            <span className="ft-lbl" style={{ margin: 0 }}>Average lock</span>
+                            <span className="ft-v">
+                              {v.planner.avg_lock_price != null
+                                ? fmtCurrency(num(v.planner.avg_lock_price))
+                                : '—'}
                             </span>
-
                           </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-[rgb(51,52,54)]">
-                    <td colSpan={6} className="px-3 py-3">
-                      <div className="flex items-center justify-between text-slate-400 text-xs">
-                        {/* Bottom-left: Average lock ONLY (for this frozen planner) */}
-                        <div className="inline-flex items-center gap-2">
-                          <span>Average lock:</span>
-                          <span className="tabular-nums text-slate-300">
-                            {v.planner.avg_lock_price != null
-                              ? fmtCurrency(num(v.planner.avg_lock_price))
-                              : '—'}
-                          </span>
-                        </div>
 
-                        <div className="inline-flex items-center gap-2">
-                          <span>Total planned</span>
-                          <span className="tabular-nums">
-                            {v.totals.plannedTokens.toFixed(6)}
-                          </span>
-                          <span className="text-slate-600">/</span>
-                          <span className="tabular-nums">
-                            {fmtCurrency(v.totals.plannedUsd)}
-                          </span>
-                        </div>
+                          <div className="inline-flex items-center gap-2">
+                            <span className="ft-lbl" style={{ margin: 0 }}>Total planned</span>
+                            <span className="ft-v">{v.totals.plannedTokens.toFixed(6)}</span>
+                            <span className="ft-sep" style={{ margin: 0 }}>/</span>
+                            <span className="ft-v">{fmtCurrency(v.totals.plannedUsd)}</span>
+                          </div>
 
-                        <div className="inline-flex items-center gap-2 text-xs text-slate-400">
-                          <span className="text-amber-300">Off-Plan</span>
-                          <span className="tabular-nums">0.000000</span>
-                          <span className="text-slate-600">/</span>
-                          <span className="tabular-nums">
-                            {fmtCurrency(v.offPlanUsd)}
-                          </span>
+                          <div className="inline-flex items-center gap-2">
+                            <span className="ft-off" style={{ margin: 0 }}>Off-Plan</span>
+                            <span className="ft-m">0.000000</span>
+                            <span className="ft-sep" style={{ margin: 0 }}>/</span>
+                            <span className="ft-m">{fmtCurrency(v.offPlanUsd)}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                </tfoot>
-                             </table>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </div>
           )

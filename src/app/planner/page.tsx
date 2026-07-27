@@ -8,6 +8,7 @@ import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { usePrice } from '@/lib/dataCore'
 import { useEntitlements } from '@/lib/useEntitlements'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 import PlannerPaywallCard from '@/components/billing/PlannerPaywallCard'
 import PlannerLimitBanner from '@/components/billing/PlannerLimitBanner'
 
@@ -19,8 +20,11 @@ import SellPlannerHistory from '@/components/planner/SellPlannerHistory'
 /* CHANGED: use the planner-only copy instead of the shared one */
 import SellPlannerCombinedCardPlanner from '@/components/planner/SellPlannerCombinedCard.Planner'
 
-import Card from '@/components/ui/Card'
 import PlannerHighlightAgent from '@/components/planner/PlannerHighlightAgent'
+import SlotPortal from '@/components/planner/SlotPortal'
+import CoinLogo from '@/components/common/CoinLogo'
+import { fmtCurrency } from '@/lib/format'
+import './planner-skin.css'
 
 type Coin = {
   coingecko_id: string
@@ -61,6 +65,7 @@ function CoinDropdown({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const { mounted, shown } = useMenuTransition(open)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState<number>(-1)
   const [isEditing, setIsEditing] = useState(false)
@@ -218,7 +223,7 @@ function CoinDropdown({
               inputRef.current?.blur()
             }
           }}
-          className="w-full rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 pl-10 pr-10 py-2 text-[14px] md:text-[15px] text-slate-200 placeholder:text-[rgb(163,163,164)] hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70"
+          className="w-full rounded-xl bg-transparent ring-1 ring-inset ring-[rgb(41,42,45)]/70 pl-10 pr-10 py-3.5 text-[14px] md:text-[15px] text-slate-200 placeholder:text-[rgb(163,163,164)] hover:bg-[rgb(28,29,31)]/50 focus:outline-none focus:ring-[rgb(136,128,213)]/70"
         />
 
         <button
@@ -249,13 +254,17 @@ function CoinDropdown({
         </button>
       </div>
 
-      {open && (
+      {mounted && (
         <div
           ref={popRef}
           id="planner-coin-combobox-listbox"
           role="listbox"
           aria-label="Coins"
-          className="absolute z-50 mt-2 w-full rounded-xl ring-1 ring-[rgb(41,42,45)] bg-[rgb(28,29,31)] shadow-xl overflow-x-hidden"
+          style={{ transformOrigin: 'top' }}
+          className={[
+            "hdr-pop absolute z-50 mt-2 w-full rounded-xl ring-1 ring-[rgb(41,42,45)] bg-[rgb(28,29,31)] shadow-xl overflow-x-hidden",
+            shown ? "is-open" : "",
+          ].join(" ")}
         >
           <div className="max-h-[340px] overflow-y-auto p-1.5">
             {filteredItems.length === 0 ? (
@@ -281,7 +290,7 @@ function CoinDropdown({
                       inputRef.current?.blur()
                     }}
                     className={
-                      'relative w-full rounded-lg text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between gap-3 overflow-hidden whitespace-nowrap ' +
+                      'hdr-pop-item relative w-full rounded-lg text-left px-3 py-2.5 text-[13px] md:text-[14px] flex items-center justify-between gap-3 overflow-hidden whitespace-nowrap ' +
                       (isActive ? 'bg-[rgb(31,32,33)] ' : 'bg-transparent ') +
                       (isSelected
                         ? 'z-10 ring-1 ring-[rgb(136,128,213)]/70 ring-offset-2 ring-offset-[rgb(28,29,31)] '
@@ -566,7 +575,8 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
 
   return (
     <div
-      className="px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-screen-2xl mx-auto space-y-10"
+      className="pl px-4 md:px-8 lg:px-10 py-6 md:py-8 max-w-screen-2xl mx-auto space-y-6"
+      data-planner-page
       data-coingecko-id={coingeckoId || undefined}
     >
       {entitlements && entitlements.plannedAssetsLimit !== null && entitlements.plannedAssetsLimit > 0 ? (
@@ -575,48 +585,65 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
   </div>
 ) : null}
 
-      {/* ───────── Integrated header / coin selector (no Card wrapper) ───────── */}
-      <div className="space-y-2">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-[rgb(41,42,45)]/80 pb-3">
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-[20px] md:text-[22px] font-semibold text-white/90 leading-tight">
-                Planner Page
-              </h1>
-              {selected ? (
-                <span className="text-[13px] md:text-[14px] text-[rgb(163,163,164)] truncate">
-                  {(selected.symbol ?? '').toUpperCase()} · {selected.name}
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-1 text-[13px] md:text-[14px] text-[rgb(163,163,164)]">
-              Pick a coin, then configure inputs and review ladders in a clean,
-              unified view.
-            </p>
+      {/* ───────── Page head: title + coin selector ───────── */}
+      <div className="pl-head">
+        <div className="min-w-0">
+          <h1>Build your ladders</h1>
+          <div className="sub">
+            Set your inputs and review the buy &amp; sell ladders
+            {selected ? ` for ${selected.name}` : ''} — recalculated in real time.
           </div>
+        </div>
 
-          {/* Right side: single searchable coin selector */}
-          <div className="flex w-full md:w-auto items-center gap-2 md:gap-3">
-            <label className="shrink-0 text-slate-300 text-[13px] md:text-[14px]">
-              Coin
-            </label>
-
-            <CoinDropdown
-              items={coins ?? []}
-              selectedId={coingeckoId}
-              onChange={(id) => {
-                userSelectedRef.current = true
-                setCoingeckoId(id)
-              }}
-              disabled={!coins?.length}
-            />
-          </div>
-                  </div>
-
-        <div className="text-[13px] md:text-[14px] text-slate-400">
-          {selected ? `${selected.name} selected` : 'Loading coins…'}
+        {/* Right side: single searchable coin selector */}
+        <div className="flex w-full md:w-auto items-center">
+          <CoinDropdown
+            items={coins ?? []}
+            selectedId={coingeckoId}
+            onChange={(id) => {
+              userSelectedRef.current = true
+              setCoingeckoId(id)
+            }}
+            disabled={!coins?.length}
+          />
         </div>
       </div>
+
+      {/* ───────── Ticker strip: coin context (display-only; uses already-fetched price) ───────── */}
+      {selected ? (
+        <div className="pl-ticker">
+          <div className="pl-tk-id">
+            <CoinLogo
+              symbol={(selected.symbol ?? '').toUpperCase()}
+              name={selected.name}
+              className="h-12 w-12 flex-none"
+            />
+            <div>
+              <div className="nm">{selected.name}</div>
+              <div className="tk">{(selected.symbol ?? '').toUpperCase()} · USD</div>
+            </div>
+          </div>
+          <div className="pl-tk-div" />
+          <div className="pl-tk-stat">
+            <span className="l">Market price</span>
+            <span className="v big">
+              {typeof priceRow?.price === 'number' ? fmtCurrency(priceRow.price) : '—'}
+            </span>
+          </div>
+          <div className="pl-tk-stat">
+            <span className="l">24h change</span>
+            {typeof priceRow?.pct24h === 'number' ? (
+              <span className={`pl-chg ${priceRow.pct24h >= 0 ? 'pos' : 'neg'}`}>
+                {priceRow.pct24h >= 0 ? '+' : ''}
+                {priceRow.pct24h.toFixed(2)}%
+              </span>
+            ) : (
+              <span className="v">—</span>
+            )}
+          </div>
+          <div className="pl-tk-spacer" />
+        </div>
+      ) : null}
 
       {/* Guard against undefined selection while coins load */}
       {!coingeckoId ? (
@@ -625,18 +652,13 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
         <>
           {/* New price cycle banner (short, points people to tooltip) */}
           {showCycleBanner && selected && (
-            <div className="mb-4 rounded-lg border border-[rgb(60,61,65)] bg-[rgb(32,33,36)] px-4 py-3 text-sm text-slate-200">
+            <div className="pl-banner !m-0 mb-4">
+              <span className="dot" aria-hidden="true" />
               <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-flex h-2 w-2 rounded-full bg-[rgb(136,128,213)]"
-                    aria-hidden="true"
-                  />
-                  <span className="font-medium">
-                    {(selected.symbol ?? '').toUpperCase() || selected.name} new
-                    price cycle detected
-                  </span>
-                </div>
+                <span className="font-medium text-slate-100">
+                  {(selected.symbol ?? '').toUpperCase() || selected.name} new
+                  price cycle detected
+                </span>
                 <p className="text-[13px] text-slate-300">
                   For best use of the strategy, consider updating Total Budget and clicking{' '}
                   <span className="font-medium">Save New</span> to start a
@@ -648,244 +670,197 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             </div>
           )}
 
-          {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
-                    {/* ───────── BUY: one seamless card (Inputs + Ladder) ───────── */}
-<Card
-  title="Buy Planner"
-  headerRight={
-    <div className="relative inline-flex items-center group">
-      <button
-        type="button"
-        aria-label="How the Buy Planner & price cycles work"
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
-      >
-        i
-      </button>
+          {/* ───────── BUY: one seamless panel (Inputs + Ladder) ───────── */}
+          <section className="pl-panel buy w-full">
+            <div className="pl-rail" aria-hidden="true" />
+            <div className="pl-phead">
+              <div className="pl-title">
+                <span className="pl-badge">Buy</span>
+                <div className="tt">Buy Planner</div>
+              </div>
+              <div className="pl-phead-right">
+                {/* Bought / Avg entry stat pills (filled by BuyPlannerLadder via portal) */}
+                <div id="buy-phead-stats" className="contents" />
+                <div className="relative inline-flex items-center group">
+                  <button
+                    type="button"
+                    aria-label="How the Buy Planner & price cycles work"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none"
+                  >
+                    i
+                  </button>
 
-      {/* Right-aligned tooltip so it anchors cleanly from the far-right header */}
-      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
-        <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+                  {/* Right-aligned tooltip so it anchors cleanly from the far-right header */}
+                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
+                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
 
-        <p className="text-slate-300">
-          The Buy Planner is a structured accumulation plan. Choose your{' '}
-          <span className="font-medium">Risk Profile</span> (Conservative / Moderate / Aggressive),
-          then click <span className="font-medium">Generate Ladder</span> to create a repeatable set
-          of buy levels with defined allocations.
-        </p>
+                    <p className="text-slate-300">
+                      The Buy Planner is a structured accumulation plan. Choose your{' '}
+                      <span className="font-medium">Risk Profile</span> (Conservative / Moderate / Aggressive),
+                      then click <span className="font-medium">Generate Ladder</span> to create a repeatable set
+                      of buy levels with defined allocations.
+                    </p>
 
-        <p className="mt-2 text-slate-300">
-          As price reaches a level, that row turns <span className="font-medium">yellow</span> to
-          signal action. Execute the buy at your exchange/broker, then record it under{' '}
-          <span className="font-medium">Add Trade</span> so the ladder updates; rows turn green once
-          filled.
-        </p>
+                    <p className="mt-2 text-slate-300">
+                      As price reaches a level, that row turns <span className="font-medium">yellow</span> to
+                      signal action. Execute the buy at your exchange/broker, then record it under{' '}
+                      <span className="font-medium">Add Trade</span> so the ladder updates; rows turn green once
+                      filled.
+                    </p>
 
-        <p className="mt-2 text-slate-300">
-          When a new price cycle begins, generate a new Buy Planner to reset the ladder around the
-          updated market regime. Your previous sell planner remains saved as history so you can audit
-          decisions across cycles.
-        </p>
-      </div>
-    </div>
-  }
-  className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
-  headerBorderClassName="border-[rgb(41,42,45)]"
-  noHoverLift
-  noShadow
->
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
-              {/* Left: Inputs */}
-              <section
-                aria-label="Buy Planner Inputs"
-                className="md:col-span-4 lg:col-span-3 space-y-4 buy-inputs-equal"
-              >
-                <div className="text-xs text-slate-400 md:hidden">Inputs</div>
-                <div
-                  className={`
-                    grid grid-cols-1 gap-4
-                    [&>*>.card]:h-full
-                    [&>*>[data-card]]:h-full
-                    [&>*>.Card]:h-full
-                    [&_*]:[contain:layout_style_paint]
-                  `}
-                >
-                  <BuyPlannerInputs coingeckoId={coingeckoId} />
+                    <p className="mt-2 text-slate-300">
+                      When a new price cycle begins, generate a new Buy Planner to reset the ladder around the
+                      updated market regime. Your previous sell planner remains saved as history so you can audit
+                      decisions across cycles.
+                    </p>
+                  </div>
                 </div>
-              </section>
-
-              {/* Right: Ladder */}
-              <section
-                aria-label="Buy Planner Ladder"
-                className="md:col-span-8 lg:col-span-9 space-y-4"
-                data-buy-planner
-              >
-                <div className="text-xs text-slate-400 md:hidden">Ladder</div>
-                <div className="p-2 rounded-md border border-[rgb(58,59,63)] bg-[rgb(41,42,45)]">
-                  <BuyPlannerLadder coingeckoId={coingeckoId} />
-                </div>
-              </section>
+              </div>
             </div>
+            {/* Controls bar (Total budget + Risk profile + Save New Plan) */}
+            <BuyPlannerInputs coingeckoId={coingeckoId} />
 
-                        {/* Footer: ACTIONS — Remove on the left, Edit/Save on the right */}
-          <div className="mt-3 flex items-center justify-between">
-            {/* Delete current planner (soft-deactivate) on the left side */}
-            <button
-              type="button"
-              onClick={openConfirmBuyDelete}
-              className="planner-delete-btn"
-            >
-              <span className="button__text">Delete</span>
-              <span className="button__icon" aria-hidden="true">
-                <svg className="svg" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M3 6h18"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M10 11v6M14 11v6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
+            {/* Save New Plan — rendered into the controls bar next to Risk profile;
+                same confirmation gate as before (openConfirmSaveNew) */}
+            <SlotPortal slotId="buy-controls-save">
+              <button
+                type="button"
+                onClick={() => {
+                  // Only warn about preserving history when a planner actually exists.
+                  // activeBuyPlanner === null means it has loaded AND there is none, so
+                  // save straight away. undefined (still loading) or a row → keep the
+                  // confirmation so we never overwrite an existing planner unwarned.
+                  if (activeBuyPlanner === null) {
+                    window.dispatchEvent(
+                      new CustomEvent('buyplanner:action', { detail: { action: 'save' } })
+                    )
+                  } else {
+                    openConfirmSaveNew()
+                  }
+                }}
+                className="btn btn-primary"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </span>
-            </button>
-
-            {/* Edit + Save New grouped on the right */}
-            <div className="flex gap-3">
-              {/* Edit current planner (top/budget/growth) */}
-              <button
-                type="button"
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent('buyplanner:action', {
-                      detail: { action: 'edit' },
-                    })
-                  )
-                }
-                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
-              >
-                Edit Planner
+                Save New Plan
               </button>
+            </SlotPortal>
 
-              {/* Save New — confirmation gate (no logic change after confirm) */}
-              <button
-                type="button"
-                onClick={openConfirmSaveNew}
-                className="button"
-              >
-                <span className="button-content">Save New</span>
-              </button>
+            {/* Ladder — full width */}
+            <section aria-label="Buy Planner Ladder" data-buy-planner>
+              <BuyPlannerLadder coingeckoId={coingeckoId} />
+            </section>
 
+            {/* Footer: meta (left) + actions (right) */}
+            <div className="pl-foot">
+              <div className="foot-left">
+                {/* Plan meta (filled by BuyPlannerLadder via portal) */}
+                <div id="buy-foot-meta" className="contents" />
+              </div>
+
+              <div className="acts">
+                {/* Delete current planner (soft-deactivate) */}
+                <button
+                  type="button"
+                  onClick={openConfirmBuyDelete}
+                  className="btn btn-danger"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14" stroke="currentColor" strokeWidth="2" />
+                    <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Delete
+                </button>
+                {/* Edit current planner (top/budget/growth) */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent('buyplanner:action', {
+                        detail: { action: 'edit' },
+                      })
+                    )
+                  }
+                  className="btn"
+                >
+                  Edit Current Plan
+                </button>
+              </div>
             </div>
-          </div>
-
-
-
-
-          </Card>
+          </section>
 
           {/* ───────── SELL: inputs + active/history ───────── */}
-          <Card
-            title="Sell Planner"
-            className="w-full bg-none bg-[rgb(28,29,31)] border-0 rounded-md"
-            headerBorderClassName="border-[rgb(41,42,45)]"
-headerRight={
-  <div className="flex items-center gap-2">
-    {/* Info tooltip – left of Active & History */}
-    <div className="relative inline-flex items-center group">
-      <button
-        type="button"
-        aria-label="How the Sell Planner works"
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
-      >
-        i
-      </button>
+          <section className="pl-panel sell w-full">
+            <div className="pl-rail" aria-hidden="true" />
+            <div className="pl-phead">
+              <div className="pl-title">
+                <span className="pl-badge">Sell</span>
+                <div className="tt">Sell Planner</div>
+              </div>
+              <div className="pl-phead-right">
+                {/* Info tooltip – left of Active & History */}
+                <div className="relative inline-flex items-center group">
+                  <button
+                    type="button"
+                    aria-label="How the Sell Planner works"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
+                  >
+                    i
+                  </button>
 
-      {/* Right-anchored tooltip so it behaves correctly */}
-      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
-        <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+                  {/* Right-anchored tooltip so it behaves correctly */}
+                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
+                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
 
-        <p className="text-slate-300">
-          The Sell Planner is a structured distribution plan. Choose{' '}
-          <span className="font-medium">Coin Volatility</span> and{' '}
-          <span className="font-medium">Sell Intensity</span>, then click{' '}
-          <span className="font-medium">Generate Ladder</span> to create a repeatable
-          scale-out ladder.
-        </p>
+                    <p className="text-slate-300">
+                      The Sell Planner is a structured distribution plan. Choose{' '}
+                      <span className="font-medium">Coin Volatility</span> and{' '}
+                      <span className="font-medium">Sell Intensity</span>, then click{' '}
+                      <span className="font-medium">Generate Ladder</span> to create a repeatable
+                      scale-out ladder.
+                    </p>
 
-        <p className="mt-2 text-slate-300">
-          When a row turns <span className="font-medium">yellow</span>, it’s time to
-          sell. Execute at your exchange/broker, then record the sell under{' '}
-          <span className="font-medium">Add Trade</span> (attach it to the correct ladder
-          row).
-        </p>
-      </div>
-    </div>
-
-    {/* KEEP: mount point used elsewhere */}
-    <div id="sell-planner-header-right" className="flex items-center gap-2" />
-  </div>
-}
-            noHoverLift
-            noShadow
-          >
-       
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-y-8 gap-x-6 md:gap-x-8">
-              <section
-                aria-label="Sell Planner Inputs"
-                className="md:col-span-4 lg:col-span-3 space-y-4 sell-inputs-stack"
-              >
-                <div className="text-xs text-slate-400 md:hidden">Inputs</div>
-                <div
-                  className={`
-                    flex flex-col gap-4
-                    [&_*]:w-full
-                    [&_.grid]:!grid-cols-1
-                    [&_.flex]:!flex-col
-                    [&_.card]:w-full
-                    [&_[data-card]]:w-full
-                  `}
-                >
-                  <SellPlannerInputs coingeckoId={coingeckoId} />
+                    <p className="mt-2 text-slate-300">
+                      When a row turns <span className="font-medium">yellow</span>, it’s time to
+                      sell. Execute at your exchange/broker, then record the sell under{' '}
+                      <span className="font-medium">Add Trade</span> (attach it to the correct ladder
+                      row).
+                    </p>
+                  </div>
                 </div>
-              </section>
 
-              <section
-                aria-label="Sell Planner Active and History"
-                className="md:col-span-8 lg:col-span-9 space-y-4"
-                data-sell-planner
-              >
-                <div className="text-xs text-slate-400 md:hidden">
-                  Active &amp; History
-                </div>
-                <div className="p-0">
-                  {/* CHANGED: use the planner-only component here */}
-                  <SellPlannerCombinedCardPlanner
-                    title=""
-                    ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
-                    HistoryView={
-                      <SellPlannerHistory coingeckoId={coingeckoId} />
-                    }
-                    newestFirst={true}
-                  />
-                </div>
-              </section>
+                {/* Sold / If-all-hit stat pills (filled by SellPlannerLadder via portal) */}
+                <div id="sell-phead-stats" className="contents" />
+              </div>
             </div>
-          </Card>
+
+            {/* Controls bar (Active plan slot + Volatility + Intensity + Generate).
+                The #sell-planner-header-right mount now lives inside this bar. */}
+            <SellPlannerInputs coingeckoId={coingeckoId} />
+
+            {/* Ladder + history — full width */}
+            <section aria-label="Sell Planner Active and History" data-sell-planner>
+              {/* CHANGED: use the planner-only component here */}
+              <SellPlannerCombinedCardPlanner
+                title=""
+                ActiveView={<SellPlannerLadder coingeckoId={coingeckoId} />}
+                HistoryView={
+                  <SellPlannerHistory coingeckoId={coingeckoId} />
+                }
+                newestFirst={true}
+              />
+            </section>
+
+            {/* Footer: meta (filled by SellPlannerLadder via portal) */}
+            <div className="pl-foot">
+              <div className="foot-left">
+                <div id="sell-foot-meta" className="contents" />
+              </div>
+            </div>
+          </section>
         </>
       )}
       {/* Confirm “Save New” (Buy Planner) */}
@@ -894,60 +869,61 @@ headerRight={
           role="dialog"
           aria-modal="true"
           aria-labelledby="confirm-save-new-title"
-          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+          className="pl-modal-overlay"
         >
           {/* Backdrop */}
           <button
             type="button"
             aria-label="Close confirmation"
             onClick={closeConfirmSaveNew}
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0"
           />
 
           {/* Panel */}
-          <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
-            <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
-              <h2
-                id="confirm-save-new-title"
-                className="text-sm font-semibold text-slate-100"
-              >
-                Save new planner?
-              </h2>
-              <p className="mt-1 text-[12px] text-slate-400">
-                This creates a new version for the current cycle.
-              </p>
-            </div>
-
+          <div className="pl-modal z-10">
             {/* subtle info (top-right) */}
-            <div className="absolute right-3 top-3 z-20">
-              <div className="relative group">
-                <span
-                  role="img"
-                  aria-label="Info"
-                  title="Saving a new Buy Planner locks this cycle’s Sell Planner—it's no longer live and won’t update to reflect the new Buy Planner."
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(58,59,63)] bg-[rgb(33,34,36)] text-[11px] font-semibold text-slate-200 opacity-75 group-hover:opacity-100 cursor-default select-none"
-                >
-                  i
-                </span>
-              </div>
+            <div className="absolute right-4 top-4 z-20">
+              <span
+                role="img"
+                aria-label="Info"
+                title="Saving a new Buy Planner locks this cycle’s Sell Planner—it's no longer live and won’t update to reflect the new Buy Planner."
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(58,59,63)] bg-[rgb(33,34,36)] text-[11px] font-semibold text-slate-200 opacity-75 hover:opacity-100 cursor-default select-none"
+              >
+                i
+              </span>
             </div>
 
-            <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
-              Your current Buy Planner will be preserved as history. Continue?
+            <div className="pl-modal-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+              </svg>
             </div>
 
-            <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+            <h2 id="confirm-save-new-title" className="pl-modal-title">
+              Save new planner?
+            </h2>
+
+            <p className="pl-modal-body">
+              This creates a new version for the current cycle. Your current Buy
+              Planner will be preserved as history. Continue?
+            </p>
+
+            <div className="pl-modal-acts">
               <button
                 ref={confirmSaveCancelRef}
                 type="button"
                 onClick={closeConfirmSaveNew}
-                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+                className="btn"
               >
                 Cancel
               </button>
 
-              <button type="button" onClick={confirmSaveNew} className="button">
-                <span className="button-content">Save New</span>
+              <button type="button" onClick={confirmSaveNew} className="btn btn-primary">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Save New Plan
               </button>
             </div>
           </div>
@@ -959,46 +935,44 @@ headerRight={
           role="dialog"
           aria-modal="true"
           aria-labelledby="confirm-buy-delete-title"
-          className="fixed inset-0 z-[110] flex items-center justify-center px-4"
+          className="pl-modal-overlay !z-[110]"
         >
           {/* Backdrop */}
           <button
             type="button"
             aria-label="Close delete confirmation"
             onClick={closeConfirmBuyDelete}
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0"
           />
 
           {/* Panel */}
-          <div className="relative z-10 w-full max-w-md rounded-md border border-[rgb(58,59,63)] bg-[rgb(28,29,31)] shadow-2xl">
-            <div className="px-4 py-3 border-b border-[rgb(41,42,45)]">
-              <h2
-                id="confirm-buy-delete-title"
-                className="text-sm font-semibold text-slate-100"
-              >
-                Delete Buy Planner?
-              </h2>
-              <p className="mt-1 text-[12px] text-slate-400">
-                This removes the current planner from Active.
-              </p>
+          <div className="pl-modal z-10">
+            <div className="pl-modal-icon danger" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14" stroke="currentColor" strokeWidth="2" />
+                <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </div>
 
-    <div className="px-4 py-3 text-[13px] leading-relaxed text-slate-300">
-  This will remove the current Buy Planner from Active and stop its levels and alerts for this coin.
-  Any trades you already recorded under this planner will remain saved and visible in your history.
-  <span className="block mt-2 text-slate-200 font-medium">
-    This action can’t be undone.
-  </span>
-</div>
+            <h2 id="confirm-buy-delete-title" className="pl-modal-title">
+              Delete Buy Planner?
+            </h2>
 
+            <p className="pl-modal-body">
+              This will remove the current Buy Planner from Active and stop its
+              levels and alerts for this coin. Any trades you already recorded
+              under this planner will remain saved and visible in your history.
+              <b className="block mt-2">This action can’t be undone.</b>
+            </p>
 
-
-            <div className="px-4 py-3 border-t border-[rgb(41,42,45)] flex items-center justify-end gap-2">
+            <div className="pl-modal-acts">
               <button
                 ref={confirmBuyDeleteCancelRef}
                 type="button"
                 onClick={closeConfirmBuyDelete}
-                className="rounded px-4 py-2 text-sm font-medium bg-[rgb(41,42,45)] border border-[rgb(58,59,63)] text-slate-200 hover:bg-[rgb(45,46,49)]"
+                className="btn"
               >
                 Cancel
               </button>
@@ -1006,7 +980,7 @@ headerRight={
               <button
                 type="button"
                 onClick={confirmBuyDelete}
-                className="rounded px-4 py-2 text-sm font-medium border border-[rgb(88,60,60)] bg-[rgb(44,34,34)] text-slate-100 hover:bg-[rgb(52,38,38)]"
+                className="btn btn-danger"
               >
                 Delete
               </button>
@@ -1018,7 +992,7 @@ headerRight={
       {/* row highlighter; no layout impact */}
       <PlannerHighlightAgent />
 
-      {/* Global CSS — includes Uiverse.io Save New button styles */}
+      {/* Global CSS — layout shims for the planner input components */}
       <style jsx global>{`
         /* BUY — make all immediate child cards inside the Buy inputs area the same height */
         .buy-inputs-equal > div > * {
@@ -1042,114 +1016,6 @@ headerRight={
         .sell-inputs-stack .Card {
           width: 100%;
         }
-
-        /* From Uiverse.io by Madflows — Save New button */
-        .button {
-          position: relative;
-          overflow: hidden;
-          height: 2.5rem;
-          padding: 0 2rem;
-          border-radius: 0.25rem;
-          background: #39364fff;
-          background-size: 400%;
-          color: #fff;
-          font-size: 0.875rem;
-          line-height: 1.25rem;
-          font-weight: 500;
-          border: 1px solid rgb(58, 59, 63);
-          cursor: pointer;
-        }
-        .button:hover::before {
-          transform: scaleX(1);
-        }
-        .button-content {
-          position: relative;
-          z-index: 1;
-        }
-        .button::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          transform: scaleX(0);
-          transform-origin: 0 50%;
-          width: 100%;
-          height: inherit;
-          border-radius: inherit;
-          background: linear-gradient(
-            82.3deg,
-            rgba(109, 93, 186) 10.8%,
-            rgba(109, 93, 186) 94.3%
-          );
-          transition: all 0.4s;
-        }
-                      /* Planner Delete button — identical style to Sell planner delete */
-        .planner-delete-btn {
-          position: relative;
-          border-radius: 6px;
-          width: 95px;
-          height: 28px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          border: 1px solid rgb(105, 40, 40);
-          background-color: rgba(41, 42, 45, 1);
-          overflow: hidden;
-        }
-
-        .planner-delete-btn,
-        .planner-delete-btn .button__icon,
-        .planner-delete-btn .button__text {
-          transition: all 0.3s;
-        }
-
-        .planner-delete-btn .button__text {
-          transform: translateX(22px);
-          color: #fff;
-          font-weight: 600;
-          font-size: 10px;
-          line-height: 1;
-        }
-
-        .planner-delete-btn .button__icon {
-          position: absolute;
-          transform: translateX(68px);
-          height: 100%;
-          width: 27px;
-          background-color: rgb(105, 40, 40);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #fff;
-        }
-
-        .planner-delete-btn .svg {
-          width: 16px;
-          height: 16px;
-        }
-
-        .planner-delete-btn:hover {
-          background: rgb(115, 45, 45);
-        }
-
-        .planner-delete-btn:hover .button__text {
-          color: transparent;
-        }
-
-        .planner-delete-btn:hover .button__icon {
-          width: 94px;
-          transform: translateX(0);
-        }
-
-        .planner-delete-btn:active .button__icon {
-          background-color: rgb(95, 35, 35);
-        }
-
-        .planner-delete-btn:active {
-          border: 1px solid rgb(95, 35, 35);
-        }
-
-
       `}</style>
     </div>
   )

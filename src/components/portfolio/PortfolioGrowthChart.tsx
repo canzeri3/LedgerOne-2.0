@@ -9,6 +9,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts'
+import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
 
 type Point = { t: number; v: number }
 
@@ -35,13 +36,15 @@ export default function PortfolioGrowthChart({ data }: { data: Point[] }) {
           tickLine={{ stroke: 'rgba(255,255,255,0.08)' }}
         />
         <YAxis
-          tickFormatter={(n) =>
-            n >= 1_000_000
-              ? `$${(n / 1_000_000).toFixed(1)}M`
-              : n >= 1_000
-              ? `$${(n / 1_000).toFixed(1)}k`
-              : `$${n.toFixed(0)}`
-          }
+          tickFormatter={(n) => {
+            const c = usdToDisplay(Number(n))
+            const s = displayCurrencySymbol()
+            return c >= 1_000_000
+              ? `${s}${(c / 1_000_000).toFixed(1)}M`
+              : c >= 1_000
+              ? `${s}${(c / 1_000).toFixed(1)}k`
+              : `${s}${c.toFixed(0)}`
+          }}
           tick={{ fill: 'rgba(226,232,240,0.8)', fontSize: 11 }}
           axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
           tickLine={{ stroke: 'rgba(255,255,255,0.08)' }}
@@ -59,7 +62,7 @@ export default function PortfolioGrowthChart({ data }: { data: Point[] }) {
               hour: '2-digit', minute: '2-digit',
             })
           }
-          formatter={(val) => [`$${Number(val).toLocaleString()}`, 'Value']}
+          formatter={(val) => [`${displayCurrencySymbol()}${usdToDisplay(Number(val)).toLocaleString()}`, 'Value']}
         />
         <Area
           type="monotone"

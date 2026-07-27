@@ -275,99 +275,78 @@ const { list: favorites, toggle, isLoading: favLoading } = useFavorites()
         : 'bg-rose-500/10 text-rose-400 ring-1 ring-inset ring-rose-500/20'
 
   return (
-    <div className="mb-4">
-      {/* Title row */}
-      <div className="flex items-end justify-between gap-3">
-        {/* Left: name */}
-        <div className="flex items-center gap-3 pl-3 md:pl-6">
-          {/* HD coin logo (UI-only) with robust fallbacks + HiDPI */}
-          <CoinLogo symbol={symbol} name={name} />
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
-            <span className="block">
-              {name}
-              <span className="ml-2 align-middle text-sm uppercase text-slate-400">
-                {symbol}
-              </span>
-            </span>
-
-                           <input
-              ref={noteInputRef}
-              defaultValue=""
-              onChange={(e) => {
-                noteDraftRef.current = e.currentTarget.value
-              }}
-              onBlur={() => commitNote()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
-                if (e.key === 'Escape') {
-                  if (typeof window !== 'undefined') {
-                    const v = window.localStorage.getItem(noteKey) ?? ''
-                    noteDraftRef.current = v
-                    e.currentTarget.value = v
-                  }
-                  (e.currentTarget as HTMLInputElement).blur()
-                }
-              }}
-              placeholder="(Exchange)"
-              aria-label="(Exchange)"
-              className="mt-0.5 block h-4 w-[160px] max-w-[52vw] bg-transparent px-0 text-[11px] font-normal text-slate-400 placeholder:text-slate-600 focus:outline-none"
-            />
-
+    <div className="ch">
+      <div className="ch-id">
+        {/* HD coin logo (UI-only) with robust fallbacks + HiDPI */}
+        <CoinLogo symbol={symbol} name={name} className="h-11 w-11" />
+        <div className="nm-wrap">
+          <h1 className="nm">
+            {name}
+            <span className="tk">{(symbol ?? '').toUpperCase()}</span>
           </h1>
-
+          <input
+            ref={noteInputRef}
+            defaultValue=""
+            onChange={(e) => {
+              noteDraftRef.current = e.currentTarget.value
+            }}
+            onBlur={() => commitNote()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+              if (e.key === 'Escape') {
+                if (typeof window !== 'undefined') {
+                  const v = window.localStorage.getItem(noteKey) ?? ''
+                  noteDraftRef.current = v
+                  e.currentTarget.value = v
+                }
+                (e.currentTarget as HTMLInputElement).blur()
+              }
+            }}
+            placeholder="(Exchange)"
+            aria-label="(Exchange)"
+            className="sub block h-4 w-[160px] max-w-[52vw] bg-transparent px-0 placeholder:text-slate-600 focus:outline-none"
+          />
         </div>
 
-        {/* Right: star + price + % change */}
-        <div className="flex items-baseline gap-0.5 pr-3 md:pr-6">
-      
-
-
-
-          <button
-            type="button"
-            aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
-            aria-pressed={isFav}
-            onClick={onToggleFav}
-            disabled={favLoading}
-            className="inline-flex h-8 w-8 items-center justify-center transition"
-          >
-            {isFav ? (
-              <StarFilled className="h-5 w-5 text-yellow-400" />
-            ) : (
-              <StarHollow className="h-5 w-5 text-slate-400" />
-            )}
-          </button>
-
-
-          <div className="tabular-nums text-xl md:text-2xl font-semibold">
-            {price != null ? (
-              fmtCurrency(price)
-            ) : (
-              <span className="inline-block h-6 w-24 animate-pulse rounded bg-slate-600/30" />
-            )}
-          </div>
-
-                   <span
-            className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${pctClasses}`}
-            aria-live="polite"
-          >
-
-            {pctFrac == null ? (
-              '—'
-            ) : pctPositive ? (
-              <>
-                <TrendingUp className="h-3.5 w-3.5" />
-                {'+' + fmtPct(pctFrac)}
-              </>
-            ) : (
-              <>
-                <TrendingDown className="h-3.5 w-3.5" />
-                {fmtPct(pctFrac)}
-              </>
-            )}
-          </span>
-        </div>
+        <button
+          type="button"
+          aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
+          aria-pressed={isFav}
+          onClick={onToggleFav}
+          disabled={favLoading}
+          className={`ch-fav${isFav ? ' on' : ''}`}
+        >
+          {isFav ? (
+            <StarFilled className="h-[17px] w-[17px]" />
+          ) : (
+            <StarHollow className="h-[17px] w-[17px]" />
+          )}
+        </button>
       </div>
+
+      <div className="ch-spacer" />
+
+      <div className="ch-px">
+        <span className="l">Market price</span>
+        <span className="v">
+          {price != null ? (
+            fmtCurrency(price)
+          ) : (
+            <span className="inline-block h-6 w-24 animate-pulse rounded bg-slate-600/30" />
+          )}
+        </span>
+      </div>
+
+      <span
+        className={`ch-chg ${pctFrac == null ? '' : pctPositive ? 'pos' : 'neg'}`}
+        aria-live="polite"
+      >
+        {pctFrac == null
+          ? '—'
+          : pctPositive
+            ? `▲ +${fmtPct(pctFrac)}`
+            : `▼ ${fmtPct(pctFrac)}`}
+      </span>
     </div>
   )
 }

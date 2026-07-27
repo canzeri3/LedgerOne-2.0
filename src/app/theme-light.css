@@ -1,0 +1,749 @@
+/* ============================================================================
+   LedgerOne — Light theme overrides
+   ----------------------------------------------------------------------------
+   Loaded after globals.css. Every rule is scoped under html[data-theme="light"],
+   so the existing dark theme (the default, with no data-theme attribute) is
+   completely untouched. Marketing routes never receive data-theme="light"
+   (see src/lib/theme.tsx), so the brand landing pages always stay dark.
+
+   Palette (institutional light):
+     page bg        #F5F6F8      cards        #FFFFFF
+     inset/input    #F1F3F7      hover        #E8EBF1
+     border         #E4E7EC      border strong #D5DAE2
+     text primary   #1B2130      secondary    #4A5268
+     muted          #707A90      faint        #98A1B3
+     brand          #6366F1 / #3F41A1
+     success        #1F8A5D      danger       #C2472F     warning #A16207
+   ========================================================================== */
+
+/* ─── Base ──────────────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  color-scheme: light;
+}
+html[data-theme="light"],
+html[data-theme="light"] body {
+  background-color: #f5f6f8;
+  color: #28303f;
+}
+
+/* App shell chrome (consumed by AppShell.tsx inline styles) */
+html[data-theme="light"] {
+  --sh-page-bg: #f5f6f8;
+  --sh-sidebar-bg: #ffffff;
+  --sh-sidebar-fg: #3a4356;
+  --sh-header-bg: #f5f6f8;
+  --sh-border-scroll: #e4e7ec;
+  --sh-glow-scroll: rgba(16, 24, 40, 0.07);
+  /* Header popover panels (currency switcher, calculator) */
+  --sh-panel: #ffffff;
+  --sh-panel-inset: #f5f6f8;
+  --sh-panel-key: #f1f3f7;
+  --sh-panel-border: #e4e7ec;
+  --sh-panel-fg: #1b2130;
+  --sh-panel-fg-muted: #5f6980;
+  --sh-accent: #6366f1;
+}
+
+/* Scrollbar thumb reads better slightly darker on light surfaces */
+html[data-theme="light"] .scrollbar-auto-hide:hover {
+  scrollbar-color: rgba(100, 112, 132, 0.35) transparent;
+}
+html[data-theme="light"] .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 112, 132, 0.35);
+}
+
+/* ─── Arbitrary-value background utilities (dark surface → light) ───────── */
+/* Page-level backgrounds */
+html[data-theme="light"] :is(
+  .bg-\[\#131415\],
+  .bg-\[rgb\(19\,20\,21\)\],
+  .bg-\[rgb\(18\,19\,21\)\]
+) { background-color: #f5f6f8; }
+html[data-theme="light"] .bg-\[rgb\(18\,19\,21\)\]\/55 { background-color: rgba(245, 246, 248, 0.55); }
+html[data-theme="light"] .bg-\[rgb\(18\,19\,21\)\]\/70 { background-color: rgba(245, 246, 248, 0.75); }
+html[data-theme="light"] .bg-\[rgb\(18\,19\,21\)\]\/90 { background-color: rgba(245, 246, 248, 0.92); }
+html[data-theme="light"] .hover\:bg-\[rgb\(18\,19\,21\)\]\/85:hover { background-color: rgba(238, 240, 244, 0.9); }
+html[data-theme="light"] .hover\:bg-\[rgb\(18\,19\,21\)\]\/90:hover { background-color: rgba(238, 240, 244, 0.94); }
+
+/* Deep panels */
+html[data-theme="light"] :is(
+  .bg-\[rgb\(24\,25\,27\)\],
+  .bg-\[rgb\(25\,26\,28\)\],
+  .bg-\[\#151618\]
+) { background-color: #fafbfc; }
+html[data-theme="light"] .hover\:bg-\[rgb\(25\,26\,28\)\]:hover { background-color: #f1f3f7; }
+html[data-theme="light"] .bg-\[rgba\(15\,16\,18\,0\.82\)\] { background-color: rgba(245, 246, 248, 0.88); }
+html[data-theme="light"] .bg-\[rgba\(16\,17\,19\,0\.92\)\] { background-color: rgba(245, 246, 248, 0.94); }
+html[data-theme="light"] .bg-\[rgba\(255\,255\,255\,0\.02\)\] { background-color: rgba(16, 24, 40, 0.02); }
+
+/* Card surfaces */
+html[data-theme="light"] :is(
+  .bg-\[rgb\(28\,29\,31\)\],
+  .bg-\[\#1f2021\],
+  .bg-\[rgb\(31\,32\,33\)\],
+  .bg-\[rgb\(31\,32\,34\)\],
+  .bg-\[rgb\(32\,33\,35\)\],
+  .bg-\[rgb\(33\,34\,36\)\],
+  .bg-\[rgb\(34\,35\,37\)\],
+  .bg-\[rgb\(34\,35\,39\)\],
+  .bg-\[rgb\(35\,36\,38\)\],
+  .bg-\[rgb\(36\,37\,39\)\],
+  .bg-\[\#07132a\],
+  .bg-\[\#0a162c\]
+) { background-color: #ffffff; }
+html[data-theme="light"] .bg-\[rgb\(28\,29\,31\)\]\/60 { background-color: rgba(255, 255, 255, 0.75); }
+html[data-theme="light"] :is(
+  .hover\:bg-\[rgb\(28\,29\,31\)\]\/50:hover,
+  .hover\:bg-\[rgb\(31\,32\,33\)\]:hover,
+  .hover\:bg-\[rgb\(31\,32\,34\)\]:hover,
+  .hover\:bg-\[rgb\(32\,33\,35\)\]:hover,
+  .hover\:bg-\[rgb\(33\,34\,36\)\]:hover,
+  .hover\:bg-\[rgb\(36\,37\,39\)\]:hover,
+  .hover\:bg-\[rgba\(32\,33\,35\,0\.55\)\]:hover,
+  .hover\:bg-\[\#0a162c\]:hover,
+  .hover\:bg-\[\#0b1830\]:hover
+) { background-color: #f1f3f7; }
+
+/* Elevated / input surfaces */
+html[data-theme="light"] :is(
+  .bg-\[rgb\(38\,39\,42\)\],
+  .bg-\[rgb\(40\,41\,44\)\],
+  .bg-\[rgb\(41\,42\,43\)\],
+  .bg-\[rgb\(41\,42\,45\)\],
+  .bg-\[rgb\(42\,43\,44\)\],
+  .bg-\[rgb\(42\,44\,49\)\],
+  .bg-\[rgb\(45\,46\,49\)\]
+) { background-color: #f1f3f7; }
+html[data-theme="light"] :is(
+  .hover\:bg-\[rgb\(38\,39\,42\)\]:hover,
+  .hover\:bg-\[rgb\(41\,42\,45\)\]:hover,
+  .hover\:bg-\[rgb\(42\,43\,44\)\]:hover,
+  .focus\:bg-\[rgb\(38\,39\,42\)\]:focus
+) { background-color: #e8ebf1; }
+
+/* Hover / stronger surfaces */
+html[data-theme="light"] :is(
+  .bg-\[rgb\(47\,48\,49\)\],
+  .bg-\[rgb\(54\,55\,56\)\],
+  .bg-\[\#252628\]
+) { background-color: #e8ebf1; }
+html[data-theme="light"] :is(
+  .hover\:bg-\[rgb\(46\,47\,48\)\]:hover,
+  .hover\:bg-\[rgb\(47\,48\,49\)\]:hover,
+  .hover\:bg-\[rgb\(50\,51\,55\)\]:hover,
+  .hover\:bg-\[rgb\(54\,55\,56\)\]:hover,
+  .hover\:bg-\[\#252628\]:hover,
+  .hover\:bg-\[\#102448\]:hover
+) { background-color: #e2e6ee; }
+html[data-theme="light"] .bg-\[rgb\(90\,91\,95\)\] { background-color: #c3cad6; }
+
+/* Selected / accent-tinted surfaces */
+html[data-theme="light"] .bg-\[\#1b2c54\] { background-color: #e3e6fa; }
+html[data-theme="light"] .bg-\[\#1a0f0f\] { background-color: #fcecec; }
+html[data-theme="light"] .bg-\[rgb\(136\,128\,213\)\] { background-color: #6366f1; }
+html[data-theme="light"] .bg-\[rgb\(142\,123\,237\)\]\/25 { background-color: rgba(99, 102, 241, 0.18); }
+html[data-theme="light"] .bg-\[rgb\(63\,56\,126\)\]\/35 { background-color: rgba(63, 65, 161, 0.15); }
+html[data-theme="light"] .bg-\[rgb\(43\,39\,64\)\] { background-color: #e7e8fa; }
+html[data-theme="light"] .hover\:bg-\[rgb\(51\,46\,78\)\]:hover { background-color: #dfe1f8; }
+html[data-theme="light"] :is(
+  .bg-\[rgba\(136\,128\,213\,0\.14\)\],
+  .bg-\[rgba\(137\,128\,213\,0\.14\)\]
+) { background-color: rgba(99, 102, 241, 0.1); }
+html[data-theme="light"] .bg-\[rgba\(136\,128\,213\,0\.24\)\] { background-color: rgba(99, 102, 241, 0.16); }
+html[data-theme="light"] .bg-\[rgba\(116\,170\,98\,0\.12\)\] { background-color: rgba(31, 138, 93, 0.1); }
+html[data-theme="light"] .bg-\[rgba\(214\,66\,78\,0\.1\)\] { background-color: rgba(196, 58, 70, 0.08); }
+
+/* ─── Arbitrary-value border utilities ──────────────────────────────────── */
+/* Border matched the page bg in dark mode (invisible) — keep it invisible */
+html[data-theme="light"] .border-\[rgb\(19\,20\,21\)\] { border-color: #f5f6f8; }
+html[data-theme="light"] :is(
+  .border-\[rgb\(28\,29\,31\)\],
+  .border-\[rgb\(32\,33\,34\)\]
+) { border-color: #e7eaf0; }
+html[data-theme="light"] :is(
+  .border-\[rgb\(41\,42\,45\)\],
+  .border-\[rgb\(41\,42\,45\)\]\/60,
+  .border-\[rgb\(41\,42\,45\)\]\/70,
+  .border-\[rgb\(41\,42\,45\)\]\/80,
+  .border-\[rgb\(42\,43\,45\)\],
+  .border-\[rgb\(43\,44\,45\)\],
+  .border-\[\#081427\],
+  .border-\[\#0b1830\]
+) { border-color: #e4e7ec; }
+html[data-theme="light"] :is(
+  .border-\[rgb\(55\,56\,57\)\],
+  .border-\[rgb\(55\,56\,60\)\],
+  .border-\[rgb\(58\,59\,63\)\],
+  .border-\[rgb\(60\,61\,65\)\],
+  .focus\:border-\[rgb\(58\,59\,63\)\]:focus
+) { border-color: #d5dae2; }
+html[data-theme="light"] :is(
+  .border-\[rgb\(70\,71\,75\)\],
+  .border-\[rgb\(74\,75\,79\)\],
+  .border-\[rgb\(80\,81\,85\)\],
+  .hover\:border-\[rgb\(86\,88\,92\)\]:hover
+) { border-color: #c4cbd7; }
+html[data-theme="light"] .border-\[\#1b2c54\] { border-color: #c7ccf0; }
+html[data-theme="light"] .border-\[\#3b1e1e\] { border-color: #f2cbcb; }
+html[data-theme="light"] .border-\[rgb\(109\,93\,186\)\] { border-color: #6366f1; }
+html[data-theme="light"] .border-\[rgba\(136\,128\,213\,0\.7\)\] { border-color: rgba(99, 102, 241, 0.6); }
+html[data-theme="light"] .focus\:border-\[rgba\(136\,128\,213\,0\.8\)\]:focus { border-color: rgba(99, 102, 241, 0.7); }
+html[data-theme="light"] .hover\:border-\[rgb\(136\,128\,213\)\]\/80:hover { border-color: rgba(99, 102, 241, 0.7); }
+html[data-theme="light"] :is(
+  .border-\[rgba\(255\,255\,255\,0\.06\)\],
+  .border-\[rgba\(255\,255\,255\,0\.08\)\]
+) { border-color: rgba(16, 24, 40, 0.08); }
+
+/* ─── Arbitrary-value ring utilities ────────────────────────────────────── */
+html[data-theme="light"] .ring-\[rgb\(41\,42\,45\)\] { --tw-ring-color: #e4e7ec; }
+html[data-theme="light"] .ring-\[rgb\(41\,42\,45\)\]\/70 { --tw-ring-color: rgba(228, 231, 236, 0.9); }
+html[data-theme="light"] :is(
+  .ring-\[rgb\(51\,52\,54\)\],
+  .ring-\[rgb\(58\,60\,66\)\]\/70
+) { --tw-ring-color: rgba(16, 24, 40, 0.12); }
+html[data-theme="light"] :is(
+  .ring-\[rgb\(136\,128\,213\)\]\/60,
+  .ring-\[rgb\(136\,128\,213\)\]\/70,
+  .focus\:ring-\[rgb\(136\,128\,213\)\]\/70:focus
+) { --tw-ring-color: rgba(99, 102, 241, 0.55); }
+html[data-theme="light"] .ring-\[rgba\(114\,108\,172\,0\.40\)\] { --tw-ring-color: rgba(99, 102, 241, 0.35); }
+html[data-theme="light"] .ring-\[rgba\(124\,188\,97\,0\.10\)\] { --tw-ring-color: rgba(31, 138, 93, 0.15); }
+
+/* ─── Arbitrary-value text utilities ────────────────────────────────────── */
+html[data-theme="light"] .text-\[rgb\(90\,90\,94\)\] { color: #9aa3b5; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(120\,120\,121\)\],
+  .text-\[rgb\(120\,121\,125\)\]
+) { color: #8a93a6; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(140\,140\,142\)\],
+  .text-\[rgb\(140\,140\,144\)\],
+  .text-\[rgb\(157\,158\,159\)\],
+  .text-\[rgb\(163\,163\,164\)\]
+) { color: #5f6980; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(176\,176\,178\)\],
+  .text-\[rgb\(177\,178\,182\)\],
+  .text-\[rgb\(186\,186\,188\)\],
+  .text-\[rgb\(204\,213\,223\)\]
+) { color: #4a5268; }
+html[data-theme="light"] .text-\[rgb\(252\,252\,252\)\] { color: #16193b; }
+html[data-theme="light"] .\!text-\[rgb\(252\,252\,252\)\] { color: #16193b !important; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(205\,195\,255\)\],
+  .text-\[rgb\(214\,210\,255\)\],
+  .text-\[rgb\(219\,217\,255\)\]
+) { color: #3f41a1; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(137\,128\,213\)\],
+  .text-\[rgb\(138\,128\,216\)\]
+) { color: #4f52c4; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(96\,173\,70\)\],
+  .text-\[rgb\(105\,167\,78\)\],
+  .text-\[rgb\(116\,170\,98\)\],
+  .text-\[rgb\(124\,188\,97\)\]
+) { color: #1f8a5d; }
+html[data-theme="light"] :is(
+  .text-\[rgb\(207\,180\,45\)\],
+  .text-\[rgba\(207\,180\,45\,1\)\],
+  .text-\[rgb\(242\,205\,73\)\]
+) { color: #a16207; }
+html[data-theme="light"] .text-\[rgba\(189\,120\,45\,1\)\] { color: #b45309; }
+html[data-theme="light"] .text-\[rgba\(255\,255\,255\,0\.45\)\] { color: rgba(16, 24, 40, 0.55); }
+html[data-theme="light"] .text-\[rgba\(255\,255\,255\,0\.55\)\] { color: rgba(16, 24, 40, 0.65); }
+
+/* ─── Standard Tailwind text utilities ──────────────────────────────────── */
+html[data-theme="light"] :is(
+  .text-slate-50, .text-slate-100, .text-slate-200,
+  .text-slate-100\/90, .text-slate-100\/95, .text-slate-200\/80, .text-slate-200\/90
+) { color: #1b2130; }
+html[data-theme="light"] :is(
+  .text-slate-300, .text-slate-300\/70, .text-slate-300\/80
+) { color: #333c50; }
+html[data-theme="light"] .text-slate-400 { color: #5a6478; }
+html[data-theme="light"] .text-slate-500 { color: #6e7890; }
+html[data-theme="light"] .text-white\/90 { color: #1b2130; }
+html[data-theme="light"] :is(
+  .hover\:text-slate-50:hover,
+  .hover\:text-slate-100:hover,
+  .hover\:text-slate-100\/95:hover,
+  .hover\:text-slate-200:hover
+) { color: #0f1526; }
+html[data-theme="light"] .hover\:text-slate-300:hover { color: #333c50; }
+html[data-theme="light"] .placeholder\:text-slate-500::placeholder { color: #98a1b3; }
+
+/* text-white paired with translucent white chips (active filter pills) */
+html[data-theme="light"] :is(
+  .bg-white\/10.text-white,
+  .bg-white\/15.text-white
+) { color: #1b2130; }
+
+/* Semantic accent text — darkened for contrast on white */
+html[data-theme="light"] :is(
+  .text-emerald-200, .text-emerald-300, .text-emerald-400, .text-green-300
+) { color: #157a4d; }
+html[data-theme="light"] :is(
+  .text-rose-200, .text-rose-300, .text-rose-400
+) { color: #be3b4a; }
+html[data-theme="light"] :is(
+  .text-red-200, .text-red-300, .text-red-400
+) { color: #c24040; }
+html[data-theme="light"] :is(
+  .text-amber-100, .text-amber-200, .text-amber-300, .text-amber-300\/70,
+  .text-amber-400, .text-amber-500,
+  .text-yellow-200\/80, .text-yellow-200\/95, .text-yellow-400, .text-yellow-500
+) { color: #9a6b00; }
+html[data-theme="light"] :is(
+  .text-indigo-200, .text-indigo-300
+) { color: #3f41a1; }
+html[data-theme="light"] .hover\:text-indigo-200:hover { color: #34368a; }
+
+/* ─── Standard Tailwind background utilities ────────────────────────────── */
+html[data-theme="light"] .bg-white\/5 { background-color: rgba(16, 24, 40, 0.04); }
+html[data-theme="light"] .bg-white\/10 { background-color: rgba(16, 24, 40, 0.06); }
+html[data-theme="light"] .bg-white\/15 { background-color: rgba(16, 24, 40, 0.09); }
+html[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgba(16, 24, 40, 0.04); }
+html[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(16, 24, 40, 0.07); }
+html[data-theme="light"] :is(
+  .bg-slate-950\/60,
+  .bg-slate-900\/70, .bg-slate-900\/60, .bg-slate-900\/50,
+  .bg-slate-900\/40, .bg-slate-900\/30,
+  .bg-slate-800\/70, .bg-slate-800\/40, .bg-slate-800\/30
+) { background-color: #ffffff; }
+html[data-theme="light"] :is(
+  .bg-slate-700\/50, .bg-slate-700, .bg-slate-600\/30, .bg-slate-500\/10
+) { background-color: #e8ebf1; }
+html[data-theme="light"] .bg-slate-600 { background-color: #cbd2de; }
+html[data-theme="light"] :is(
+  .hover\:bg-slate-900:hover,
+  .hover\:bg-slate-900\/40:hover,
+  .hover\:bg-slate-800\/60:hover,
+  .hover\:bg-slate-700\/70:hover,
+  .hover\:bg-slate-700\/20:hover
+) { background-color: #eef0f4; }
+html[data-theme="light"] .hover\:bg-slate-600:hover { background-color: #bcc4d3; }
+html[data-theme="light"] :is(
+  .bg-emerald-900\/20, .bg-emerald-900\/40, .bg-emerald-950\/25, .bg-emerald-950\/40
+) { background-color: rgba(31, 138, 93, 0.1); }
+html[data-theme="light"] :is(
+  .bg-red-950\/40, .bg-red-900\/20, .bg-rose-900\/40
+) { background-color: rgba(196, 58, 70, 0.08); }
+html[data-theme="light"] :is(
+  .bg-amber-900\/15,
+  .hover\:bg-amber-900\/15:hover, .hover\:bg-amber-900\/25:hover
+) { background-color: rgba(161, 98, 7, 0.1); }
+
+/* Flat-card replacement for the two dark gradient cards */
+html[data-theme="light"] .from-slate-800\/80 {
+  background-image: none;
+  background-color: #ffffff;
+}
+
+/* ─── Standard Tailwind border / ring / shadow utilities ────────────────── */
+html[data-theme="light"] :is(
+  .border-slate-800\/80, .border-slate-800\/60, .border-slate-800\/40,
+  .border-slate-700, .border-slate-700\/80, .border-slate-700\/70,
+  .border-slate-700\/60, .border-slate-700\/50, .border-slate-700\/40,
+  .border-slate-700\/30
+) { border-color: #e4e7ec; }
+html[data-theme="light"] .hover\:border-slate-500\/80:hover { border-color: #c4cbd7; }
+html[data-theme="light"] .border-white\/10 { border-color: rgba(16, 24, 40, 0.1); }
+html[data-theme="light"] .border-white\/25 { border-color: rgba(16, 24, 40, 0.16); }
+html[data-theme="light"] .border-white\/40 { border-color: rgba(16, 24, 40, 0.25); }
+html[data-theme="light"] :is(
+  .ring-slate-700\/40, .ring-slate-700\/30, .ring-slate-700\/10,
+  .ring-slate-600\/40, .ring-slate-500\/20, .ring-slate-300\/10
+) { --tw-ring-color: rgba(16, 24, 40, 0.12); }
+html[data-theme="light"] :is(.shadow-black\/40, .shadow-black\/50, .shadow-black\/60) {
+  --tw-shadow-color: rgba(16, 24, 40, 0.14);
+}
+html[data-theme="light"] .shadow-indigo-700\/40 { --tw-shadow-color: rgba(63, 65, 161, 0.18); }
+html[data-theme="light"] .shadow-indigo-500\/30 { --tw-shadow-color: rgba(99, 102, 241, 0.18); }
+
+/* Important-modified (!) utilities — mirrored with !important so they win */
+html[data-theme="light"] .\!bg-\[rgb\(42\,43\,44\)\] { background-color: #f1f3f7 !important; }
+html[data-theme="light"] .\!border-\[rgb\(55\,56\,57\)\] { border-color: #d5dae2 !important; }
+html[data-theme="light"] .\!text-slate-200 { color: #1b2130 !important; }
+html[data-theme="light"] .\!text-slate-300\/80 { color: #333c50 !important; }
+html[data-theme="light"] .\!text-\[rgb\(214\,210\,255\)\] { color: #3f41a1 !important; }
+
+/* Transactions card: date group rows get a light grey band so days
+   stay visually separated on the white card */
+html[data-theme="light"] .transactions-card .bg-\[rgb\(31\,32\,34\)\] {
+  background-color: #eef0f4;
+}
+
+/* ─── App shell details ─────────────────────────────────────────────────── */
+/* The white LedgerOne wordmark is invisible on the light sidebar — recolor it
+   to the brand navy (#38345C, sampled from the light-mode logo artwork) via a
+   solved filter chain. Same asset, so size/shape/placement are identical and
+   nothing shifts when switching themes. Marketing routes never receive
+   data-theme="light", so their logo is untouched. */
+html[data-theme="light"] img[src*="lg1-logo"] {
+  filter: brightness(0) saturate(100%) invert(18.4%) sepia(45.3%) saturate(675%)
+    hue-rotate(208deg) brightness(93.9%) contrast(89.6%);
+}
+
+/* Header alert bell base tint (yellow "active" state is kept) */
+html[data-theme="light"] [data-header-alerts] svg { color: #4a5268; }
+html[data-theme="light"] [data-header-alerts] button:hover svg { filter: brightness(0.8); }
+
+/* ─── Add Trade card (globals.css uses !important, so mirror it) ────────── */
+html[data-theme="light"] .add-trade-card,
+html[data-theme="light"] [data-stuck="true"] .add-trade-card {
+  background-color: #ffffff !important;
+  border-color: #e7eaf0 !important;
+}
+html[data-theme="light"] .add-trade-card .radio-button__label { color: #1b2130; }
+html[data-theme="light"] .add-trade-card .radio-button__custom { border-color: #b9c1cf; }
+html[data-theme="light"] .add-trade-card .radio-button__input:checked + .radio-button__label { color: #3f41a1; }
+html[data-theme="light"] .add-trade-card .radio-button__input:checked + .radio-button__label .radio-button__custom {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+html[data-theme="light"] .add-trade-card .radio-button__label:hover .radio-button__custom {
+  border-color: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.35);
+}
+
+/* Native pickers follow the light scheme */
+html[data-theme="light"] .add-trade-card input[type="datetime-local"],
+html[data-theme="light"] .transactions-card input[type="date"] {
+  color-scheme: light;
+}
+html[data-theme="light"] .add-trade-card input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] .transactions-card input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.7;
+}
+
+/* ─── Recharts (grids, axes, tooltips) ──────────────────────────────────── */
+html[data-theme="light"] .recharts-cartesian-grid line { stroke: #e7eaf0; }
+html[data-theme="light"] .recharts-cartesian-axis line { stroke: #d5dae2; }
+html[data-theme="light"] .recharts-cartesian-axis-tick text { fill: #5f6980; }
+html[data-theme="light"] .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border-color: #e4e7ec !important;
+}
+html[data-theme="light"] .recharts-tooltip-wrapper > div {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: #e4e7ec !important;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.12) !important;
+}
+html[data-theme="light"] .recharts-tooltip-wrapper > div,
+html[data-theme="light"] .recharts-tooltip-wrapper > div div,
+html[data-theme="light"] .recharts-tooltip-wrapper > div span {
+  color: #3a4356 !important;
+}
+
+/* ─── Planner skin (.pl) ────────────────────────────────────────────────── */
+html[data-theme="light"] .pl {
+  --pl-bg: #f5f6f8;
+  --pl-surface: #ffffff;
+  --pl-surface-2: #f3f4f7;
+  --pl-border: #e4e7ec;
+  --pl-border-strong: #d5dae2;
+  --pl-text: #1b2130;
+  --pl-text-2: #4a5268;
+  --pl-text-3: #707a90;
+  --pl-accent: #6366f1;
+  --pl-accent-text: #3f41a1;
+  --pl-accent-tint: rgba(99, 102, 241, 0.1);
+  --pl-buy: #1f8a5d;
+  --pl-buy-soft: rgba(31, 138, 93, 0.12);
+  --pl-buy-line: rgba(31, 138, 93, 0.45);
+  --pl-sell: #d64530;
+  --pl-sell-soft: rgba(214, 69, 48, 0.1);
+  --pl-sell-line: rgba(214, 69, 48, 0.38);
+  --pl-alert: #a16207;
+  --pl-alert-soft: rgba(161, 98, 7, 0.12);
+  --pl-ladder-green: #1f8a5d;
+}
+
+/* Planner dropdown portal (rendered on document.body, outside .pl) */
+html[data-theme="light"] .pl-dd-portal {
+  background: #ffffff;
+  border-color: #d5dae2;
+  box-shadow: 0 22px 50px rgba(16, 24, 40, 0.16);
+}
+html[data-theme="light"] .pl-dd-portal .dd-opt:hover { background: #f1f3f7; }
+html[data-theme="light"] .pl-dd-portal .dd-opt.sel { background: rgba(99, 102, 241, 0.1); }
+html[data-theme="light"] .pl-dd-portal .dd-opt-name { color: #1b2130; }
+html[data-theme="light"] .pl-dd-portal .dd-opt.sel .dd-opt-name { color: #3f41a1; }
+html[data-theme="light"] .pl-dd-portal .dd-opt-desc { color: #707a90; }
+html[data-theme="light"] .pl-dd-portal .dd-badge {
+  color: #5a6478;
+  background: #f1f3f7;
+  border-color: #e4e7ec;
+}
+html[data-theme="light"] .pl-dd-portal .dd-seg i { background: #d5dae2; }
+html[data-theme="light"] .pl-dd-portal .dd-opt.sel .dd-seg i { background: #6366f1; }
+
+/* Planner skin — hardcoded white-alpha accents flipped to dark-alpha */
+html[data-theme="light"] .pl .plan-seg:hover { background: rgba(16, 24, 40, 0.05); }
+html[data-theme="light"] .pl .ldr tbody tr:nth-child(even) { background: rgba(16, 24, 40, 0.03); }
+html[data-theme="light"] .pl .ldr tbody tr:hover { background: rgba(99, 102, 241, 0.08); }
+html[data-theme="light"] .pl .ldr-prog-track { background: rgba(16, 24, 40, 0.1); }
+
+/* ─── Audit skin (.au) ──────────────────────────────────────────────────── */
+html[data-theme="light"] .au {
+  --au-bg: #f5f6f8;
+  --au-surface: #ffffff;
+  --au-surface-2: #f3f4f7;
+  --au-border: #e4e7ec;
+  --au-border-strong: #d5dae2;
+  --au-text: #1b2130;
+  --au-text-2: #4a5268;
+  --au-text-3: #707a90;
+  --au-accent: #6366f1;
+  --au-success: #1f8a5d;
+  --au-danger: #d64530;
+  --au-warning: #a16207;
+}
+
+html[data-theme="light"] .au .seg button.cur.accent {
+  background: rgba(99, 102, 241, 0.1);
+  color: #3f41a1;
+}
+html[data-theme="light"] .au .au-note.ok {
+  background: rgba(31, 138, 93, 0.08);
+  border-color: rgba(31, 138, 93, 0.3);
+  color: #14634a;
+}
+html[data-theme="light"] .au .au-note.err {
+  background: rgba(214, 69, 48, 0.07);
+  border-color: rgba(214, 69, 48, 0.3);
+  color: #a73a28;
+}
+
+/* ─── Coin page skin (.coin) ────────────────────────────────────────────── */
+html[data-theme="light"] .coin {
+  --cn-bg: #f5f6f8;
+  --cn-surface: #ffffff;
+  --cn-surface-2: #f3f4f7;
+  --cn-border: #e4e7ec;
+  --cn-border-strong: #d5dae2;
+  --cn-text: #1b2130;
+  --cn-text-2: #4a5268;
+  --cn-text-3: #707a90;
+  --cn-accent: #6366f1;
+  --cn-accent-text: #3f41a1;
+  --cn-accent-tint: rgba(99, 102, 241, 0.1);
+  --cn-success: #1f8a5d;
+  --cn-success-tint: rgba(31, 138, 93, 0.12);
+  --cn-danger: #d64530;
+  --cn-danger-tint: rgba(214, 69, 48, 0.1);
+  --cn-warning: #a16207;
+}
+
+/* ─── Portfolio skin ([data-portfolio-page]) ────────────────────────────── */
+html[data-theme="light"] [data-portfolio-page] {
+  --lo-card-bg: #ffffff;
+  --lo-card-bg-strong: #ffffff;
+  --lo-card-border: #e4e7ec;
+  --lo-card-ring: rgba(16, 24, 40, 0.06);
+  --lo-soft-blue: #3b82f6;
+  --lo-text: #1b2130;
+  --lo-text-subtle: rgba(27, 33, 48, 0.65);
+  --lo-tip-bg-a: rgba(255, 255, 255, 0.97);
+  --lo-tip-bg-b: rgba(248, 249, 251, 0.97);
+  --lo-tip-border: rgba(16, 24, 40, 0.1);
+  --lo-tip-shadow: 0 12px 30px rgba(16, 24, 40, 0.12);
+  --lo-emerald: #1f8a5d;
+  --lo-rose: #d64530;
+}
+
+/* Coin skin — table hover flipped to dark-alpha */
+html[data-theme="light"] .coin .tbl tbody tr:hover { background: rgba(16, 24, 40, 0.03); }
+
+/* ─── Portfolio v2 skin (.pf) ───────────────────────────────────────────── */
+html[data-theme="light"] .pf {
+  --pf-bg: #f5f6f8;
+  --pf-surface: #ffffff;
+  --pf-surface-2: #f3f4f7;
+  --pf-border: #e4e7ec;
+  --pf-border-strong: #d5dae2;
+  --pf-text: #1b2130;
+  --pf-text-2: #4a5268;
+  --pf-text-3: #707a90;
+  --pf-success: #1f8a5d;
+  --pf-success-tint: rgba(31, 138, 93, 0.12);
+  --pf-danger: #d64530;
+  --pf-danger-tint: rgba(214, 69, 48, 0.1);
+  --pf-warning: #a16207;
+}
+
+/* Holdings table — hardcoded dark zebra/hover rows flipped to light greys */
+html[data-theme="light"] .pf .pf-hold-card .tbl tbody tr:nth-child(even) { background: #f6f7fa; }
+html[data-theme="light"] .pf .pf-hold-card .tbl tbody tr:hover,
+html[data-theme="light"] .pf .pf-hold-card .tbl tbody tr:focus { background: #eef0f4; }
+html[data-theme="light"] .pf .pf-search:focus-within { border-color: #6366f1; }
+html[data-theme="light"] .pf .pf-rk-row.clickable:hover { background: rgba(16, 24, 40, 0.04); }
+html[data-theme="light"] .pf .pf-rk-row.clickable:focus-visible { outline-color: #6366f1; }
+html[data-theme="light"] :is(.pf .lv-low, .rk-panel .lv-low) { color: #1f8a5d; }
+html[data-theme="light"] :is(.pf .lv-mod, .rk-panel .lv-mod) { color: #a16207; }
+html[data-theme="light"] :is(.pf .lv-high, .rk-panel .lv-high) { color: #d64530; }
+
+/* Risk drill-down panel (hardcoded dark chrome) */
+html[data-theme="light"] .rk-panel {
+  background: #ffffff;
+  border-color: #e4e7ec;
+  box-shadow: 0 24px 70px rgba(16, 24, 40, 0.2);
+}
+html[data-theme="light"] .rk-close {
+  border-color: #e4e7ec;
+  background: #f1f3f7;
+  color: #707a90;
+}
+html[data-theme="light"] .rk-close:hover { color: #1b2130; border-color: #d5dae2; }
+html[data-theme="light"] .rk-panel-h .ttl { color: #1b2130; }
+html[data-theme="light"] .rk-tab { background: #f1f3f7; color: #707a90; }
+html[data-theme="light"] .rk-tab:hover { color: #1b2130; }
+html[data-theme="light"] .rk-tab.active {
+  color: #3f41a1;
+  background: #e7e8fa;
+  border-color: #6366f1;
+}
+
+/* Portfolio inputs / sort select (hardcoded dark values in portfolio-ui.css) */
+html[data-theme="light"] {
+  --lo-search-bg-exact: #f1f3f7;
+  --lo-search-border: rgba(16, 24, 40, 0.08);
+  --lo-search-ring: rgba(99, 102, 241, 0.35);
+}
+html[data-theme="light"] [data-portfolio-page] input[type="text"],
+html[data-theme="light"] [data-portfolio-page] input[type="number"],
+html[data-theme="light"] [data-portfolio-page] input[type="file"],
+html[data-theme="light"] [data-portfolio-page] select,
+html[data-theme="light"] [data-portfolio-page] textarea {
+  border-color: #e4e7ec;
+  background: #f1f3f7;
+}
+html[data-theme="light"] [data-portfolio-page] .lo-select-item:hover,
+html[data-theme="light"] [data-portfolio-page] .lo-select-item:focus {
+  background: rgba(16, 24, 40, 0.05);
+}
+html[data-theme="light"] [data-portfolio-page] .alerts-tooltip .buy-tag { color: #1f8a5d; }
+html[data-theme="light"] [data-portfolio-page] .alerts-tooltip .sell-tag { color: #be3b4a; }
+
+/* ─── Settings skin (.st) ───────────────────────────────────────────────── */
+html[data-theme="light"] .st {
+  --st-fg: #1b2130;
+  --st-fg-dim: #4a5268;
+  --st-fg-mut: #707a90;
+  --st-line: rgba(16, 24, 40, 0.1);
+  --st-line-strong: rgba(16, 24, 40, 0.16);
+  --st-surface: #ffffff;
+  --st-field: rgba(16, 24, 40, 0.04);
+  --st-purple: #6366f1;
+  --st-purple-deep: #3f41a1;
+  --st-green: #1f8a5d;
+  --st-danger: #c2472f;
+}
+html[data-theme="light"] .st ::selection { background: rgba(99, 102, 241, 0.22); }
+/* Gradient headline: white→lavender becomes ink→brand for light surfaces */
+html[data-theme="light"] .st-title {
+  background: linear-gradient(180deg, #1b2130 30%, #3f41a1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+html[data-theme="light"] .st-nav-item.active {
+  color: #3f41a1;
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.25);
+}
+/* Settings skin: hardcoded white headings → ink */
+html[data-theme="light"] :is(.st-section-title, .st-row-title, .st-identity-name, .st-plan-name) {
+  color: #1b2130;
+}
+html[data-theme="light"] .st-card {
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 22px 50px -42px rgba(16, 24, 40, 0.25);
+}
+html[data-theme="light"] .st-toast {
+  border-color: rgba(31, 138, 93, 0.35);
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(31, 138, 93, 0.1), transparent 60%),
+    rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px -30px rgba(16, 24, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ─── How-to skin (.ht) ─────────────────────────────────────────────────── */
+html[data-theme="light"] .ht {
+  --ht-fg: #1b2130;
+  --ht-fg-dim: #4a5268;
+  --ht-fg-mut: #707a90;
+  --ht-line: rgba(16, 24, 40, 0.1);
+  --ht-line-strong: rgba(16, 24, 40, 0.16);
+  --ht-surface: #ffffff;
+  --ht-surface-2: rgba(16, 24, 40, 0.03);
+  --ht-purple: #4f52c4;
+  --ht-purple-deep: #3f41a1;
+  --ht-green: #1f8a5d;
+  --ht-amber: #a16207;
+}
+html[data-theme="light"] .ht ::selection { background: rgba(99, 102, 241, 0.22); }
+html[data-theme="light"] .ht-h1 {
+  background: linear-gradient(180deg, #1b2130 20%, #3f41a1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* How-to skin: hardcoded white headings → ink (purple-pill numbers keep white) */
+html[data-theme="light"] :is(
+  .ht-section-title, .ht-step-title, .ht-signal-head, .ht-acc-title,
+  .ht-spec-term, .ht-cta-title, .ht-feat-head, .ht-faq summary
+) { color: #1b2130; }
+html[data-theme="light"] :is(.ht-alertrow b, .ht-loop b) { color: #1b2130; }
+html[data-theme="light"] .ht-btn-ghost:hover { color: #3f41a1; }
+
+/* Solid purple link-buttons: the global `a:visited { color: inherit }` rule
+   out-specifies `.ht-btn-primary { color:#fff }`, so visited links render the
+   page ink color on the purple fill. Pin white in every link state. */
+html[data-theme="light"] :is(
+  .ht-btn-primary, .ht-btn-primary:link, .ht-btn-primary:visited,
+  .ht-btn-primary:hover, .ht-btn-primary:active,
+  .st-btn-primary, .st-btn-primary:link, .st-btn-primary:visited,
+  .st-btn-primary:hover, .st-btn-primary:active
+) { color: #ffffff; }
+
+/* Example key/label chips (the inline "Planner" / "Save New Plan" pills) —
+   lavender-white text was invisible on the light tint */
+html[data-theme="light"] .ht-kbd {
+  color: #3f41a1;
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+html[data-theme="light"] .ht-loop code {
+  color: #3f41a1;
+  background: rgba(16, 24, 40, 0.05);
+}
+html[data-theme="light"] .ht-pill-cycle {
+  color: #3f41a1;
+  border-color: rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Product window frames (live demo mockups) */
+html[data-theme="light"] .ht-window {
+  background: #ffffff;
+  box-shadow: 0 40px 90px -50px rgba(16, 24, 40, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+html[data-theme="light"] .ht-window-bar {
+  background: linear-gradient(180deg, rgba(16, 24, 40, 0.03), rgba(16, 24, 40, 0));
+}
+
+/* Open accordion + closing CTA band */
+html[data-theme="light"] .ht-acc[open] { background: rgba(16, 24, 40, 0.02); }
+html[data-theme="light"] .ht-cta {
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(99, 102, 241, 0.1), transparent 55%),
+    #ffffff;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+html[data-theme="light"] .ht-hero-grid {
+  background-image:
+    linear-gradient(rgba(16, 24, 40, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 24, 40, 0.04) 1px, transparent 1px);
+}

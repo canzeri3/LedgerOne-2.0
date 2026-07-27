@@ -3,6 +3,8 @@
 import { useState, FormEvent } from 'react'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabaseClient'
+import { L1Nightsky, L1Grain } from '@/components/ledgerone'
+import '../login/login-skin.css'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -46,128 +48,88 @@ export default function SignupPage() {
     }
   }
 
- return (
-  <div className="relative min-h-screen bg-[#131415] text-slate-100 flex items-center justify-center px-4 overflow-hidden">
-    {/* Full-page halo backdrop (behind card) */}
-    <div className="pointer-events-none absolute inset-0 z-0">
-      {/* Top wash */}
-      <div className="absolute -top-28 left-1/2 h-80 w-[72rem] max-w-[120vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-500/18 via-sky-500/10 to-emerald-500/14 blur-3xl" />
-      {/* Center glow behind card */}
-      <div className="absolute left-1/2 top-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/10 blur-3xl" />
-      {/* Subtle corner balance */}
-      <div className="absolute -bottom-44 -right-44 h-[34rem] w-[34rem] rounded-full bg-emerald-500/8 blur-3xl" />
-    </div>
+  return (
+    <div className="l1-auth relative min-h-screen overflow-hidden">
+      {/* Night-sky + aurora backdrop, matching the login page */}
+      <L1Nightsky />
+      <L1Grain />
+      <div className="auth-aurora" aria-hidden="true" />
 
-    <div className="w-full max-w-md relative z-10">
+      <Link href="/" className="auth-back" aria-label="Back to landing page">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+          <path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Back to home
+      </Link>
 
-        {/* Brand header (match login) */}
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/70 px-4 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-            LedgerOne
-          </div>
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-slate-50">
-            Create your account
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Access a rules-based workspace for planning and tracking.
-          </p>
-        </div>
+      <div className="auth-wrap">
+        <div className="auth-stack">
+          {/* Brand badge */}
+          <div className="auth-badge">LedgerOne</div>
 
-        {/* Signup card (match login) */}
-        <div className="rounded-2xl border border-slate-800/80 bg-[#1f2021] shadow-xl shadow-black/40 p-6">
-          <form className="space-y-5" onSubmit={handleSignup}>
-            <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-xs font-medium uppercase tracking-[0.18em] text-slate-400"
-              >
-                Email
-              </label>
+          {/* Heading */}
+          <h1 className="auth-title">Create your account</h1>
+          <p className="auth-sub">Access a rules-based workspace for planning and tracking.</p>
+
+          {/* Card */}
+          <form className="auth-card" onSubmit={handleSignup}>
+            <div className="l1-field">
+              <label htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
                 autoComplete="email"
                 required
-                className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none ring-0 transition focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
                 placeholder="you@desk.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={e => setEmail(e.target.value)}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="newpw"
-                className="block text-xs font-medium uppercase tracking-[0.18em] text-slate-400"
-              >
-                Create password
-              </label>
+            <div className="l1-field">
+              <label htmlFor="newpw">Create password</label>
               <input
                 id="newpw"
                 type="password"
                 autoComplete="new-password"
                 minLength={8}
                 required
-                className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none ring-0 transition focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
                 placeholder="At least 8 characters"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={e => setPassword(e.target.value)}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="confirmpw"
-                className="block text-xs font-medium uppercase tracking-[0.18em] text-slate-400"
-              >
-                Confirm password
-              </label>
+            <div className="l1-field">
+              <label htmlFor="confirmpw">Confirm password</label>
               <input
                 id="confirmpw"
                 type="password"
                 autoComplete="new-password"
                 minLength={8}
                 required
-                className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none ring-0 transition focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
                 placeholder="Repeat password"
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={e => setConfirm(e.target.value)}
               />
-              <p className="text-[11px] text-slate-500">
-                You must confirm your email before signing in.
-              </p>
+              <p className="auth-hint">You must confirm your email before signing in.</p>
             </div>
 
-            {error && (
-              <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/60 rounded-md px-3 py-2">
-                {error}
-              </p>
-            )}
+            {error && <p className="auth-error">{error}</p>}
+            {message && <p className="auth-success">{message}</p>}
 
-            {message && (
-              <p className="text-xs text-emerald-200 bg-emerald-950/25 border border-emerald-900/50 rounded-md px-3 py-2">
-                {message}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-700/40 transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
-            >
+            <button type="submit" disabled={loading} className="l1-btn l1-btn-primary auth-submit">
               {loading ? 'Creating…' : 'Create account'}
             </button>
+
+            <p className="auth-switch">
+              Already have access?{' '}
+              <Link href="/login">Sign in</Link>.
+            </p>
           </form>
 
-          <p className="mt-4 text-center text-xs text-slate-400">
-            Already have access?{' '}
-            <Link href="/login" className="text-indigo-300 hover:text-indigo-200 hover:underline">
-              Sign in
-            </Link>
-            .
-          </p>
-
-          <p className="mt-3 text-center text-[11px] text-slate-500">
+          {/* Footer note */}
+          <p className="auth-note">
             LedgerOne is a planning and tracking tool. It does not provide investment advice.
           </p>
         </div>

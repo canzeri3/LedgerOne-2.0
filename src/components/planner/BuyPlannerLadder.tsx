@@ -13,8 +13,8 @@ import {
   type BuyTrade,
 } from '@/lib/planner'
 import { fmtCurrency } from '@/lib/format'
-import ProgressBar from '@/components/common/ProgressBar'
 import { usePrice } from '@/lib/dataCore'
+import SlotPortal from '@/components/planner/SlotPortal'
 
 type ActiveBuyPlanner = {
   id: string
@@ -206,183 +206,200 @@ const plan: BuyLevel[] = useMemo(() => {
   }, [plan, fills.allocatedUsd, livePrice])
 
   return (
-    // Full-bleed inner card: fill parent width/height; keep requested bg color
-     <div className="w-full h-full bg-[rgb(28,29,31)]">
-      {actionableNow.alertRows > 0 && (
-        <div className="mb-3 rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
-            <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.2)]"
-                aria-hidden="true"
-              />
-              Actionable now
-            </span>
+    // Full-bleed inner card: fill parent width/height (skin: transparent, panel provides surface)
+    <div className="w-full h-full">
+      {/* Panel-head stat pills (display-only; values already computed above) */}
+      <SlotPortal slotId="buy-phead-stats">
+        <div className="pl-stat">
+          <span className="l">Bought</span>
+          <span className="v">{fmtCurrency(Number(fills.allocatedTotal ?? 0))}</span>
+        </div>
+        <div className="pl-stat key">
+          <span className="l">Avg entry</span>
+          <span className="v">{onPlanAvgCost > 0 ? fmtCurrency(onPlanAvgCost) : '—'}</span>
+        </div>
+      </SlotPortal>
 
-            <span className="text-yellow-200/80">•</span>
-
-            <span className="text-slate-200">
-              <span className="tabular-nums">{actionableNow.alertRows}</span>{' '}
-              {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
-            </span>
-
-          
-
-
-
-            <span className="text-slate-500">·</span>
-
-            <span className="text-slate-200">
-              <span className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</span>{' '}
-              <span className="text-slate-400">remaining</span>
-            </span>
-
-            {actionableNow.lowestAlertPrice !== null && (
-              <>
-                <span className="text-slate-500">·</span>
-                <span className="text-slate-200">
-                  Target: {' '}
-                  <span className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</span>
-                </span>
-              </>
-            )}
+      {/* Panel-foot meta line (display-only) */}
+      {plan.length > 0 && (
+        <SlotPortal slotId="buy-foot-meta">
+          <div className="meta">
+            Deploys <b>{fmtCurrency(plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0))}</b> across{' '}
+            <b>{plan.length}</b> limit buys ·{' '}
+            <b>
+              {fmtCurrency(
+                Math.max(
+                  0,
+                  plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0) - (fills.allocatedTotal ?? 0)
+                )
+              )}
+            </b>{' '}
+            missing.
           </div>
+        </SlotPortal>
+      )}
+
+      {actionableNow.alertRows > 0 && (
+        <div className="pl-banner">
+          <span className="dot" aria-hidden="true" />
+          <b className="alert-txt">Actionable now</b>
+
+          <span className="sep">·</span>
+
+          <span>
+            <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
+            {actionableNow.alertRows === 1 ? 'row' : 'rows'}
+          </span>
+
+          <span className="sep">·</span>
+
+          <span>
+            Buy <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
+          </span>
+
+          {actionableNow.lowestAlertPrice !== null && (
+            <>
+              <span className="sep">@</span>
+              <span>
+                <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+              </span>
+            </>
+          )}
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full table-fixed text-left text-sm text-slate-300" data-buy-planner>
-          <thead className="text-[rgba(237, 237, 237, 1)]">
-  <tr>
- <th className="w-1/6 px-3 py-2">
-    <span className="inline-flex items-center gap-1">
-      <span>Lvl</span>
-      <Layers className="h-4 w-4 text-slate-400" aria-hidden="true" />
-    </span>
-  </th>             
-   <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Target</span>
-                  <Target className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Planned</span>
-                  <Coins className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Planned</span>
-                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
-              <th className="w-1/6 px-3 py-2">
-                <span className="inline-flex items-center gap-1">
-                  <span>Missing</span>
-                  <DollarSign className="h-4 w-4 text-slate-400" aria-hidden="true" />
-                </span>
-              </th>
-  <th className="w-1/6 px-3 py-2 text-right">
-    <span className="inline-flex w-full items-center justify-end gap-1">
-      <span>Progress</span>
-      <TrendingUp className="h-4 w-4 text-slate-400" aria-hidden="true" />
-    </span>
-  </th>        
-      </tr>
-          </thead>
-          <tbody>
-            {plan.map((lv, i) => {
-              const plannedUsd = lv.allocation ?? 0
-              const filledUsd  = fills.allocatedUsd[i] ?? 0
-              const missingUsd = Math.max(0, plannedUsd - filledUsd)
-              const plannedTokens = lv.est_tokens ?? (lv.price > 0 ? plannedUsd / lv.price : 0)
-              const pct = plannedUsd > 0 ? Math.min(1, filledUsd / plannedUsd) : 0
+      <div className="pl-ladder">
+        <div className="ldr-scroll">
+          <table className="ldr" data-buy-planner>
+            <thead>
+              <tr>
+                <th>
+                  <span className="th-l">
+                    Lvl <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+                <th>
+                  <span className="th-l">
+                    Target <Target className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Planned <Coins className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Planned <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+                <th className="!text-right">
+                  <span className="th-l !justify-end">
+                    Missing <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+                <th className="r">
+                  <span className="th-l">
+                    Progress <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.map((lv, i) => {
+                const plannedUsd = lv.allocation ?? 0
+                const filledUsd  = fills.allocatedUsd[i] ?? 0
+                const missingUsd = Math.max(0, plannedUsd - filledUsd)
+                const plannedTokens = lv.est_tokens ?? (lv.price > 0 ? plannedUsd / lv.price : 0)
+                const pct = plannedUsd > 0 ? Math.min(1, filledUsd / plannedUsd) : 0
 
-              // Display rule:
-              // - Green can still trigger at ≥98% filled (see `full` below)
-              // - But the label should only show 100% when truly fully filled (missing ~ $0)
-              const fullyFilled = plannedUsd > 0 && (missingUsd <= (0.005 + EPS)) // ~half-cent tolerance
-              const pctLabel =
-                plannedUsd > 0
-                  ? (fullyFilled ? 100 : Math.min(99, Math.round(pct * 100)))
-                  : 0
+                // Display rule:
+                // - Green can still trigger at ≥98% filled (see `full` below)
+                // - But the label should only show 100% when truly fully filled (missing ~ $0)
+                const fullyFilled = plannedUsd > 0 && (missingUsd <= (0.005 + EPS)) // ~half-cent tolerance
+                const pctLabel =
+                  plannedUsd > 0
+                    ? (fullyFilled ? 100 : Math.min(99, Math.round(pct * 100)))
+                    : 0
 
-              // GREEN when ≥98% filled
-              const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
+                // GREEN when ≥98% filled
+                const full = plannedUsd > 0 && (missingUsd <= (plannedUsd * 0.02 + EPS))
 
-              // YELLOW when live price is <= the BUY level,
-              // plus a small 1.5% buffer above the level.
-              const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
-              const yellow =
-                !full &&
-                hasLivePrice &&
-                Number(lv.price) > 0 &&
-                (livePrice as number) <= Number(lv.price) * 1.015
+                // YELLOW when live price is <= the BUY level,
+                // plus a small 1.5% buffer above the level.
+                const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+                const yellow =
+                  !full &&
+                  hasLivePrice &&
+                  Number(lv.price) > 0 &&
+                  (livePrice as number) <= Number(lv.price) * 1.015
 
-              const rowCls = full ? 'text-[rgb(115,171,84)]' : yellow ? 'text-[rgb(207,180,45)]' : ''
+                const rowCls = full ? 'done' : yellow ? 'alert' : ''
 
-              return (
-                <tr key={lv.level} className={`border-t border-[rgb(51,52,54)] align-middle ${rowCls}`}>
-                  <td className="px-3 py-2">{lv.level}</td>
-                  <td className="px-3 py-2">{fmtCurrency(lv.price)}</td>
-                  <td className="px-3 py-2">{Number(plannedTokens).toFixed(6)}</td>
-                  <td className="px-3 py-2">{fmtCurrency(plannedUsd)}</td>
-                  <td className="px-3 py-2">{fmtCurrency(missingUsd)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end items-center gap-2">
-                      <div className="w-40"><ProgressBar pct={pct} /></div>
-                      <span className="w-10 text-right tabular-nums">{pctLabel}%</span>
+                return (
+                  <tr key={lv.level} className={rowCls}>
+                    <td className="lvl"><span className="ix">{lv.level}</span></td>
+                    <td className="tgt">{fmtCurrency(lv.price)}</td>
+                    <td className="num coins">{Number(plannedTokens).toFixed(6)}</td>
+                    <td className="num amt">{fmtCurrency(plannedUsd)}</td>
+                    <td className="num amt">{fmtCurrency(missingUsd)}</td>
+                    <td>
+                      <div className="ldr-prog">
+                        <div className="ldr-prog-track">
+                          <div
+                            className="ldr-prog-fill"
+                            style={{ width: `${(pct * 100).toFixed(2)}%` }}
+                          />
+                        </div>
+                        <span className="ldr-prog-pct">{pctLabel}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td />
+                <td><span className="ft-lbl">Totals</span></td>
+                <td className="num coins">
+                  {(() => {
+                    const totalTokens = plan.reduce((acc, lv) => {
+                      const plannedUsd = lv.allocation ?? 0
+                      return acc + (lv.price > 0 ? plannedUsd / lv.price : 0)
+                    }, 0)
+                    return Number(totalTokens).toFixed(6)
+                  })()}
+                </td>
+                <td className="num amt">
+                  {fmtCurrency(plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0))}
+                </td>
+                <td className="num amt">
+                  {fmtCurrency(Math.max(0, plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0) - (fills.allocatedTotal ?? 0)))}
+                </td>
+                <td>
+                  {/* Avg cost of ladder + compact Off-Plan (tokens / USD) — matches Sell planner UI */}
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="inline-flex items-center gap-2">
+                      <span className="ft-lbl" style={{ margin: 0 }}>Avg cost</span>
+                      <span className="ft-v">
+                        {onPlanAvgCost > 0 ? fmtCurrency(onPlanAvgCost) : '—'}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-[rgb(51,52,54)]">
-              <td className="px-3 py-2" />
-              <td className="px-3 py-2 font-medium">Totals</td>
-              <td className="px-3 py-2">
-                {(() => {
-                  const totalTokens = plan.reduce((acc, lv) => {
-                    const plannedUsd = lv.allocation ?? 0
-                    return acc + (lv.price > 0 ? plannedUsd / lv.price : 0)
-                  }, 0)
-                  return Number(totalTokens).toFixed(6)
-                })()}
-              </td>
-              <td className="px-3 py-2">
-                {fmtCurrency(plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0))}
-              </td>
-              <td className="px-3 py-2">
-                {fmtCurrency(Math.max(0, plan.reduce((s, lv) => s + (lv.allocation ?? 0), 0) - (fills.allocatedTotal ?? 0)))}
-              </td>
-                  <td className="px-3 py-2 text-right">
-                {/* Avg cost of ladder + compact Off-Plan (tokens / USD) — matches Sell planner UI */}
-                <div className="flex flex-col items-end gap-1 text-xs text-slate-400">
-                  <div className="inline-flex items-center gap-2">
-                    <span>Avg cost</span>
-                   <span className="tabular-nums">
-  {onPlanAvgCost > 0 ? fmtCurrency(onPlanAvgCost) : '—'}
-</span>
-
+                    <div className="inline-flex items-center gap-2">
+                      <span className="ft-off" style={{ margin: 0 }}>Off-Plan</span>
+                      <span className="ft-m">{offPlanTokens.toFixed(6)}</span>
+                      <span className="ft-sep" style={{ margin: 0 }}>/</span>
+                      <span className="ft-m">
+                        {fmtCurrency(Number(fills.offPlanUsd || 0))}
+                      </span>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-2">
-                    <span className="text-amber-300">Off-Plan</span>
-                    <span className="tabular-nums">{offPlanTokens.toFixed(6)}</span>
-                    <span className="text-slate-600">/</span>
-                    <span className="tabular-nums">
-                      {fmtCurrency(Number(fills.offPlanUsd || 0))}
-                    </span>
-                  </div>
-                </div>
-              </td>
-
-            </tr>
-          </tfoot>
-        </table>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   )

@@ -19,7 +19,7 @@ import { getConsensusPrices } from "../../../server/services/priceService";
 
 export const revalidate = 0;
 
-type RankRow = { id: string; rank: number | null; market_cap: number | null };
+type RankRow = { id: string; rank: number | null; market_cap: number | null; total_volume: number | null };
 
 // ---------------- In-memory caches ----------------
 
@@ -142,6 +142,7 @@ async function cgFetchTop(limit = 250): Promise<RankRow[]> {
       id: String(d?.id ?? ""),
       rank: typeof d?.market_cap_rank === "number" ? d.market_cap_rank : null,
       market_cap: typeof d?.market_cap === "number" ? d.market_cap : null,
+      total_volume: typeof d?.total_volume === "number" ? d.total_volume : null,
     }));
   } catch {
     return [];
@@ -163,6 +164,7 @@ async function cgFetchIds(providerIds: string[]): Promise<RankRow[]> {
           id: String(d?.id ?? ""),
           rank: typeof d?.market_cap_rank === "number" ? d.market_cap_rank : null,
           market_cap: typeof d?.market_cap === "number" ? d.market_cap : null,
+          total_volume: typeof d?.total_volume === "number" ? d.total_volume : null,
         });
       }
     } catch { /* continue */ }
@@ -181,8 +183,14 @@ async function paprikaFetchTop(limit = 500): Promise<RankRow[]> {
       const pid: string = String(d?.id ?? ""); // "trx-tron"
       const guess = pid.includes("-") ? pid.split("-").slice(1).join("-") : pid;
       const mkcap = d?.quotes?.USD?.market_cap;
+      const vol24 = d?.quotes?.USD?.volume_24h;
       const rank = typeof d?.rank === "number" ? d.rank : null;
-      return { id: guess, rank, market_cap: typeof mkcap === "number" ? mkcap : null };
+      return {
+        id: guess,
+        rank,
+        market_cap: typeof mkcap === "number" ? mkcap : null,
+        total_volume: typeof vol24 === "number" ? vol24 : null,
+      };
     });
   } catch {
     return [];
@@ -211,11 +219,11 @@ function toOrigRows(
     const pid = providerIds[i];
     const r = lookup(pid);
     if (r && (typeof r.rank === "number" || typeof r.market_cap === "number")) {
-      return { id: origId, rank: r.rank ?? null, market_cap: r.market_cap ?? null };
+      return { id: origId, rank: r.rank ?? null, market_cap: r.market_cap ?? null, total_volume: r.total_volume ?? null };
     }
     const s = STATIC_CORE[pid];
-    if (s) return { id: origId, rank: s.rank, market_cap: s.market_cap };
-    return { id: origId, rank: null, market_cap: null };
+    if (s) return { id: origId, rank: s.rank, market_cap: s.market_cap, total_volume: null };
+    return { id: origId, rank: null, market_cap: null, total_volume: null };
   });
 }
 

@@ -177,44 +177,43 @@ export default function ImportTrades() {
   }
 
   return (
-    <section className="rounded-2xl bg-[rgb(28,29,31)] ring-1 ring-inset ring-[rgb(41,42,45)]/70 shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
-      <div className="p-4 md:p-5 border-b border-[rgb(41,42,45)]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.00))]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[14px] text-slate-100 font-medium">Import trades (CSV)</div>
-            <div className="mt-1 text-[12px] text-[rgb(163,163,164)]">
-              Required: <code className="text-slate-200/80">coingecko_id, side, price, quantity, trade_time</code>. Optional:{' '}
-              <code className="text-slate-200/80">fee, buy_planner_id, sell_planner_id</code>.
-            </div>
+    <div className="space-y-5">
+      {/* Upload row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="csv-label">CSV file</div>
+          <div className="csv-hint">
+            Required <code>coingecko_id, side, price, quantity, trade_time</code>
           </div>
-
-          <div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              onChange={onPick}
-              disabled={!user || busy}
-              className="text-[13px] text-slate-200 file:mr-3 file:rounded-xl file:border-0 file:bg-[rgb(18,19,21)]/70 file:px-3 file:py-2.5 file:text-[13px] file:text-slate-100 file:ring-1 file:ring-inset file:ring-[rgb(58,60,66)]/70 hover:file:bg-[rgb(18,19,21)]/90 focus:outline-none"
-            />
+          <div className="csv-hint">
+            Optional <code>fee, buy_planner_id, sell_planner_id</code>
           </div>
         </div>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          onChange={onPick}
+          disabled={!user || busy}
+          className="csv-file"
+        />
       </div>
 
-      <div className="p-4 md:p-5 space-y-4">
-        <div className="rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-3">
-          <div className="text-[11px] uppercase tracking-wide text-[rgb(176,176,178)] mb-2">Console</div>
-          <pre className="text-[12px] text-slate-100/90 whitespace-pre-wrap break-words max-h-56 overflow-auto">{log || '—'}</pre>
-        </div>
+      <div className="csv-divider" />
 
-        <div className="text-[12px] text-[rgb(140,140,142)]">
-          <div className="mb-2 text-[11px] uppercase tracking-wide text-[rgb(176,176,178)]">Example</div>
-          <pre className="rounded-xl bg-[rgb(18,19,21)]/55 ring-1 ring-inset ring-[rgb(58,60,66)]/70 p-3 text-[12px] text-slate-100/90 overflow-auto">
-coingecko_id,side,price,quantity,fee,trade_time,buy_planner_id,sell_planner_id
-bitcoin,buy,45000,0.01,0.5,2025-09-10T14:23:00Z,,
-          </pre>
-        </div>
+      {/* Console */}
+      <div>
+        <div className="csv-block-h">Console</div>
+        <pre className="csv-mono csv-console">{log || '—'}</pre>
       </div>
-    </section>
+
+      {/* Example */}
+      <div>
+        <div className="csv-block-h">Example</div>
+        <pre className="csv-mono">{`coingecko_id,side,price,quantity,fee,trade_time,buy_planner_id,sell_planner_id
+bitcoin,buy,45000,0.01,0.5,2025-09-10T14:23:00Z,,`}</pre>
+      </div>
+    </div>
   )
 }

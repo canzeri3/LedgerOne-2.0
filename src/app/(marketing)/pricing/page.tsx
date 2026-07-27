@@ -1,11 +1,22 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { L1Nightsky, L1Grain, L1Icon, L1ClosingCTA, L1Footer } from '@/components/ledgerone'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
+import { startCheckout } from '@/lib/billing/checkout'
+import type { CheckoutTier } from '@/lib/billing/plans'
 
 type TierKey = 'T0' | 'T1' | 'T2' | 'T3' | 'T4'
+
+/** Self-serve checkout tier for a pricing card, or null (Free / contact-sales). */
+function checkoutTierForKey(key: TierKey): CheckoutTier | null {
+  if (key === 'T1') return 'PLANNER'
+  if (key === 'T2') return 'PORTFOLIO'
+  if (key === 'T3') return 'DISCIPLINED'
+  return null
+}
 
 type TierCard = {
   key: TierKey
@@ -41,7 +52,7 @@ const TIERS: TierCard[] = [
     key: 'T1',
     tier: 'TIER 1',
     name: 'LedgerOne Standard',
-    price: '$19',
+    price: '$14.99',
     period: '/mo',
     blurb: 'Built for focused portfolios — structured planning across your core positions.',
     features: [
@@ -57,7 +68,7 @@ const TIERS: TierCard[] = [
     key: 'T2',
     tier: 'TIER 2',
     name: 'LedgerOne Diversified',
-    price: '$39',
+    price: '$29.99',
     period: '/mo',
     blurb: 'Built for diversified portfolios — structure planning across a broader set of assets.',
     features: [
@@ -72,7 +83,7 @@ const TIERS: TierCard[] = [
     key: 'T3',
     tier: 'TIER 3',
     name: 'LedgerOne Ultimate',
-    price: '$59',
+    price: '$45.00',
     period: '/mo',
     blurb: 'Built for scale — unlimited planning across your entire portfolio.',
     features: [
@@ -140,6 +151,23 @@ function PricingCard({
   const ctaHref = !hasUser ? (tier.key === 'T0' ? '/signup' : '/signup') : tier.ctaHref
   const btnClass = 'l1-btn l1-pricing-cta ' + (isRecommended ? 'l1-btn-primary' : 'l1-btn-glass')
 
+  // Signed-in users buying a self-serve paid tier go straight to Stripe Checkout.
+  const checkoutTier = checkoutTierForKey(tier.key)
+  const canCheckout = hasUser && !isCurrent && checkoutTier !== null
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const onBuy = async () => {
+    if (busy || !checkoutTier) return
+    setBusy(true)
+    setErr('')
+    try {
+      await startCheckout(checkoutTier)
+    } catch (e: any) {
+      setErr(e?.message || 'Checkout could not start.')
+      setBusy(false)
+    }
+  }
+
   return (
     <div className={'l1-pricing-card' + (isRecommended ? ' is-recommended' : '')}>
       {isRecommended && <span className="l1-pricing-badge">Recommended</span>}
@@ -165,11 +193,16 @@ function PricingCard({
         <div className="l1-btn l1-btn-ghost l1-pricing-cta" style={{ opacity: 0.6, cursor: 'default', pointerEvents: 'none', justifyContent: 'center' }}>
           Current plan
         </div>
+      ) : canCheckout ? (
+        <button type="button" className={btnClass} onClick={onBuy} disabled={busy} style={{ justifyContent: 'center' }}>
+          {busy ? 'Redirecting…' : ctaLabel} <L1Icon name="arrowRight" size={14} />
+        </button>
       ) : (
         <Link href={ctaHref} className={btnClass}>
           {ctaLabel} <L1Icon name="arrowRight" size={14} />
         </Link>
       )}
+      {err && <div style={{ marginTop: 10, fontSize: 12, color: '#E05B5B', textAlign: 'center' }}>{err}</div>}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import TradesList from '@/components/coins/TradesList'
 import CoinValueChart from '@/components/coins/CoinValueChart'
 import CoinPlannersUnderAddTrade from '@/components/coin/CoinPlannersUnderAddTrade'
 import StickyToggleAddTrade from '@/components/coin/StickyToggleAddTrade'
+import './coin-skin.css'
 
 type RouteParams = { id: string }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
@@ -35,7 +36,7 @@ export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
   const symbol = meta?.symbol ?? id
 
   return (
-    <div className="coins-page space-y-6">
+    <div className="coin coins-page space-y-6">
       {/* Header stat card with price + 24h change */}
       <CoinOverview id={id} name={name} symbol={symbol} />
       <CoinStatsGrid id={id} />

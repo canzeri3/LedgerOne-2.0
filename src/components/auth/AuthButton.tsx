@@ -2,8 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  Home,
+  ShieldCheck,
+  Sparkles,
+  Bell,
+  Settings as SettingsIcon,
+  LogOut,
+  type LucideIcon,
+} from 'lucide-react'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
+import { useMenuTransition } from '@/lib/useMenuTransition'
 
 type LoggedOutVariant = 'icon' | 'pill'
 
@@ -14,15 +24,16 @@ type Props = {
 
 type MenuItem = {
   label: string
+  icon: LucideIcon
   href?: string // Placeholder routes can be added later
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: 'Main Page', href: '/' },
-  { label: 'Login and Security', href: '#' },
-  { label: 'Upgrade Plan', href: '/pricing' },
-  { label: 'Manage Communications', href: '#' },
-  { label: 'Settings', href: '/settings' },
+  { label: 'Landing Page', icon: Home, href: '/' },
+  { label: 'Login and Security', icon: ShieldCheck, href: '#' },
+  { label: 'Upgrade Plan', icon: Sparkles, href: '/pricing' },
+  { label: 'Manage Communications', icon: Bell, href: '/settings?section=notifications' },
+  { label: 'Settings', icon: SettingsIcon, href: '/settings' },
 ]
 
 function getInitials(input?: string | null) {
@@ -51,17 +62,26 @@ export default function AuthButton({ className, loggedOutVariant = 'icon' }: Pro
   const router = useRouter()
   const { user, loading } = useUser()
   const [open, setOpen] = useState(false)
+  const { mounted, shown } = useMenuTransition(open)
   const [busy, setBusy] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
-  const initials = useMemo(() => {
-    const name =
+  const fullName = useMemo(() => {
+    return (
       (user?.user_metadata as any)?.full_name ||
       (user?.user_metadata as any)?.name ||
-      user?.email ||
       null
-    return getInitials(name)
+    )
   }, [user])
+
+  const initials = useMemo(() => getInitials(fullName || user?.email || null), [fullName, user])
+
+  // Preferred display label: full name, else the part before @ in the email
+  const displayName = useMemo(() => {
+    if (fullName) return fullName
+    const email = user?.email ?? ''
+    return email.includes('@') ? email.split('@')[0] : email || 'Account'
+  }, [fullName, user])
 
   // Close on outside click / Escape
   useEffect(() => {
@@ -129,7 +149,7 @@ export default function AuthButton({ className, loggedOutVariant = 'icon' }: Pro
             aria-label="Log in"
             title="Log in"
             onClick={() => router.push('/login')}
-            className="rounded-full border border-slate-700/80 bg-[#1f2021] px-4 py-1.5 text-xs md:text-sm font-medium text-slate-200 hover:border-slate-500/80 hover:bg-slate-900"
+            className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs md:text-sm font-medium text-slate-300 backdrop-blur-sm transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
           >
             Log in
           </button>
@@ -177,45 +197,69 @@ export default function AuthButton({ className, loggedOutVariant = 'icon' }: Pro
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(43,44,45)] bg-[rgb(31,32,33)] text-slate-200 text-xs font-semibold hover:bg-[rgb(54,55,56)] transition-colors"
+        className={[
+          'inline-flex h-9 w-9 items-center justify-center rounded-full',
+          'bg-gradient-to-br from-[#7E6FFF] to-[#5E54C0] text-white text-xs font-semibold',
+          'ring-1 ring-inset ring-white/15 shadow-sm',
+          'transition-[filter,box-shadow] duration-150 hover:brightness-110',
+          open ? 'ring-2 ring-[#7E6FFF]/70' : '',
+        ].join(' ')}
       >
         {initials}
       </button>
 
-      {open && (
+      {mounted && (
         <div
           role="menu"
           aria-label="Account"
-          className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl border border-[rgb(43,44,45)] bg-[rgb(19,20,21)] shadow-lg"
+          className={[
+            "hdr-pop absolute right-0 mt-2 w-64 overflow-hidden rounded-2xl border border-[rgb(43,44,45)] bg-[rgb(19,20,21)] shadow-xl shadow-black/40",
+            shown ? "is-open" : "",
+          ].join(" ")}
         >
-          <div className="px-3 py-2 border-b border-[rgb(43,44,45)]">
-            <div className="text-xs text-slate-200 font-medium">Account</div>
-            <div className="mt-0.5 text-[11px] text-slate-400 truncate">{user.email}</div>
+          {/* Identity header */}
+          <div className="flex items-center gap-3 px-3.5 py-3 border-b border-[rgb(43,44,45)]">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#7E6FFF] to-[#5E54C0] text-xs font-semibold text-white ring-1 ring-inset ring-white/15">
+              {initials}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-medium text-slate-100 capitalize">
+                {displayName}
+              </div>
+              <div className="truncate text-[11px] text-slate-400">{user.email}</div>
+            </div>
           </div>
 
-          <div className="py-1">
-            {MENU_ITEMS.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                onClick={() => handleItemClick(item)}
-                className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-[rgb(31,32,33)] transition-colors"
-              >
-                {item.label}
-              </button>
-            ))}
+          {/* Navigation */}
+          <div className="p-1.5">
+            {MENU_ITEMS.map((item) => {
+              const Icon = item.icon
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handleItemClick(item)}
+                  className="hdr-pop-item group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-slate-200 hover:bg-[rgb(31,32,33)] transition-colors"
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-slate-200" />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              )
+            })}
           </div>
 
-          <div className="border-t border-[rgb(43,44,45)]">
+          {/* Sign out */}
+          <div className="p-1.5 border-t border-[rgb(43,44,45)]">
             <button
               type="button"
               role="menuitem"
               onClick={handleLogout}
               disabled={busy}
-              className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-[rgb(31,32,33)] transition-colors disabled:opacity-60"
+              className="hdr-pop-item group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-rose-300 hover:bg-[rgba(224,91,91,0.12)] hover:text-rose-200 transition-colors disabled:opacity-60"
             >
-              {busy ? 'Logging out…' : 'Logout'}
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span>{busy ? 'Logging out…' : 'Log out'}</span>
             </button>
           </div>
         </div>

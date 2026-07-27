@@ -73,6 +73,12 @@ const nextConfig = {
         source: "/live,:ids",
         destination: "/api/price-live?ids=:ids",
       },
+      // Serve the standalone "How It Works" export (public/how-it-works.html)
+      // at the clean /how-it-works route. The old React page was removed.
+      {
+        source: "/how-it-works",
+        destination: "/how-it-works.html",
+      },
     ];
   },
 };

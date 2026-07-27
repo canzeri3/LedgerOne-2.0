@@ -9,6 +9,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts'
+import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
 
 type Point = { t: number; v: number }
 
@@ -52,13 +53,15 @@ export default function CoinHistoryChart({ data }: { data: Point[] }) {
           tickLine={{ stroke: 'rgba(255,255,255,0.08)' }}
         />
         <YAxis
-          tickFormatter={(n) =>
-            n >= 1_000_000
-              ? `$${(n / 1_000_000).toFixed(1)}M`
-              : n >= 1_000
-              ? `$${(n / 1_000).toFixed(1)}k`
-              : `$${n.toFixed(4)}`
-          }
+          tickFormatter={(n) => {
+            const c = usdToDisplay(Number(n))
+            const s = displayCurrencySymbol()
+            return c >= 1_000_000
+              ? `${s}${(c / 1_000_000).toFixed(1)}M`
+              : c >= 1_000
+              ? `${s}${(c / 1_000).toFixed(1)}k`
+              : `${s}${c.toFixed(4)}`
+          }}
           tick={{ fill: 'rgba(226,232,240,0.8)', fontSize: 11 }}
           axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
           tickLine={{ stroke: 'rgba(255,255,255,0.08)' }}
@@ -79,7 +82,7 @@ export default function CoinHistoryChart({ data }: { data: Point[] }) {
               minute: '2-digit',
             })
           }
-          formatter={(val) => [`$${Number(val).toLocaleString(undefined, { maximumFractionDigits: 8 })}`, 'Price']}
+          formatter={(val) => [`${displayCurrencySymbol()}${usdToDisplay(Number(val)).toLocaleString(undefined, { maximumFractionDigits: 8 })}`, 'Price']}
         />
         <Area
           type="monotone"

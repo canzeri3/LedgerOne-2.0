@@ -1395,273 +1395,206 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
     </div>
   </div>
 ) : null}
-<div className="add-trade-card text-[13px] rounded-2xl bg-[rgba(16,17,19,0.72)] backdrop-blur-xl p-3 space-y-3 w-full shadow-[inset_0_1px_0_rgba(255,255,255,0.06),_0_24px_70px_-35px_rgba(0,0,0,0.88)]">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="font-bold text-lg">Add Trade</h2>
+<section className="add-trade-card card ct-card w-full">
+      <div className="ct-h">
+        <span className="ttl">Add Trade</span>
 
-        <div className="text-[11px] text-slate-400">
+        <span className="plans">
           {loading ? 'Loading planners…' : (
             <>
-              {activeBuy ? <span>Buy Plan: <span className="text-emerald-400">Active</span></span> : <span>Buy Plan: <span className="text-rose-400">None</span></span>}
+              Buy Plan: {activeBuy ? <b>Active</b> : <span className="text-rose-400">None</span>}
               {' · '}
-              {activeSell ? <span>Sell Plan: <span className="text-emerald-400">Active</span></span> : <span>Sell Plan: <span className="text-rose-400">None</span></span>}
+              Sell Plan: {activeSell ? <b>Active</b> : <span className="text-rose-400">None</span>}
             </>
           )}
-        </div>
+        </span>
       </div>
 
-      {err && <div className="text-[12px] text-rose-400">{err}</div>}
-      {ok && <div className="text-[12px] text-emerald-400">{ok}</div>}
+      <div className="ct-body">
+        {err && <div className="text-[12px] text-rose-400">{err}</div>}
+        {ok && <div className="text-[12px] text-emerald-400">{ok}</div>}
 
-   
-
-      {/* Layout row */}
-      <div className="grid gap-2 grid-cols-1 md:grid-cols-[10rem_1fr_1fr_10rem_1fr] min-w-0">
-
-        {/* SIDE — thin ring + glow via :focus-within */}
-<div className={`side-equal ${tradeShell} px-3 h-[48px] min-w-0 flex items-center justify-between gap-2`}>
-            <span className="text-[11px] text-slate-400 shrink-0">Side</span>
-          <div className="radio-buttons-container shrink-0" role="radiogroup" aria-label="Trade side">
-            <label className="radio-button">
-              <input
-                className="radio-button__input"
-                type="radio"
-                name="side"
-                checked={side === 'buy'}
-                onChange={() => setSide('buy')}
-              />
-              <span className="radio-button__label">
-                <span className="radio-button__custom"></span>
-                Buy
-              </span>
-            </label>
-            <label className="radio-button">
-              <input
-                className="radio-button__input"
-                type="radio"
-                name="side"
-                checked={side === 'sell'}
-                onChange={() => setSide('sell')}
-              />
-              <span className="radio-button__label">
-                <span className="radio-button__custom"></span>
-                Sell
-              </span>
-            </label>
+        {/* Fields row */}
+        <div className="ct-row">
+          {/* SIDE */}
+          <div className="ct-side" role="group" aria-label="Trade side">
+            <button
+              type="button"
+              className={side === 'buy' ? 'on-buy' : ''}
+              aria-pressed={side === 'buy'}
+              onClick={() => setSide('buy')}
+            >
+              Buy
+            </button>
+            <button
+              type="button"
+              className={side === 'sell' ? 'on-sell' : ''}
+              aria-pressed={side === 'sell'}
+              onClick={() => setSide('sell')}
+            >
+              Sell
+            </button>
           </div>
-        </div>
 
-        {/* PRICE — thin ring + glow */}
-        <div className="min-w-0">
-          <input
-            ref={priceRef}
-className={`no-spinner ${tradeField}`}
-            placeholder="Price"
-            inputMode="decimal"
-            type="text"
-            value={price}
-            onChange={onPriceChange}
-          />
-        </div>
+          {/* PRICE */}
+          <div className="ct-field grow">
+            <span className="pre">$</span>
+            <input
+              ref={priceRef}
+              className="no-spinner"
+              placeholder="Price"
+              inputMode="decimal"
+              type="text"
+              value={price}
+              onChange={onPriceChange}
+            />
+          </div>
 
-        {/* QUANTITY — wrapper gets thin ring + glow via :focus-within */}
-        <div className="min-w-0">
-<div className={`relative h-[48px] min-w-0 overflow-hidden ${tradeShell}`}>
-              <input
+          {/* QUANTITY: lock (mode switching) + input + unit selector */}
+          <div className="ct-field grow">
+            <button
+              type="button"
+              onClick={() => setQtyLocked(l => !l)}
+              className={`ct-qlock${qtyLocked ? ' on' : ''}`}
+              title={qtyLocked ? 'Quantity mode locked (click to unlock)' : 'Quantity mode unlocked (click to lock)'}
+              aria-pressed={!qtyLocked}
+              aria-label={qtyLocked ? 'Locked' : 'Unlocked'}
+            >
+              {qtyLocked ? <LockKeyhole size={14} strokeWidth={2} /> : <LockKeyholeOpen size={14} strokeWidth={2} />}
+            </button>
+            <input
               ref={qtyRef}
-className="no-spinner w-full h-full min-w-0 bg-transparent px-3.5 py-2.5 text-[15px] md:text-[16px] text-slate-100 placeholder:text-[120,121,125] pr-24 focus:outline-none focus:ring-0"
+              className="no-spinner"
               placeholder={qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'}
               inputMode="decimal"
               type="text"
               value={qty}
               onChange={onQtyChange}
             />
-            {/* NEW: small lock/unlock button controlling mode switching */}
-<button
-  type="button"
-  onClick={() => setQtyLocked(l => !l)}
-className="absolute inset-y-0 right-16 w-8 grid place-items-center text-[rgb(154,159,169)] hover:opacity-90 focus:outline-none"
-  title={qtyLocked ? 'Quantity mode locked (click to unlock)' : 'Quantity mode unlocked (click to lock)'}
-  aria-pressed={!qtyLocked}
-  aria-label={qtyLocked ? 'Locked' : 'Unlocked'}
->
-  {qtyLocked ? <LockKeyhole size={14} strokeWidth={2} /> : <LockKeyholeOpen size={14} strokeWidth={2} />}
-</button>
+            <span className="ct-unit" role="group" aria-label="Quantity mode">
+              <button
+                type="button"
+                onClick={() => setQtyMode('usd')}
+                disabled={qtyLocked}
+                className={`${qtyMode === 'usd' ? 'on' : ''}${qtyLocked ? ' opacity-50 cursor-not-allowed' : ''}`}
+                aria-pressed={qtyMode === 'usd'}
+              >
+                USD $
+              </button>
+              <button
+                type="button"
+                onClick={() => setQtyMode('tokens')}
+                disabled={qtyLocked}
+                className={`${qtyMode === 'tokens' ? 'on' : ''}${qtyLocked ? ' opacity-50 cursor-not-allowed' : ''}`}
+                aria-pressed={qtyMode === 'tokens'}
+              >
+                Tokens
+              </button>
+            </span>
+          </div>
 
+          {/* FEE */}
+          <div className="ct-field" style={{ flex: '0 1 170px' }}>
+            <input
+              ref={feeRef}
+              className="no-spinner"
+              placeholder="Fee (optional)"
+              inputMode="decimal"
+              type="text"
+              value={fee}
+              onChange={onFeeChange}
+            />
+          </div>
 
+          {/* DATE/TIME */}
+          <div className="ct-field" style={{ flex: '0 1 220px' }}>
+            <input
+              placeholder="Trade time"
+              type="datetime-local"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          </div>
+        </div>
 
-            {/* Right-side selector */}
-            <div
-className="absolute inset-y-0 right-0 w-16 border-l border-[rgb(58,59,63)] overflow-hidden"
-              role="group"
-              aria-label="Quantity mode"
+        {/* Actions row: toggle LEFT, then (Sell) planner selector, helper text, buttons RIGHT */}
+        <div className="ct-row foot">
+          <div className="ct-toggles">
+            <button
+              type="button"
+              className={`ct-switch${!ledgerOnly ? ' on' : ''}`}
+              aria-pressed={!ledgerOnly}
+              onClick={() => setLedgerOnly(!ledgerOnly)}
             >
-              {/* sliding highlight: FILL selected half; no rounded edges (flush) */}
-              <div
-                className={`absolute left-0 right-0 top-0 h-1/2 bg-slate-700/70 transition-transform duration-200 ease-out ${qtyMode === 'usd' ? 'translate-y-full' : 'translate-y-0'}`}
-                aria-hidden="true"
-              />
-              <div
-                className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-slate-600/50 z-10"
-                aria-hidden="true"
-              />
-              <div className="absolute inset-0 flex flex-col z-20">
-                <button
-                  type="button"
-                  onClick={() => setQtyMode('tokens')}
-                  disabled={qtyLocked}
-className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none focus:outline-none
-            ${qtyMode === 'tokens' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
-            ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              aria-pressed={qtyMode === 'tokens'}
-                >
-                  Tokens
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQtyMode('usd')}
-                  disabled={qtyLocked}
-className={`flex-1 text-[11px] px-2 flex items-center justify-center select-none focus:outline-none
-            ${qtyMode === 'usd' ? 'text-slate-100' : 'text-slate-300 hover:text-slate-100'}
-            ${qtyLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              aria-pressed={qtyMode === 'usd'}
-                >
-                  USD $
-                </button>
+              <span className="sw" aria-hidden="true" />
+              Update planner
+            </button>
+
+            {/* Sell planner selector */}
+            {side === 'sell' && !ledgerOnly ? (
+              <div className="w-full md:w-[240px] md:shrink-0">
+                <SellPlannerSelector
+                  value={selectedSellPlannerId}
+                  plannerOptions={plannerOptions}
+                  sellPlanners={sellPlanners}
+                  onChange={setSelectedSellPlannerId}
+                />
               </div>
+            ) : null}
+
+            {/* Helper text */}
+            <div className="text-[11px] text-slate-400 leading-snug min-w-0">
+              {ledgerOnly ? (
+                <div>
+                  Records to portfolio, won&apos;t touch your ladders.
+                  {side === 'sell' && user ? (
+                    <>
+                      {' · '}
+                      <span className="text-slate-200">{holdingsLoading ? '…' : fmtTokens(holdingsTokens)}</span> available
+                    </>
+                  ) : null}
+                </div>
+              ) : side === 'sell' ? (
+                <div>
+                  Selling from <span className="font-medium">Active</span> planner
+                  {user && (
+                    <>
+                      {' · '}
+                      <span className="text-slate-200">{plannerRemainingLoading ? '…' : fmtTokens(plannerRemainingTokens)}</span> available
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
-        </div>
 
-        {/* FEE — thin ring + glow */}
-        <div className="min-w-0">
-          <input
-            ref={feeRef}
-className={`no-spinner ${tradeField}`}
-            placeholder="Fee (optional)"
-            inputMode="decimal"
-            type="text"
-            value={fee}
-            onChange={onFeeChange}
-          />
-        </div>
+          <div className="ct-acts">
+            {/* Pin toggle mount (filled by StickyToggleAddTrade) */}
+            <span
+              data-pin-toggle-slot
+              className="inline-flex items-center"
+              aria-hidden="true"
+            />
 
-        {/* DATE/TIME — thin ring + glow */}
-        <div className="min-w-0">
-          <input
-className={`${tradeInput} text-[rgb(157,163,175)]`}
-            placeholder="Trade time"
-            type="datetime-local"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-          />
-        </div>
-      </div>
+            <button
+              onClick={resetAfterSubmit}
+              className="cbtn"
+              type="button"
+            >
+              Reset
+            </button>
 
-{/* Actions row: (Sell) planner selector LEFT, helper text RIGHT of it, buttons FAR RIGHT */}
-{/* Actions row: toggle LEFT, then (Sell) planner selector, helper text, buttons RIGHT */}
-<div className="flex flex-col gap-2 md:flex-row md:items-center min-w-0">
-  {/* Left: floating ledger-only toggle */}
-<div className="flex items-center gap-3 md:shrink-0 md:self-start">
-<label className="inline-flex items-center gap-2 text-[12px] font-medium text-slate-200 select-none cursor-pointer">
-  <input
-    type="checkbox"
-    checked={ledgerOnly}
-    onChange={(e) => setLedgerOnly(e.target.checked)}
-    className="peer sr-only"
-  />
-  <span
-    className="relative inline-block h-4 w-8 rounded-full bg-slate-600 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform after:duration-150 after:content-[''] peer-checked:bg-violet-500/70 peer-checked:after:translate-x-4"
-    aria-hidden="true"
-  />
-  <span>Ledger only</span>
-</label>
-
-  <span
-    data-pin-toggle-slot
-    className="inline-flex items-center"
-    aria-hidden="true"
-  />
-
-  <span
-    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium tracking-[0.02em] ${
-      ledgerOnly
-        ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
-        : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
-    }`}
-  >
-    {ledgerOnly ? 'Planner impact off' : 'Planner impact on'}
-  </span>
-</div>
-
-  {/* Middle-left: sell planner selector */}
-  {side === 'sell' && !ledgerOnly ? (
-    <div className="w-full md:w-[240px] md:shrink-0">
-      <SellPlannerSelector
-        value={selectedSellPlannerId}
-        plannerOptions={plannerOptions}
-        sellPlanners={sellPlanners}
-        onChange={setSelectedSellPlannerId}
-      />
-    </div>
-  ) : null}
-
-  {/* Middle: helper text */}
-  <div className="text-[11px] text-slate-400 leading-snug min-w-0 md:flex-1">
-    {ledgerOnly ? (
-      <div>
-        {side === 'sell' && user ? (
-          <>
-            {' '}Total available to sell:{' '}
-            <span className="text-slate-200">{holdingsLoading ? '…' : fmtTokens(holdingsTokens)}</span> tokens.
-          </>
-        ) : null}
-      </div>
-    ) : side === 'sell' ? (
-      <>
-        <div>
-          Sells default to the <span className="font-medium">Active</span> Sell Planner. Select the appropriate planner to log this sell.
-        </div>
-
-        {user && (
-          <div>
-            Available to sell:{' '}
-            <span className="text-slate-200">{plannerRemainingLoading ? '…' : fmtTokens(plannerRemainingTokens)}</span>{' '}
-            tokens
+            <button
+              onClick={submitTrade}
+              disabled={!canSubmit || saving}
+              className={`cbtn cbtn-primary${!canSubmit || saving ? ' opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {saving ? 'Saving…' : 'Add Trade'}
+            </button>
           </div>
-        )}
-      </>
-    ) : (
-      <div>
+        </div>
       </div>
-    )}
-  </div>
-
-  {/* Right: buttons */}
-  <div className="flex gap-2 md:shrink-0 md:justify-end">
-    <button
-      onClick={submitTrade}
-      disabled={!canSubmit || saving}
-      className={`text-sm rounded-xl border border-slate-700/40 px-3 py-2 ${
-        !canSubmit || saving
-          ? 'bg-[rgb(31,32,33)] backdrop-blur-[0px] text-slate-500 cursor-not-allowed'
-          : 'bg-[rgb(42,43,44)] backdrop-blur-[0px] hover:bg-[rgb(61,61,61)] text-slate-200'
-      }`}
-    >
-      {saving ? 'Saving…' : 'Add Trade'}
-    </button>
-
-    <button
-      onClick={resetAfterSubmit}
-      className="text-sm rounded-xl border border-slate-700/40 bg-[rgb(42,43,44)] backdrop-blur-[0px] px-3 py-2 hover:bg-[rgb(61,61,61)] text-slate-200"
-      type="button"
-    >
-      Reset
-    </button>
-  </div>
-</div>
-
-      </div>
+      </section>
       <style jsx>{`
   /* Matches Planner page "Save New" hover behavior (gradient reveal on hover) */
   .lg1-confirm-primary {

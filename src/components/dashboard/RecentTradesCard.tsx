@@ -8,6 +8,12 @@ import { fmtCurrency } from '@/lib/format'
 import Select from '@/components/ui/Select'
 import { Trash2 } from 'lucide-react'
 
+// Desktop column widths — the header row and every data row must use the same track list.
+// Delete is a fixed narrow track (just the icon plus padding) rather than a full 1/12 column,
+// which frees width for Total to sit further right, clear of Fee.
+// Tracks: Side · Time · Coin · Quantity · Price · Fee · Total · Delete
+const DESKTOP_GRID = 'md:grid-cols-[1fr_2fr_2fr_2fr_2fr_1fr_1.9fr_2rem]'
+
 type Row = {
   id: string
   coingecko_id: string
@@ -29,6 +35,53 @@ type Filters = {
 
 function coinLabelFromId(coinId: string) {
   return (coinId || '').replace(/-/g, ' ').toUpperCase()
+}
+
+/* ── display-only asset naming (no data/logic changes) ─────────── */
+
+/** Well-known coingecko ids whose display name isn't a simple title-cased slug. */
+const COIN_NAME_OVERRIDES: Record<string, string> = {
+  'crypto-com-chain': 'Crypto.com Chain',
+  'usd-coin': 'USD Coin',
+  'avalanche-2': 'Avalanche',
+  'matic-network': 'Polygon',
+  'the-open-network': 'Toncoin',
+  'shiba-inu': 'Shiba Inu',
+  'wrapped-bitcoin': 'Wrapped Bitcoin',
+  'staked-ether': 'Lido Staked Ether',
+}
+
+/** Tickers for common coingecko ids (display only; omitted when unknown). */
+const COIN_TICKERS: Record<string, string> = {
+  bitcoin: 'BTC', ethereum: 'ETH', tether: 'USDT', 'usd-coin': 'USDC',
+  binancecoin: 'BNB', solana: 'SOL', ripple: 'XRP', cardano: 'ADA',
+  dogecoin: 'DOGE', 'avalanche-2': 'AVAX', 'crypto-com-chain': 'CRO',
+  chainlink: 'LINK', polkadot: 'DOT', litecoin: 'LTC', 'matic-network': 'MATIC',
+  tron: 'TRX', 'shiba-inu': 'SHIB', stellar: 'XLM', monero: 'XMR',
+  near: 'NEAR', uniswap: 'UNI', aptos: 'APT', 'hedera-hashgraph': 'HBAR',
+  'the-open-network': 'TON', 'bitcoin-cash': 'BCH', sui: 'SUI',
+  'wrapped-bitcoin': 'WBTC', 'staked-ether': 'STETH', cosmos: 'ATOM',
+}
+
+/** "crypto-com-chain" → { name: "Crypto.com Chain", ticker: "CRO" } */
+function coinDisplayFromId(coinId: string): { name: string; ticker: string | null } {
+  const id = (coinId || '').trim()
+  const name =
+    COIN_NAME_OVERRIDES[id] ??
+    id
+      .replace(/-/g, ' ')
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  return { name, ticker: COIN_TICKERS[id] ?? null }
+}
+
+/** "5/31/2026" (group key) → "May 31, 2026" — display only; key/grouping unchanged. */
+function fmtDayLabel(dayKey: string): string {
+  const d = new Date(dayKey)
+  if (isNaN(d.getTime())) return dayKey
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 function toLocalStartISO(dateStr: string) {
@@ -257,10 +310,10 @@ const filters: Filters = useMemo(() => {
   }, [displayed])
 
   return (
-<div className="transactions-card rounded-2xl border bg-[rgb(28,29,31)] border-[rgb(28,29,31)] p-4 space-y-4 w-full">
+<div className="transactions-card rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] p-4 md:p-5 space-y-4 w-full">
       {/* Header row: title (left) + filters (right, left of Showing) + Showing */}
 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-  <h3 className="text-lg font-bold text-slate-200 shrink-0">Transactions</h3>
+  <h3 className="text-[15px] font-semibold tracking-tight text-slate-100 shrink-0">Transactions</h3>
 
   <div className="flex items-center justify-end gap-2 flex-wrap md:flex-nowrap">
     {/* Coin (smaller, grey) */}
@@ -397,24 +450,24 @@ const filters: Filters = useMemo(() => {
 
 
       {/* Column header — shown once (desktop only) */}
-      <div className="hidden md:grid md:grid-cols-12 text-[11px] uppercase tracking-wide text-slate-400">
-        <div className="col-span-1">Side</div>
-        <div className="col-span-2">Time</div>
-        <div className="col-span-2">Coin name</div>
-        <div className="col-span-2">Quantity</div>
-        <div className="col-span-2">Price (USD)</div>
-        <div className="col-span-1">Fee</div>
-        <div className="col-span-1 text-right">Total</div>
-        <div className="col-span-1 text-right">Delete</div>
+      <div className={`hidden md:grid ${DESKTOP_GRID} md:gap-2 border-b border-[rgb(41,42,45)] pb-2.5 text-[11px] uppercase tracking-[0.09em] text-slate-500`}>
+        <div>Side</div>
+        <div>Time</div>
+        <div>Coin name</div>
+        <div className="text-right">Quantity</div>
+        <div className="text-right">Price (USD)</div>
+        <div className="text-right">Fee</div>
+        <div className="text-right">Total</div>
+        <div className="sr-only">Delete</div>
       </div>
 
       {/* Groups: no spacing between day sections */}
       <div className="space-y-0">
         {groups.map(({ dayKey, items }) => (
           <div key={dayKey} className="space-y-0">
-            {/* Date row */}
-            <div className="w-[calc(100%+2rem)] -ml-4 pl-4 bg-[rgb(32,33,35)] text-slate-300 py-2.5 border-t border-b border-[rgb(51,52,54)]">
-              {dayKey}
+            {/* Date row — subtle graphite separator, display-formatted date */}
+            <div className="w-[calc(100%+2rem)] -ml-4 pl-4 md:w-[calc(100%+2.5rem)] md:-ml-5 md:pl-5 bg-[rgb(31,32,34)] py-1.5 text-[11.5px] font-semibold text-slate-400">
+              {fmtDayLabel(dayKey)}
             </div>
 
             {/* Day rows */}
@@ -428,44 +481,50 @@ const filters: Filters = useMemo(() => {
 
                 const d = new Date(r.trade_time)
                 const timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                const coinLabel = coinLabelFromId(r.coingecko_id)
+                const coinDisp = coinDisplayFromId(r.coingecko_id)
 
                 return (
                   <div
                     key={r.id}
                     className={`
-                      relative -mx-4 px-4 py-4
-                      bg-[rgb(28,29,31)] rounded-none
-                      ${idx === 0 ? 'border-t-0' : 'border-t border-[rgb(55,56,57)]'}
+                      group relative -mx-4 px-4 py-3.5 md:-mx-5 md:px-5
+                      transition-colors hover:bg-[rgba(32,33,35,0.55)]
+                      ${idx === 0 ? 'border-t-0' : 'border-t border-[rgb(41,42,45)]'}
                     `}
                   >
                     {/* Desktop grid row */}
-                    <div className="hidden md:grid md:grid-cols-12 md:items-center md:gap-2 text-sm">
-                      <div className="col-span-1">
+                    <div className={`hidden md:grid ${DESKTOP_GRID} md:items-center md:gap-2 text-sm`}>
+                      <div>
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ${
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold ${
                             isBuy
-                              ? 'bg-[rgba(113,190,90,0.15)] text-[rgb(113,190,90)] ring-[rgb(113,190,90)]/30'
-                              : 'bg-rose-500/10 text-rose-300 ring-rose-500/30'
+                              ? 'bg-[rgba(116,170,98,0.12)] text-[rgb(116,170,98)]'
+                              : 'bg-[rgba(214,66,78,0.1)] text-[rgb(206,76,86)]'
                           }`}
                         >
+                          <span className="h-1 w-1 rounded-full bg-current" />
                           {isBuy ? 'Buy' : 'Sell'}
                         </span>
                       </div>
 
-                      <div className="col-span-2 text-slate-300 tabular-nums">{timeLabel}</div>
-                      <div className="col-span-2 text-slate-200">{coinLabel}</div>
+                      <div className="text-slate-300 tabular-nums">{timeLabel}</div>
+                      <div className="min-w-0 truncate">
+                        <span className="text-slate-200">{coinDisp.name}</span>
+                        {coinDisp.ticker && (
+                          <span className="ml-1.5 text-[11px] text-slate-500">{coinDisp.ticker}</span>
+                        )}
+                      </div>
 
-                      <div className="col-span-2 text-slate-200 tabular-nums">
+                      <div className="text-right text-slate-200 tabular-nums">
                         {qty.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                       </div>
 
-                      <div className="col-span-2 text-slate-200 tabular-nums">{fmtCurrency(price)}</div>
+                      <div className="text-right text-slate-200 tabular-nums">{fmtCurrency(price)}</div>
 
-                      <div className="col-span-1 text-slate-300 tabular-nums">{fee ? fmtCurrency(fee) : '—'}</div>
+                      <div className="text-right text-slate-300 tabular-nums">{fee ? fmtCurrency(fee) : '—'}</div>
 
                       <div
-                        className={`col-span-1 text-right tabular-nums ${
+                        className={`text-right tabular-nums ${
                           isBuy ? 'text-[rgb(105,167,78)]' : 'text-[rgb(180,55,53)]'
                         }`}
                       >
@@ -473,14 +532,14 @@ const filters: Filters = useMemo(() => {
                         {fmtCurrency(Math.abs(total))}
                       </div>
 
-                      <div className="col-span-1 flex justify-end">
+                      <div className="flex justify-end">
                         <button
                           type="button"
                           title="Delete trade"
                           onClick={() => deleteTrade(r.id, r.coingecko_id)}
                           disabled={deletingId === r.id}
-                          className={`rounded-md p-1 ring-1 ring-slate-700/30 text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 ${
-                            deletingId === r.id ? 'opacity-50 cursor-not-allowed' : ''
+                          className={`rounded-md p-1 text-slate-500 opacity-0 transition hover:text-[rgb(214,66,78)] focus-visible:opacity-100 group-hover:opacity-100 ${
+                            deletingId === r.id ? '!opacity-50 cursor-not-allowed' : ''
                           }`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -492,12 +551,13 @@ const filters: Filters = useMemo(() => {
                     <div className="md:hidden text-sm text-slate-200 space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ring-1 ${
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                             isBuy
-                              ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
-                              : 'bg-rose-500/10 text-rose-300 ring-rose-500/30'
+                              ? 'bg-[rgba(116,170,98,0.12)] text-[rgb(116,170,98)]'
+                              : 'bg-[rgba(214,66,78,0.1)] text-[rgb(206,76,86)]'
                           }`}
                         >
+                          <span className="h-1 w-1 rounded-full bg-current" />
                           {isBuy ? 'Buy' : 'Sell'}
                         </span>
                         <div className="text-slate-300">{timeLabel}</div>
@@ -505,7 +565,12 @@ const filters: Filters = useMemo(() => {
 
                       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                         <div className="text-slate-400 text-xs">Coin</div>
-                        <div>{coinLabel}</div>
+                        <div>
+                          {coinDisp.name}
+                          {coinDisp.ticker && (
+                            <span className="ml-1.5 text-[11px] text-slate-500">{coinDisp.ticker}</span>
+                          )}
+                        </div>
 
                         <div className="text-slate-400 text-xs">Qty</div>
                         <div className="tabular-nums">{qty.toLocaleString(undefined, { maximumFractionDigits: 8 })}</div>
@@ -533,12 +598,12 @@ const filters: Filters = useMemo(() => {
 
       {/* Show more / less */}
       {(hasMore || hasLess) && (
-        <div className="pt-2 space-y-2">
+        <div className="-mx-4 md:-mx-5">
           {hasLess && (
             <button
               type="button"
               onClick={() => setVisibleCount((n) => Math.max(PAGE_SIZE, n - PAGE_SIZE))}
-              className="w-full rounded-xl border border-slate-700/30 bg-slate-900/20 ring-1 ring-slate-700/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/30"
+              className="w-full border-t border-[rgb(41,42,45)] px-3 py-3 text-[12.5px] font-medium text-slate-400 transition hover:bg-[rgba(32,33,35,0.55)] hover:text-slate-200"
             >
               Show less
             </button>
@@ -547,7 +612,7 @@ const filters: Filters = useMemo(() => {
             <button
               type="button"
               onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
-              className="w-full rounded-xl border border-slate-700/30 bg-slate-900/20 ring-1 ring-slate-700/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/30"
+              className="w-full border-t border-[rgb(41,42,45)] px-3 py-3 text-[12.5px] font-medium text-slate-400 transition hover:bg-[rgba(32,33,35,0.55)] hover:text-slate-200"
             >
               Show more
             </button>

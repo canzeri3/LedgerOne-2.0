@@ -139,24 +139,24 @@ function totalPlAtPrice(cur: WacState, price: number): number {
 
 /* ---------------------------------- UI ------------------------------------ */
 
+const WIN_CTX: Record<WindowKey, string> = {
+  '24h': 'Past 24 hours', '7d': 'Past 7 days', '30d': 'Past 30 days',
+  '90d': 'Past 90 days', '1y': 'Past year', 'ytd': 'Year to date', 'max': 'All time',
+}
+
 function WindowTabs({ value, onChange }: { value: WindowKey; onChange: (v: WindowKey) => void }) {
   const opts: WindowKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
   return (
-    <div className="inline-flex flex-wrap items-center gap-2">
+    <div className="seg seg-float">
       {opts.map((opt) => {
         const active = value === opt
         return (
           <button
             key={opt}
+            type="button"
             aria-pressed={active}
             onClick={() => onChange(opt)}
-            className={[
-              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
-              'bg-[rgb(28,29,31)] border',
-              active
-                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
-            ].join(' ')}
+            className={active ? 'cur' : ''}
           >
             {opt.toUpperCase()}
           </button>
@@ -625,59 +625,51 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
 
   const headerAmountText = headerAmount == null ? '--' : fmtCurrency(headerAmount)
   return (
-    <div className="rounded-2xl border border-[rgb(28,29,31)] bg-[rgb(28,29,31)] px-3 py-4 md:px-4 md:py-5">
-      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col items-start gap-0.5">
-          <div className="text-xl md:text-2xl font-semibold leading-tight text-slate-200">{titleText}</div>
+    <div className="card">
+      <div className="cv-head">
+        <div>
+          <div className="label">{titleText}</div>
 
           {/* Current amount (under title, above %/$ change row) */}
-          <div
-            className="text-2xl md:text-3xl font-bold leading-tight text-slate-100 tabular-nums"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
+          <div className="v">
             {headerAmountText}
           </div>
 
           {typeof perfPct === 'number' && typeof perfDelta === 'number' && (
-            <span
-              className={[
-                'text-s md:text-sm font-medium flex items-baseline gap-2 tabular-nums',
-                perfPct >= 0 ? 'text-[rgb(87,181,66)]' : 'text-[rgb(214,66,78)]',
-              ].join(' ')}
-            >
-              <span className="tabular-nums">
-                <PercentTicker value={perfPct} />
+            <div className="delta">
+              <span className={`chip ${perfPct >= 0 ? 'pos' : 'neg'}`}>
+                {perfPct >= 0 ? '▴' : '▾'} <PercentTicker value={perfPct} />
               </span>
               <span className="tabular-nums">
-                (<AmountTicker value={perfDelta} />)
+                <AmountTicker value={perfDelta} />
               </span>
-            </span>
+              <span className="ctx">{WIN_CTX[win]}</span>
+            </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-pressed={showTotalPL}
-            onClick={() => setShowTotalPL((v) => !v)}
-            className={[
-              'rounded-lg px-2.5 py-1 text-xs font-semibold transition',
-              'bg-[rgb(28,29,31)] border',
-              showTotalPL
-                ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)] shadow-[inset_0_0_0_1px_rgba(167,128,205,0.35)]'
-                : 'border-slate-700/60 text-slate-400 hover:text-slate-200 hover:border-slate-500',
-              'focus:ring-0 focus:outline-none',
-            ].join(' ')}
-            title="Toggle Total P&L (realized + unrealized vs your cost basis)"
-          >
-            Total P&amp;L
-          </button>
+        <div className="cv-tools">
+          <div className="seg seg-float">
+            <button
+              type="button"
+              aria-pressed={showTotalPL}
+              onClick={() => setShowTotalPL((v) => !v)}
+              className={showTotalPL ? 'cur accent' : ''}
+              title="Toggle Total P&L (realized + unrealized vs your cost basis)"
+            >
+              Total P&amp;L
+            </button>
+          </div>
 
           <WindowTabs value={win} onChange={setWin} />
         </div>
       </div>
 
-      <div className="h-[300px] w-full md:h-[360px]">
+      <div className="h-[300px] w-full md:h-[360px] px-3 pb-4 pt-2 md:px-4">
+        {/* Mount the chart only once it has data so the line draws left-to-right
+            on first load (mirrors the Dashboard). keepPreviousData in useHistory
+            keeps this mounted across timeframe switches → those still morph. */}
+        {chartSeries.length > 0 && (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartSeries}>
             <defs>
@@ -726,16 +718,17 @@ export default function CoinValueChart({ coingeckoId, id }: Props) {
             />
           </AreaChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       {!historyLoading && (!history || history.length === 0) && (
-        <div className="mt-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
+        <div className="mx-4 mb-4 rounded-md border border-slate-700/40 bg-slate-800/30 p-3 text-sm text-slate-400">
           No price history available for this window.
         </div>
       )}
 
       {history?.length > 0 && (!trades || trades.length === 0) && (
-        <div className="mt-2 text-[11px] text-slate-400">
+        <div className="mx-4 mb-3 text-[11px] text-slate-400">
           No trades yet for this coin. The balance line will appear after your first buy.
         </div>
       )}

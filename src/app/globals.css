@@ -21,11 +21,18 @@ html, body {
 /* Prevent tiny layout “jiggle” when scrollbars appear */
 html {
   scrollbar-gutter: stable;
+  /* Clamp horizontal overflow at the root too: body-only overflow-x:hidden
+     doesn't stop <html> from scrolling sideways, so decorative bleed (hero
+     aurora, laptop mockup) would create a horizontal scrollbar on resize.
+     Use `clip` (not `hidden`) so the root stays the normal vertical scroller
+     — `hidden` on both html+body spawns a nested scroll container that breaks
+     scroll-linked animations. */
+  overflow-x: clip;
 }
 
 /* Page-level: hide horizontal overflow that creates the bottom bar */
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Utility class: apply to any scroll container you control */
@@ -416,55 +423,106 @@ body {
   height: 120px;
 }
 
-/* From Uiverse.io by Cksunandh – adapted & namespaced for LedgerOne */
-.lg1-triangle1,
-.lg1-triangle2 {
+/* LedgerOne "L1" brand mark, rotating like a loading spinner */
+.lg1-loader-mark {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform-origin: center;
+  width: 96px;
+  height: 96px;
+  margin: -48px 0 0 -48px;
+  transform-origin: 50% 50%;
+  animation: lg1-spin 1.15s linear infinite;
+  filter: drop-shadow(0 4px 16px rgba(126, 111, 255, 0.35));
 }
 
-/* Top-left oriented triangle */
-.lg1-triangle1 {
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 50px 50px 0 0;
-  border-color: #8086e0 transparent transparent transparent;
-  margin: -25px 0 0 -25px;
-  animation: lg1-shk1 1.1s ease-in-out infinite alternate;
+@keyframes lg1-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* Bottom-right oriented triangle */
-.lg1-triangle2 {
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 0 50px 50px;
-  border-color: transparent transparent #6554b3 transparent;
-  margin: -25px 0 0 -25px;
-  animation: lg1-shk2 1.1s ease-in-out infinite alternate;
-  opacity: 0.85;
+/* Opaque loading screen — fully hides the app behind it (sidebar, header,
+   content) so only the L1 spinner shows. Theme-aware. */
+.lg1-loader-overlay { background: #0D0E14; }
+html[data-theme="light"] .lg1-loader-overlay { background: #f5f6f8; }
+
+/* Route cover fade-out — the loader lifts smoothly once the page is ready.
+   Duration is mirrored by FADE_MS in SWRRouteCover.tsx. */
+.lg1-cover-fade {
+  opacity: 1;
+  transition: opacity 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lg1-cover-fade.leaving {
+  opacity: 0;
+  pointer-events: none;
 }
 
-/* Rotational animation, slightly softened for an institutional feel */
-@keyframes lg1-shk1 {
-  0% {
-    transform: translate(-50%, -50%) rotate(-360deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
+/* Coordinated page entrance — content animates in exactly as the cover lifts,
+   so the page feels loaded and ready rather than popping in. The class is
+   added on <html> by SWRRouteCover the moment it starts hiding.
+   Duration is mirrored by ENTER_MS in SWRRouteCover.tsx. */
+@keyframes lg1-page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+html.lg1-route-enter #l1-app-main {
+  animation: lg1-page-enter 500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  will-change: opacity, transform;
 }
 
-@keyframes lg1-shk2 {
-  0% {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
+@media (prefers-reduced-motion: reduce) {
+  .lg1-cover-fade { transition: none; }
+  html.lg1-route-enter #l1-app-main { animation: none; }
+}
+
+/* ── Header popovers (alerts / currency / profile): island-style expand —
+   bouncy open (back.out), smooth close (power2.out) via per-direction easing
+   (easeReverse). Anchored top-right so they grow out of their trigger. ── */
+.hdr-pop {
+  transform-origin: top right;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.94);
+  pointer-events: none;
+  will-change: transform, opacity;
+  /* CLOSE easing — smooth, power2.out-like */
+  transition:
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hdr-pop.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  /* OPEN easing — bouncy back.out-like overshoot */
+  transition:
+    opacity 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Staggered item entrance — keyframe so it never overrides Tailwind's
+   transition-colors on the items. */
+@keyframes hdr-pop-item-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.hdr-pop.is-open .hdr-pop-item {
+  animation: hdr-pop-item-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.hdr-pop.is-open .hdr-pop-item:nth-child(1) { animation-delay: 50ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(2) { animation-delay: 95ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(3) { animation-delay: 140ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(4) { animation-delay: 185ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(5) { animation-delay: 230ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(6) { animation-delay: 275ms; }
+.hdr-pop.is-open .hdr-pop-item:nth-child(n+7) { animation-delay: 300ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hdr-pop { transition: opacity 120ms linear; transform: none; }
+  .hdr-pop.is-open { transform: none; }
+  .hdr-pop.is-open .hdr-pop-item { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg1-loader-mark { animation-duration: 2.4s; }
 }
 
 .lg1-loader-text {
@@ -1131,6 +1189,13 @@ body {
   font-family: var(--font-display); font-weight: 700;
   font-size: 18px; color: var(--color-text-secondary);
   letter-spacing: -0.01em;
+}
+
+/* Below ~1160px the marks no longer fit one line inside the 1080px row, so
+   wrap them (instead of overflowing the viewport) — desktop stays single-line. */
+@media (max-width: 1160px) {
+  .l1-strip-row { flex-wrap: wrap; }
+  .l1-strip-marks { flex-wrap: wrap; }
 }
 .l1-strip-marks span { opacity: 0.7; }
 
@@ -1912,7 +1977,11 @@ body {
   .l1-specs { grid-template-columns: 1fr; }
   .l1-mini-cases { grid-template-columns: 1fr; }
   .l1-featured .quote, .l1-featured .stats { padding: 28px; }
+  /* Stat cards cram into 1-word-per-line at phone widths — stack them. */
+  .l1-featured .stats { grid-template-columns: 1fr; }
   .l1-form { padding: 24px; }
+  /* 3-col venue grid clips its labels on phones — drop to 2 columns. */
+  .l1-integrations { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ================================================================
@@ -2219,4 +2288,714 @@ body {
   .l1-footer-grid > :first-child { grid-column: 1; text-align: center; }
   .l1-footer-grid > :first-child img { margin-left: auto; margin-right: auto; }
   .l1-footer-fine { flex-direction: column; gap: 8px; align-items: flex-start; font-size: 10px; }
+}
+
+
+/* =============================================================
+   CONTACT v2 SKIN — appended for (marketing)/contact/page.tsx redesign.
+   All variables used below already exist in :root above.
+   ============================================================= */
+/* ===================================================================
+   LedgerOne · Contact v2
+   A single, calm "desk" panel. Institutional, structured, legible.
+   Content sits on opaque surfaces above the night sky; hairline
+   rules and mono micro-labels do the organizing, one purple accent.
+   =================================================================== */
+
+/* The whole contact body sits above the fixed starfield. */
+.cx-body {
+  position: relative;
+  z-index: 1;
+  padding: 4px 0 112px;
+}
+
+/* ---- Header refinements (reuses .l1-pageheader) ---- */
+.cx-head {
+  padding-top: 168px;
+  padding-bottom: 56px;
+}
+.cx-head .l1-pageheader-inner {
+  align-items: flex-end;
+  grid-template-columns: 1.5fr 1fr;
+}
+.cx-head h1 { margin-bottom: 0; }
+.cx-head .lead { padding-bottom: 6px; }
+/* Restack the contact header to one column on mobile. Must come after the
+   2-col rule above (equal specificity) so it wins at narrow widths. */
+@media (max-width: 860px) {
+  .cx-head .l1-pageheader-inner { grid-template-columns: 1fr; gap: 24px; align-items: start; }
+}
+
+/* A thin meta rail under the header — desk identity, hours, location. */
+.cx-headmeta {
+  position: relative;
+  z-index: 2;
+  margin-top: 44px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+.cx-headmeta .cell {
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cx-headmeta .cell + .cell { padding-left: 32px; border-left: 1px solid var(--color-border); }
+.cx-headmeta .cell:not(:first-child) { padding-left: 32px; }
+.cx-headmeta .k {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.cx-headmeta .v {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 9px;
+}
+.cx-headmeta .v .dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: var(--color-success);
+  box-shadow: 0 0 9px var(--color-success);
+}
+
+/* ===================================================================
+   The desk — one unified, bordered panel split into form + info.
+   =================================================================== */
+.cx-desk {
+  position: relative;
+  z-index: 1;
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: 1.14fr 0.86fr;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 48px 110px -52px rgba(0, 0, 0, 0.9);
+}
+
+/* ---- Left: the form ---- */
+.cx-form-col {
+  padding: 46px 46px 40px;
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+.cx-form-head { margin-bottom: 30px; }
+.cx-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent-purple);
+  display: inline-flex; align-items: center; gap: 11px;
+  margin-bottom: 16px;
+  white-space: nowrap;
+}
+.cx-eyebrow::before {
+  content: ""; width: 22px; height: 1px;
+  background: var(--color-accent-purple);
+  display: inline-block;
+}
+.cx-form-head h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  margin: 0 0 10px;
+}
+.cx-form-head p {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 440px;
+}
+
+.cx-form { display: flex; flex-direction: column; gap: 20px; }
+.cx-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.cx-field { display: flex; flex-direction: column; gap: 9px; }
+.cx-field label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.cx-field input,
+.cx-field textarea,
+.cx-field select {
+  width: 100%;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+  font-family: var(--font-ui);
+  font-size: 14.5px;
+  color: var(--color-text-primary);
+  padding: 13px 14px;
+  outline: none;
+  transition: border-color var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
+  resize: vertical;
+}
+.cx-field textarea { min-height: 132px; line-height: 1.55; }
+.cx-field input::placeholder,
+.cx-field textarea::placeholder { color: var(--color-text-muted); }
+.cx-field input:focus,
+.cx-field textarea:focus,
+.cx-field select:focus {
+  border-color: var(--color-accent-purple);
+  box-shadow: 0 0 0 3px rgba(107, 91, 239, 0.18);
+}
+
+/* Custom select chevron — keeps the institutional, restrained look. */
+.cx-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239899B0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+}
+.cx-field select option { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+
+/* Form footer — reassurance + submit, separated by a hairline. */
+.cx-form-foot {
+  margin-top: 8px;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.cx-form-foot .note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  display: flex; align-items: center; gap: 9px;
+}
+.cx-form-foot .note .dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: var(--color-success);
+  flex: none;
+}
+
+/* Submit button (uses site primary but pinned here for certainty) */
+.cx-submit {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  background: var(--color-accent-purple);
+  border: 1px solid var(--color-accent-purple);
+  border-radius: 2px;
+  padding: 13px 24px;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out),
+              transform var(--dur-base) var(--ease-out);
+}
+.cx-submit:hover {
+  background: var(--color-accent-purple-hover);
+  border-color: var(--color-accent-purple-hover);
+  box-shadow: 0 0 22px rgba(126, 111, 255, 0.4);
+}
+.cx-submit:active { transform: translateY(1px); }
+
+/* ---- Right: the info column (slightly darker = ledger feel) ---- */
+.cx-info-col {
+  padding: 44px 40px;
+  background: var(--color-bg-base);
+  display: flex;
+  flex-direction: column;
+}
+.cx-block + .cx-block {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid var(--color-border);
+}
+.cx-block-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 18px;
+  display: block;
+}
+
+/* Channels — clean rows with leading icon */
+.cx-channels { display: flex; flex-direction: column; }
+.cx-channel {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 0;
+  text-decoration: none;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.cx-channel + .cx-channel { border-top: 1px solid var(--color-border); }
+.cx-channel:first-child { padding-top: 2px; }
+.cx-channel .ic { color: var(--color-accent-purple); display: flex; }
+.cx-channel-text { display: flex; flex-direction: column; }
+.cx-channel .addr {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--color-text-primary);
+  letter-spacing: -0.005em;
+}
+.cx-channel .purpose {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+.cx-channel:hover .addr { color: var(--color-accent-purple-hover); }
+
+/* Offices — two tidy stacked entries */
+.cx-offices { display: grid; gap: 16px; }
+.cx-office {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 8px;
+}
+.cx-office .city {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--color-text-primary);
+}
+.cx-office .addr {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+.cx-office .tz {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Status — compact operational ledger */
+.cx-status { display: flex; flex-direction: column; }
+.cx-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+}
+.cx-status-row + .cx-status-row { border-top: 1px solid var(--color-border); }
+.cx-status-row:first-child { padding-top: 2px; }
+.cx-status-row .l {
+  font-size: 13.5px;
+  color: var(--color-text-secondary);
+}
+.cx-status-row .s {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-success);
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.cx-status-row .s .dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: var(--color-success);
+  box-shadow: 0 0 7px var(--color-success);
+}
+.cx-status-link {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--color-accent-purple);
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.cx-status-link:hover { color: var(--color-accent-purple-hover); }
+
+/* ---- Success state ---- */
+.cx-sent {
+  grid-column: 1 / -1;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+  padding: 60px 24px;
+}
+.cx-sent .seal {
+  width: 58px; height: 58px;
+  border: 1px solid var(--color-accent-purple);
+  border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-accent-purple);
+  margin-bottom: 6px;
+}
+.cx-sent h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+.cx-sent p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  max-width: 400px;
+}
+.cx-sent .reset {
+  margin-top: 14px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--color-accent-purple);
+  background: none; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.cx-sent .reset:hover { color: var(--color-accent-purple-hover); }
+
+/* ===================================================================
+   Responsive
+   =================================================================== */
+@media (max-width: 920px) {
+  .cx-desk { grid-template-columns: 1fr; }
+  .cx-form-col { border-right: none; border-bottom: 1px solid var(--color-border); }
+  .cx-headmeta { grid-template-columns: 1fr; }
+  .cx-headmeta .cell + .cell { border-left: none; border-top: 1px solid var(--color-border); padding-left: 0; }
+  .cx-headmeta .cell:not(:first-child) { padding-left: 0; }
+}
+@media (max-width: 560px) {
+  .cx-head { padding-top: 132px; }
+  .cx-form-col, .cx-info-col { padding: 30px 24px; }
+  .cx-row { grid-template-columns: 1fr; }
+  .cx-form-foot { flex-direction: column; align-items: stretch; }
+  .cx-submit { justify-content: center; }
+}
+
+
+/* =============================================================
+   HOME v2 SKIN — appended for (marketing)/page.tsx redesign.
+   All variables below already exist in :root above.
+   ============================================================= */
+/* =============================================================
+   LedgerOne · Home v2 — lean, emotional, show-don't-tell.
+   Sits on top of landing.css / site.css (already loaded).
+   ============================================================= */
+
+/* ---- shared section rhythm ---- */
+.hm {
+  position: relative;
+  z-index: 1;
+  padding: 132px 0;
+}
+.hm-narrow { max-width: 1180px; margin: 0 auto; padding: 0 48px; }
+
+.hm-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #B5AAFF;
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 22px;
+}
+.hm-eyebrow::before {
+  content: "";
+  width: 26px; height: 1px;
+  background: rgba(181,170,255,0.5);
+}
+
+/* =============================================================
+   1 · THE PROMISE  (plain + emotional, big type)
+   ============================================================= */
+.hm-promise { text-align: center; padding-top: 150px; }
+.hm-promise .hm-eyebrow { justify-content: center; }
+.hm-promise h2 {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: 72px; line-height: 1.02; letter-spacing: -0.03em;
+  margin: 0 auto 26px; max-width: 980px;
+  color: #ECE9FF; text-wrap: balance;
+}
+.hm-promise h2 .accent {
+  color: #B5AAFF;
+}
+.hm-promise p {
+  font-size: 20px; line-height: 1.55;
+  color: rgba(220,215,245,0.66);
+  max-width: 660px; margin: 0 auto;
+  text-wrap: pretty;
+}
+
+/* =============================================================
+   2 · BEFORE / AFTER  (show the transformation)
+   ============================================================= */
+.hm-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+.hm-panel {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  padding: 40px 40px 36px;
+  background: var(--color-bg-surface);
+  display: flex; flex-direction: column;
+  min-height: 460px;
+  overflow: hidden;
+}
+.hm-panel.before {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(224,91,91,0.07), transparent 60%),
+    var(--color-bg-surface);
+  border-color: rgba(224,91,91,0.20);
+}
+.hm-panel.after {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(124,111,247,0.10), transparent 60%),
+    var(--color-bg-elevated);
+  border-color: rgba(124,111,247,0.28);
+  box-shadow: 0 0 0 1px rgba(124,111,247,0.06), 0 40px 80px -50px rgba(124,111,247,0.5);
+}
+.hm-panel-tag {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  margin: 0 0 20px;
+}
+.hm-panel.before .hm-panel-tag { color: #E8807F; }
+.hm-panel.after .hm-panel-tag { color: #B5AAFF; }
+.hm-panel h3 {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 30px; line-height: 1.12; letter-spacing: -0.02em;
+  margin: 0 0 28px; color: #fff; text-wrap: balance;
+  max-width: 360px;
+}
+.hm-feelings { list-style: none; margin: 0 0 28px; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.hm-feelings li {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 16px; line-height: 1.35;
+  color: rgba(226,222,245,0.78);
+}
+.hm-feelings li .dot {
+  width: 7px; height: 7px; flex: none; border-radius: 999px;
+}
+.hm-panel.before .dot { background: #E05B5B; box-shadow: 0 0 10px rgba(224,91,91,0.6); }
+.hm-panel.after .dot { background: #3ECFA4; box-shadow: 0 0 10px rgba(62,207,164,0.55); }
+.hm-spark { margin-top: auto; width: 100%; height: 92px; display: block; }
+.hm-spark-line { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.hm-panel.before .hm-spark-line { stroke: #E05B5B; }
+.hm-panel.after .hm-spark-line { stroke: #3ECFA4; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .hm-spark-line { stroke-dasharray: 900; stroke-dashoffset: 900; animation: hm-draw 1800ms ease forwards; }
+  .hm-panel.after .hm-spark-line { animation-delay: 250ms; }
+}
+@keyframes hm-draw { to { stroke-dashoffset: 0; } }
+
+/* =============================================================
+   3 · THE DREAM  (money grows while you live)
+   ============================================================= */
+.hm-dream { text-align: center; }
+.hm-dream .hm-eyebrow { justify-content: center; }
+.hm-dream h2 {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: 60px; line-height: 1.05; letter-spacing: -0.03em;
+  margin: 0 auto 18px; max-width: 920px; color: #ECE9FF; text-wrap: balance;
+}
+.hm-dream > p.sub {
+  font-size: 18px; line-height: 1.5; color: rgba(220,215,245,0.62);
+  max-width: 560px; margin: 0 auto 56px;
+}
+.hm-curve-wrap {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background:
+    radial-gradient(120% 140% at 90% 0%, rgba(124,111,247,0.10), transparent 55%),
+    var(--color-bg-surface);
+  padding: 36px 40px 40px;
+  text-align: left;
+}
+.hm-curve-top {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 18px; flex-wrap: wrap; gap: 16px;
+}
+.hm-curve-top .l { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 8px; }
+.hm-curve-top .v { font-family: var(--font-mono); font-weight: 500; font-size: 40px; letter-spacing: -0.02em; color: #fff; line-height: 1; }
+.hm-curve-top .delta { font-family: var(--font-mono); font-size: 14px; color: #3ECFA4; }
+.hm-curve-legend { display: flex; gap: 22px; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); flex-wrap: wrap; }
+.hm-curve-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.hm-curve-legend i { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+
+.hm-curve {
+  position: relative;
+  width: 100%;
+}
+.hm-curve svg { width: 100%; height: auto; display: block; }
+.hm-curve-line { fill: none; stroke: #9B8CFF; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+@media (prefers-reduced-motion: no-preference) {
+  .hm-curve-line { stroke-dasharray: 2600; stroke-dashoffset: 2600; animation: hm-draw 2600ms cubic-bezier(0.4,0,0.1,1) forwards; }
+}
+.hm-marker {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.hm-marker .pin {
+  width: 11px; height: 11px; border-radius: 999px;
+  background: #0D0E14; border: 2.5px solid #9B8CFF;
+  margin: 0 auto 8px;
+  box-shadow: 0 0 0 4px rgba(124,111,247,0.16), 0 0 16px rgba(124,111,247,0.6);
+}
+.hm-marker .moment {
+  font-family: var(--font-ui); font-weight: 600; font-size: 13.5px; color: #fff;
+}
+.hm-marker .action {
+  font-family: var(--font-mono); font-size: 11px; color: #8ED9BF; margin-top: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hm-marker { opacity: 0; animation: hm-pop 600ms ease forwards; }
+  .hm-marker.m1 { animation-delay: 1100ms; }
+  .hm-marker.m2 { animation-delay: 1700ms; }
+  .hm-marker.m3 { animation-delay: 2300ms; }
+}
+@keyframes hm-pop { from { opacity: 0; transform: translate(-50%, calc(-100% + 10px)); } to { opacity: 1; transform: translate(-50%, -100%); } }
+
+/* =============================================================
+   4 · THREE STEPS  (few words)
+   ============================================================= */
+.hm-steps-head { text-align: center; margin-bottom: 64px; }
+.hm-steps-head h2 {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: 52px; line-height: 1.05; letter-spacing: -0.03em;
+  margin: 0; color: #ECE9FF; text-wrap: balance;
+}
+.hm-steps {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.hm-step {
+  position: relative;
+  padding: 34px 30px 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background: var(--color-bg-surface);
+}
+.hm-step .n {
+  font-family: var(--font-mono); font-size: 12px;
+  color: #B5AAFF; letter-spacing: 0.06em;
+  margin-bottom: 22px;
+}
+.hm-step .ic {
+  width: 44px; height: 44px; border-radius: 2px;
+  background: rgba(124,111,247,0.12);
+  display: flex; align-items: center; justify-content: center;
+  color: #B5AAFF; margin-bottom: 22px;
+}
+.hm-step h4 {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 24px; line-height: 1.15; letter-spacing: -0.01em;
+  margin: 0 0 10px; color: #fff;
+}
+.hm-step p {
+  font-size: 15px; line-height: 1.5;
+  color: rgba(220,215,245,0.6); margin: 0;
+}
+.hm-step .arrow {
+  position: absolute; top: 50%; right: -26px;
+  transform: translateY(-50%);
+  color: rgba(181,170,255,0.4);
+  z-index: 2;
+}
+.hm-step:last-child .arrow { display: none; }
+
+/* =============================================================
+   responsive
+   ============================================================= */
+@media (max-width: 920px) {
+  .hm { padding: 88px 0; }
+  .hm-promise h2 { font-size: 48px; }
+  .hm-dream h2 { font-size: 40px; }
+  .hm-steps-head h2 { font-size: 36px; }
+  .hm-split { grid-template-columns: 1fr; }
+  .hm-steps { grid-template-columns: 1fr; }
+  .hm-step .arrow { display: none !important; }
+  .hm-marker .moment { font-size: 11px; }
+  .hm-marker .action { font-size: 9px; }
+}
+
+/* ============================================================
+   APP TYPOGRAPHY — design-system fonts (uploaded skin).
+   Sora = display/headings; IBM Plex Sans = ui/body/tables/
+   numbers (tabular-nums via 'tnum'). Scoped per app page and
+   rolled out one page at a time. Sizes/weights unchanged.
+   ============================================================ */
+[data-dashboard-page] {
+  font-family: var(--font-plex), system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+[data-dashboard-page] :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-sora), system-ui, sans-serif;
+}
+
+/* Planner page — Sora (display) + IBM Plex Sans (ui/body/numbers, tnum).
+   Display roles mirror the skin's --font-display usage. */
+[data-planner-page] {
+  font-family: var(--font-plex), system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+[data-planner-page] :is(h1, h2, h3, h4, h5, h6),
+[data-planner-page] .pl-title .tt,
+[data-planner-page] .pl-tk-id .nm,
+[data-planner-page] .dd-trigger .lab,
+[data-planner-page] .dd-opt-name,
+[data-planner-page] .pl-modal-title {
+  font-family: var(--font-sora), system-ui, sans-serif;
+}
+
+/* Planner dropdown menus render via portal to document.body (outside
+   [data-planner-page]) — apply the same fonts so they aren't missed. */
+.pl-dd-portal {
+  font-family: var(--font-plex), system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+.pl-dd-portal .dd-opt-name {
+  font-family: var(--font-sora), system-ui, sans-serif;
 }

@@ -1,0 +1,55 @@
+/* ============================================================
+   CSV page — small helpers layered on the shared .st design
+   system (settings-skin.css). Everything is scoped under .st and
+   uses the --st-* tokens, so it stays theme-aware (light/dark).
+   ============================================================ */
+
+.st .csv-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--st-fg-mut);
+}
+.st .csv-hint { font-size: 12.5px; line-height: 1.55; color: var(--st-fg-dim); margin-top: 3px; }
+.st .csv-hint code {
+  font-family: var(--st-mono); font-size: 11.5px; color: var(--st-fg);
+  background: var(--st-field); border: 1px solid var(--st-line);
+  border-radius: 6px; padding: 1px 6px;
+}
+
+.st .csv-sep { font-size: 12.5px; color: var(--st-fg-mut); margin: 0 3px; }
+.st .csv-note-danger { font-size: 12.5px; color: var(--st-danger); }
+.st .csv-divider { height: 1px; background: var(--st-line); }
+
+/* File input, dressed like a ghost button */
+.st .csv-file { font-size: 13px; color: var(--st-fg-dim); max-width: 100%; }
+.st .csv-file::file-selector-button {
+  margin-right: 12px;
+  border: 1px solid var(--st-line-strong); background: var(--st-field);
+  color: var(--st-fg); font-family: var(--st-ui); font-weight: 600; font-size: 13px;
+  border-radius: 10px; padding: 9px 15px; cursor: pointer;
+  transition: border-color 160ms, background 160ms, color 160ms;
+}
+.st .csv-file:hover::file-selector-button { border-color: rgba(142, 128, 255, 0.45); color: #fff; }
+.st .csv-file:disabled { opacity: 0.5; cursor: not-allowed; }
+.st .csv-file:disabled::file-selector-button { cursor: not-allowed; }
+
+/* Small eyebrow above console / example blocks */
+.st .csv-block-h {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--st-fg-mut); margin-bottom: 8px;
+}
+
+/* Mono panels for console output + the example row */
+.st .csv-mono {
+  margin: 0; border-radius: 12px;
+  border: 1px solid var(--st-line-strong); background: var(--st-field);
+  padding: 12px 14px;
+  font-family: var(--st-mono); font-size: 12px; line-height: 1.65; color: var(--st-fg-dim);
+  white-space: pre-wrap; word-break: break-word; overflow: auto;
+}
+.st .csv-console { max-height: 220px; }
+
+/* Legend describing each export file */
+.st .csv-legend { display: grid; gap: 8px; }
+.st .csv-legend > div { font-size: 12.5px; line-height: 1.5; color: var(--st-fg-dim); }
+.st .csv-legend b { color: var(--st-fg); font-weight: 600; }
+.st .csv-legend code { font-family: var(--st-mono); font-size: 11.5px; color: var(--st-fg); }

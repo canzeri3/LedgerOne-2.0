@@ -1,254 +1,1069 @@
-/* Route-scoped skin for /planner
-   — UI-only; no functional selectors; safe to add/remove.
-   — Reuses the dark palette you use on the coins page. */
+/* ============================================================
+   LedgerOne — Planner skin ("prime desk" redesign)
+   UI-only stylesheet, scoped to .pl on the planner page.
+   Adapted from the design-handoff planner.css onto the app's
+   existing dark tokens (Inter font, rgb(28,29,31) surfaces).
+   No functional selectors; safe to add/remove.
+   ============================================================ */
 
-/* Root canvas */
-.planner-skin {
-  --bg-page: rgb(19,20,21);
-  --bg-surface: rgb(28,29,31);
-  --bg-toolbar: rgb(19,20,21);
-  --border-subtle: rgba(255,255,255,0.06);
-  --text: rgb(209,213,219);
-  --text-dim: rgb(163,163,164);
-  --green: rgb(113,190,90);
-  --red: rgb(176,49,49);
-  --accent: rgb(136,128,213); /* your purple */
-  --radius: 16px;             /* match coins page */
-  --radius-tight: 12px;
-  --gap: 16px;
-  --gap-lg: 20px;
-  --shadow: 0 10px 30px rgba(0,0,0,0.35);
-  background: var(--bg-page);
-  color: var(--text);
-  display: grid;
-  gap: var(--gap-lg);
-  padding: 20px;
+.pl {
+  /* app palette */
+  --pl-bg: rgb(19, 20, 21);
+  --pl-surface: rgb(28, 29, 31);
+  --pl-surface-2: rgb(32, 33, 35);
+  --pl-border: rgb(41, 42, 45);
+  --pl-border-strong: rgb(58, 59, 63);
+  --pl-text: rgb(226, 228, 235);
+  --pl-text-2: rgb(163, 163, 164);
+  --pl-text-3: rgb(122, 124, 132);
+  --pl-accent: rgb(136, 128, 213);
+  --pl-accent-text: rgb(190, 184, 245);
+  --pl-accent-tint: rgba(136, 128, 213, 0.14);
+
+  /* semantic (from redesign) */
+  --pl-buy: rgb(42, 158, 94);
+  --pl-buy-soft: rgba(42, 158, 94, 0.16);
+  --pl-buy-line: rgba(42, 158, 94, 0.44);
+  --pl-sell: #f0705c;
+  --pl-sell-soft: rgba(240, 112, 92, 0.13);
+  --pl-sell-line: rgba(240, 112, 92, 0.38);
+  --pl-alert: #e6a53c;
+  --pl-alert-soft: rgba(230, 165, 60, 0.13);
+  --pl-ladder-green: rgb(42, 158, 94);
+
+  --pl-r: 6px;
+  --pl-r-sm: 6px;
 }
 
-/* Sticky toolbar: coin picker, summary chips, actions */
-.planner-skin .planner-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  backdrop-filter: saturate(1.1) blur(6px);
-  background: linear-gradient(
-    to bottom,
-    rgba(19,20,21,0.9),
-    rgba(19,20,21,0.75)
-  );
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 12px 8px;
-  display: grid;
-  grid-template-columns: 1fr auto;
+/* ============================================================
+   Page head row (title + selector)
+   ============================================================ */
+.pl .pl-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 4px 2px 22px;
+}
+.pl .pl-head h1 {
+  font-size: clamp(26px, 2.2vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  margin: 0;
+  color: var(--pl-text);
+}
+.pl .pl-head .sub {
+  font-size: 13.5px;
+  color: var(--pl-text-3);
+  margin-top: 9px;
+  max-width: 520px;
+}
+
+/* ============================================================
+   Ticker strip (coin context)
+   ============================================================ */
+.pl .pl-ticker {
+  display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: 26px;
+  flex-wrap: wrap;
+  padding: 28px 26px;
+  background: var(--pl-surface);
+  border: 1px solid var(--pl-border);
+  border-radius: var(--pl-r);
 }
-
-/* Optional sublayout inside toolbar: left = pickers/summary, right = actions */
-.planner-skin .planner-toolbar .actions {
-  display: inline-flex;
-  gap: 8px;
-}
-
-/* Main grids (two-up on desktop, stack on mobile) */
-.planner-skin .planner-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--gap-lg);
-}
-@media (min-width: 1024px) {
-  .planner-skin .planner-grid {
-    grid-template-columns: 1.1fr 1fr;
-  }
-}
-
-/* Uniform card container (uses your coins-page look) */
-.planner-skin .card {
-  background: radial-gradient(120% 140% at 10% -20%, rgba(136,128,213,0.08), transparent 45%),
-              var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-/* Inner panel spacing */
-.planner-skin .panel {
-  padding: 16px;
-}
-@media (min-width: 768px){
-  .planner-skin .panel { padding: 18px; }
-}
-
-/* Section headings normalize */
-.planner-skin h2, 
-.planner-skin .section-title {
-  font-size: 14px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin: 0 0 10px 0;
-}
-
-/* Input rows: tighter, aligned labels, coins-page look */
-.planner-skin .form-row {
-  display: grid;
-  gap: 10px;
-}
-@media (min-width: 768px){
-  .planner-skin .form-row {
-    grid-template-columns: repeat(12, 1fr);
-    gap: 12px;
-  }
-}
-.planner-skin .form-col-6 { grid-column: span 6; }
-.planner-skin .form-col-4 { grid-column: span 4; }
-.planner-skin .form-col-3 { grid-column: span 3; }
-.planner-skin .form-col-12 { grid-column: 1 / -1; }
-
-/* Inputs / selects / number fields — coins-page tokens */
-.planner-skin input[type="text"],
-.planner-skin input[type="number"],
-.planner-skin select,
-.planner-skin .Input,
-.planner-skin .Select {
-  background: rgba(255,255,255,0.035);
-  color: var(--text);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-tight);
-  padding: 10px 12px;
-  outline: none;
-}
-.planner-skin input:focus,
-.planner-skin select:focus,
-.planner-skin .Input:focus,
-.planner-skin .Select:focus {
-  border-color: rgba(136,128,213,0.45);
-  box-shadow: 0 0 0 4px rgba(136,128,213,0.12);
-}
-
-/* Buttons — subtle + primary mapping to your theme */
-.planner-skin .btn,
-.planner-skin button {
-  border-radius: var(--radius-tight);
-  border: 1px solid var(--border-subtle);
-  padding: 9px 12px;
-  background: rgba(255,255,255,0.035);
-  color: var(--text);
-  cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease;
-}
-.planner-skin .btn:hover,
-.planner-skin button:hover {
-  border-color: rgba(255,255,255,0.18);
-  transform: translateY(-1px);
-}
-.planner-skin .btn-primary {
-  background: linear-gradient(180deg, rgba(136,128,213,0.55), rgba(136,128,213,0.32));
-  border-color: rgba(136,128,213,0.45);
-}
-
-/* Tables — shared style with coins page visuals */
-.planner-skin table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-.planner-skin thead th {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  background: rgba(255,255,255,0.03);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 10px;
-}
-.planner-skin tbody td {
-  padding: 10px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.planner-skin tbody tr:nth-child(even) td {
-  background: rgba(255,255,255,0.02);
-}
-.planner-skin tfoot td {
-  font-weight: 600;
-  padding: 10px;
-  border-top: 1px solid var(--border-subtle);
-  background: rgba(255,255,255,0.03);
-}
-
-/* Progress bars (ladder progress) */
-.planner-skin .progress-rail {
-  position: relative;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  overflow: hidden;
-}
-.planner-skin .progress-fill {
-  position: absolute; inset: 0 auto 0 0;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), rgba(136,128,213,0.35));
-}
-
-/* Off-plan text colors */
-.planner-skin .text-green { color: var(--green); }
-.planner-skin .text-red { color: var(--red); }
-.planner-skin .text-dim { color: var(--text-dim); }
-
-/* Tiny badges for “Active/Inactive”, “Depth 70/90”, etc. */
-.planner-skin .badge {
-  display: inline-flex;
+.pl .pl-tk-id {
+  display: flex;
   align-items: center;
+  gap: 14px;
+}
+.pl .pl-tk-id .nm {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--pl-text);
+}
+.pl .pl-tk-id .tk {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--pl-text-3);
+  margin-top: 2px;
+}
+.pl .pl-tk-div {
+  width: 1px;
+  align-self: stretch;
+  background: var(--pl-border);
+  margin: 4px 0;
+}
+.pl .pl-tk-stat {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  padding: 4px 8px;
+}
+.pl .pl-tk-stat .l {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--pl-text-3);
+}
+.pl .pl-tk-stat .v {
+  font-size: 19px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--pl-text);
+}
+.pl .pl-tk-stat .v.big {
+  font-size: 26px;
+  font-weight: 600;
+}
+.pl .pl-chg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 11px;
   border-radius: 999px;
-  border: 1px solid var(--border-subtle);
-  background: rgba(255,255,255,0.04);
-  font-size: 12px;
+  width: fit-content;
+}
+.pl .pl-chg.pos {
+  color: var(--pl-buy);
+  background: var(--pl-buy-soft);
+}
+.pl .pl-chg.neg {
+  color: var(--pl-sell);
+  background: var(--pl-sell-soft);
+}
+.pl .pl-tk-spacer {
+  flex: 1;
 }
 
-/* Spacing helpers to drop into existing markup without logic changes */
-.planner-skin .stack-sm  { display: grid; gap: 8px;  }
-.planner-skin .stack-md  { display: grid; gap: 12px; }
-.planner-skin .stack-lg  { display: grid; gap: 16px; }
-.planner-skin .stack-xl  { display: grid; gap: 20px; }
+/* ============================================================
+   Planner panel
+   ============================================================ */
+.pl .pl-panel {
+  background: var(--pl-surface);
+  border: 1px solid var(--pl-border);
+  border-radius: var(--pl-r);
+  overflow: hidden;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 30px 60px -40px rgba(0, 0, 0, 0.85);
+}
+.pl .pl-panel .pl-rail {
+  height: 3px;
+  width: 100%;
+}
+.pl .pl-panel.buy .pl-rail {
+  background: linear-gradient(90deg, var(--pl-buy), transparent 72%);
+}
+.pl .pl-panel.sell .pl-rail {
+  background: linear-gradient(90deg, var(--pl-sell), transparent 72%);
+}
 
-/* Remove any bouncy hover lift on cards (you asked for still cards elsewhere) */
-.planner-skin .card:hover { transform: none !important; }
+/* ---- Collapse animation ----
+   PlannerPanel drives height imperatively to animate between 0 and the ladder's
+   measured height. These rules are the no-JS/pre-hydration resting states; the
+   body stays mounted so the ladder's stat portals keep rendering. */
+.pl .pl-collapse {
+  overflow: hidden;
+  transition: height 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pl .pl-collapse:not(.open) {
+  height: 0;
+}
+.pl .pl-collapse.open {
+  height: auto;
+}
+.pl .pl-collapse > .pl-collapse-inner {
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+.pl .pl-collapse.open > .pl-collapse-inner {
+  opacity: 1;
+  transition: opacity 220ms ease-in 60ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl .pl-collapse,
+  .pl .pl-collapse > .pl-collapse-inner {
+    transition: none;
+  }
+}
 
-/* Make numeric columns right-aligned by default for planner tables */
-.planner-skin .num { text-align: right; font-variant-numeric: tabular-nums; }
-
-/* Compact footnote row (e.g., “Off-plan 0.000000 / 50.0000”) */
-.planner-skin .foot {
+/* ---- Panel head ---- */
+.pl .pl-phead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--text-dim);
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 18px 26px;
+  border-bottom: 1px solid var(--pl-border);
+}
+.pl .pl-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pl .pl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+.pl .pl-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.pl .pl-panel.buy .pl-badge {
+  color: var(--pl-buy);
+  background: var(--pl-buy-soft);
+}
+.pl .pl-panel.sell .pl-badge {
+  color: var(--pl-sell);
+  background: var(--pl-sell-soft);
+}
+.pl .pl-title .tt {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--pl-text);
+}
+.pl .pl-phead-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* stat pills (panel head, right side) */
+.pl .pl-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 15px;
+  border-left: 1px solid var(--pl-border);
+}
+.pl .pl-stat:first-of-type {
+  border-left: none;
+}
+.pl .pl-stat .l {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--pl-text-3);
+}
+.pl .pl-stat .v {
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--pl-text);
+}
+.pl .pl-panel.buy .pl-stat.key .v {
+  color: var(--pl-buy);
+}
+.pl .pl-panel.sell .pl-stat.key .v {
+  color: var(--pl-sell);
+}
+
+/* ============================================================
+   Planner switcher — segmented "saved plans" control
+   ============================================================ */
+.pl .plan-seg-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--pl-bg);
+  border: 1px solid var(--pl-border);
+  border-radius: 999px;
+}
+.pl .plan-seg {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  color: var(--pl-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.pl .plan-seg:hover {
+  color: var(--pl-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.pl .plan-seg.live-seg {
+  font-weight: 600;
+  padding-left: 12px;
+}
+.pl .plan-seg.on {
+  background: var(--pl-accent-tint);
+  color: var(--pl-accent-text);
+}
+.pl .plan-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: none;
+  background: var(--pl-accent);
+}
+.pl .plan-seg.alert {
+  color: var(--pl-alert);
+}
+.pl .plan-seg.alert:hover {
+  color: var(--pl-alert);
+  background: var(--pl-alert-soft);
+}
+.pl .plan-seg.alert.on {
+  background: var(--pl-alert-soft);
+  color: var(--pl-alert);
+}
+.pl .plan-seg.live-seg.alert .plan-live {
+  background: var(--pl-alert);
+}
+
+/* ============================================================
+   Control bar (inputs) — used by planner input components
+   ============================================================ */
+.pl .pl-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px 26px;
+  flex-wrap: wrap;
+  padding: 15px 26px 16px;
+  background: var(--pl-surface-2);
+  border-bottom: 1px solid var(--pl-border);
+}
+.pl .field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pl .field.grow {
+  flex: 0 1 300px;
+  min-width: 240px;
+}
+.pl .field > label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--pl-text-3);
+}
+.pl .field-hint {
+  font-size: 11.5px;
+  color: var(--pl-text-3);
+}
+.pl .field-hint b {
+  color: var(--pl-text-2);
+  font-weight: 600;
+}
+
+/* number input */
+.pl .num-input {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  border: 1px solid var(--pl-border-strong);
+  border-radius: var(--pl-r-sm);
+  background: var(--pl-bg);
+  padding: 0 14px;
+  transition: border-color 130ms;
+}
+.pl .num-input:focus-within {
+  border-color: var(--pl-accent);
+}
+.pl .num-input .pre {
+  font-size: 13px;
+  color: var(--pl-text-3);
+}
+.pl .num-input input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--pl-text);
+  font-size: 14.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px 0 9px;
+}
+.pl .num-input .suf {
+  font-size: 11px;
+  color: var(--pl-text-3);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+
+/* quick chips */
+.pl .quick-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.pl .quick {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pl-text-2);
+  border: 1px solid var(--pl-border-strong);
+  background: var(--pl-bg);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: border-color 130ms, color 130ms;
+}
+.pl .quick:hover {
+  border-color: var(--pl-accent);
+  color: var(--pl-text);
+}
+
+/* ---- Dropdown (risk / vol / intensity) ---- */
+.pl .dd {
+  position: relative;
+  min-width: 210px;
+}
+.pl .dd-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--pl-border-strong);
+  border-radius: var(--pl-r-sm);
+  background: var(--pl-bg);
+  color: var(--pl-text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 130ms;
+}
+.pl .dd-trigger:hover,
+.pl .dd-trigger.open {
+  border-color: var(--pl-accent);
+}
+.pl .dd-trigger .lab {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.pl .dd-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--pl-text-2);
+  background: var(--pl-surface-2);
+  border: 1px solid var(--pl-border);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pl .dd-caret {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--pl-text-3);
+  transition: transform 170ms;
+}
+.pl .dd-trigger.open .dd-caret {
+  transform: rotate(180deg);
+}
+.pl .dd-panel {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--pl-surface);
+  border: 1px solid var(--pl-border-strong);
+  border-radius: var(--pl-r-sm);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+.pl .dd-opt {
+  padding: 11px 12px;
+  border-radius: var(--pl-r-sm);
+  cursor: pointer;
+  transition: background 120ms;
+}
+.pl .dd-opt:hover {
+  background: var(--pl-surface-2);
+}
+.pl .dd-opt.sel {
+  background: var(--pl-accent-tint);
+}
+.pl .dd-opt-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl .dd-opt-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pl-text);
+}
+.pl .dd-opt.sel .dd-opt-name {
+  color: var(--pl-accent-text);
+}
+.pl .dd-opt-desc {
   font-size: 12px;
-  padding-top: 6px;
+  color: var(--pl-text-3);
+  margin-top: 5px;
+  line-height: 1.45;
+}
+.pl .dd-seg {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+.pl .dd-seg i {
+  height: 6px;
+  flex: 1;
+  max-width: 24px;
+  border-radius: 2px;
+  background: var(--pl-border-strong);
+}
+.pl .dd-opt.sel .dd-seg i {
+  background: var(--pl-accent);
 }
 
-/* Ensure any shadcn/ui Cards or third-party components inherit skin */
-.planner-skin .shadcn-card,
-.planner-skin .recharts-default-tooltip {
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: var(--radius) !important;
-  color: var(--text) !important;
+/* ============================================================
+   LADDER — the hero
+   ============================================================ */
+.pl .pl-ladder {
+  background: var(--pl-surface-2);
+  border: 1px solid var(--pl-border-strong);
+  border-radius: var(--pl-r-sm);
+  margin: 18px 26px 0;
+  overflow: hidden;
 }
 
-/* Make Buy grid asymmetric: inputs narrower (left), ladder wider (right) */
-@media (min-width: 1024px) {
-  .planner-skin .planner-grid--buy {
-    /* tweak weights to taste; left hugs, right stretches */
-    grid-template-columns: 0.85fr 1.45fr;
+/* Coins page only: drop the ladder's card box so the active buy/sell tables
+   render bare and edge-to-edge, matching the sell planner history table. */
+.pl.pl-coins .pl-ladder {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+/* actionable banner */
+.pl .pl-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 26px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--pl-alert-soft);
+  background: var(--pl-alert-soft);
+  border-radius: var(--pl-r-sm);
+  font-size: 13px;
+  color: var(--pl-text-2);
+}
+.pl .pl-banner .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--pl-alert);
+  flex: none;
+}
+.pl .pl-banner b {
+  color: var(--pl-text);
+  font-weight: 600;
+}
+.pl .pl-banner .sep {
+  color: var(--pl-text-3);
+}
+.pl .pl-banner .alert-txt {
+  color: var(--pl-alert);
+}
+
+/* informational note (dashed) */
+.pl .pl-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px dashed var(--pl-border-strong);
+  border-radius: var(--pl-r-sm);
+  font-size: 12.5px;
+  color: var(--pl-text-3);
+}
+.pl .pl-note b {
+  color: var(--pl-text-2);
+}
+
+.pl .ldr-scroll {
+  overflow-x: auto;
+}
+.pl .ldr {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 660px;
+}
+.pl .ldr thead th {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pl-text-3);
+  text-align: left;
+  padding: 15px 14px 12px;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--pl-border-strong);
+}
+.pl .ldr thead th:first-child {
+  padding-left: 22px;
+}
+.pl .ldr thead th:last-child {
+  padding-right: 22px;
+}
+.pl .ldr th.r {
+  text-align: right;
+}
+.pl .ldr thead th .th-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pl .ldr thead th .th-l svg {
+  color: var(--pl-text-3);
+  opacity: 0.85;
+}
+
+.pl .ldr tbody td {
+  padding: 0 14px;
+  height: 54px;
+  border-bottom: 1px solid var(--pl-border);
+  font-size: 15px;
+  vertical-align: middle;
+  color: var(--pl-text);
+}
+.pl .ldr tbody td:first-child {
+  padding-left: 22px;
+}
+.pl .ldr tbody td:last-child {
+  padding-right: 22px;
+}
+.pl .ldr tbody tr {
+  transition: background 110ms;
+}
+.pl .ldr tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.05);
+}
+.pl .ldr tbody tr:hover {
+  background: rgba(136, 128, 213, 0.1);
+}
+
+/* level marker */
+.pl .ldr .lvl {
+  width: 56px;
+}
+.pl .ldr .lvl .ix {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--pl-text-3);
+  border: 1px solid var(--pl-border);
+  border-radius: 6px;
+}
+
+/* price + numerics */
+.pl .ldr .tgt {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--pl-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pl .ldr .num {
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.pl .ldr .num.coins {
+  color: var(--pl-text-2);
+}
+.pl .ldr .num.amt {
+  color: var(--pl-text);
+}
+
+/* progress column */
+.pl .ldr-prog {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: flex-end;
+  min-width: 188px;
+}
+.pl .ldr-prog-track {
+  flex: 1;
+  max-width: 150px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.pl .ldr-prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pl-ladder-green);
+  transition: width 200ms;
+}
+.pl .ldr-prog-pct {
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  width: 46px;
+  text-align: right;
+  color: var(--pl-text-3);
+}
+
+/* done = filled (confident green) */
+.pl .ldr tbody tr.done .ix {
+  color: var(--pl-ladder-green);
+  border-color: var(--pl-ladder-green);
+  font-weight: 600;
+}
+.pl .ldr tbody tr.done .tgt,
+.pl .ldr tbody tr.done .num,
+.pl .ldr tbody tr.done .ldr-prog-pct {
+  color: var(--pl-ladder-green);
+  font-weight: 600;
+}
+
+/* alert = triggered, needs action (amber) */
+.pl .ldr tbody tr.alert .ix {
+  color: var(--pl-alert);
+  border-color: rgba(230, 165, 60, 0.45);
+}
+.pl .ldr tbody tr.alert .tgt,
+.pl .ldr tbody tr.alert .num,
+.pl .ldr tbody tr.alert .ldr-prog-pct {
+  color: var(--pl-alert);
+}
+
+/* totals footer */
+.pl .ldr tfoot td {
+  height: 52px;
+  padding: 0 14px;
+  background: var(--pl-surface-2);
+  border-top: 1px solid var(--pl-border-strong);
+  vertical-align: middle;
+}
+.pl .ldr tfoot td:first-child {
+  padding-left: 22px;
+}
+.pl .ldr tfoot td:last-child {
+  padding-right: 22px;
+}
+.pl .ldr tfoot .ft-lbl {
+  font-size: 12px;
+  color: var(--pl-text-3);
+  margin-right: 9px;
+}
+.pl .ldr tfoot .ft-off {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pl-alert);
+  margin-right: 9px;
+}
+.pl .ldr tfoot .ft-v {
+  font-size: 13.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--pl-text);
+}
+.pl .ldr tfoot .ft-m {
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pl-text-3);
+}
+.pl .ldr tfoot .ft-sep {
+  color: var(--pl-text-3);
+  margin: 0 6px;
+}
+
+/* ============================================================
+   Panel footer (meta + actions)
+   ============================================================ */
+.pl .pl-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 26px;
+}
+.pl .pl-foot .meta {
+  font-size: 12.5px;
+  color: var(--pl-text-3);
+}
+.pl .pl-foot .meta b {
+  color: var(--pl-text-2);
+  font-weight: 600;
+}
+.pl .pl-foot .acts {
+  display: flex;
+  gap: 10px;
+}
+.pl .pl-foot .foot-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ============================================================
+   Portal-rendered dropdown panels (mounted on document.body,
+   outside .pl — mirror of .dd-panel / .dd-opt styling)
+   ============================================================ */
+.pl-dd-portal {
+  background: rgb(28, 29, 31);
+  border: 1px solid rgb(58, 59, 63);
+  border-radius: 6px;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+.pl-dd-portal .dd-opt {
+  padding: 11px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.pl-dd-portal .dd-opt:hover {
+  background: rgb(32, 33, 35);
+}
+.pl-dd-portal .dd-opt.sel {
+  background: rgba(136, 128, 213, 0.14);
+}
+.pl-dd-portal .dd-opt-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl-dd-portal .dd-opt-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(226, 228, 235);
+}
+.pl-dd-portal .dd-opt.sel .dd-opt-name {
+  color: rgb(190, 184, 245);
+}
+.pl-dd-portal .dd-opt-desc {
+  font-size: 12px;
+  color: rgb(122, 124, 132);
+  margin-top: 5px;
+  line-height: 1.45;
+}
+.pl-dd-portal .dd-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgb(163, 163, 164);
+  background: rgb(32, 33, 35);
+  border: 1px solid rgb(41, 42, 45);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pl-dd-portal .dd-seg {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+.pl-dd-portal .dd-seg i {
+  height: 6px;
+  flex: 1;
+  max-width: 24px;
+  border-radius: 2px;
+  background: rgb(58, 59, 63);
+}
+.pl-dd-portal .dd-opt.sel .dd-seg i {
+  background: rgb(136, 128, 213);
+}
+
+/* buttons */
+.pl .btn,
+.pl-modal .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  padding: 9px 17px;
+  border-radius: 6px;
+  border: 1px solid rgb(58, 59, 63);
+  background: transparent;
+  color: rgb(163, 163, 164);
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, color 130ms;
+}
+.pl .btn:hover,
+.pl-modal .btn:hover {
+  border-color: rgb(122, 124, 132);
+  color: rgb(226, 228, 235);
+}
+.pl .btn-primary,
+.pl-modal .btn-primary {
+  background: rgb(94, 84, 199);
+  border-color: transparent;
+  color: #fff;
+}
+.pl .btn-primary:hover,
+.pl-modal .btn-primary:hover {
+  background: rgb(108, 98, 212);
+  border-color: transparent;
+  color: #fff;
+}
+.pl .btn-danger,
+.pl-modal .btn-danger {
+  color: #f0705c;
+  border-color: rgba(240, 112, 92, 0.45);
+}
+.pl .btn-danger:hover,
+.pl-modal .btn-danger:hover {
+  background: rgba(240, 112, 92, 0.13);
+  color: #f0705c;
+  border-color: #f0705c;
+}
+
+/* ============================================================
+   Confirm modal
+   ============================================================ */
+.pl-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 11, 15, 0.62);
+  backdrop-filter: blur(3px);
+  animation: pl-modal-fade 140ms ease-out;
+}
+.pl-modal {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: rgb(28, 29, 31);
+  border: 1px solid rgb(58, 59, 63);
+  border-radius: 6px;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
+  padding: 26px 26px 22px;
+  animation: pl-modal-rise 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pl-modal-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  color: #e6a53c;
+  background: rgba(230, 165, 60, 0.13);
+  margin-bottom: 16px;
+}
+.pl-modal-icon.danger {
+  color: #f0705c;
+  background: rgba(240, 112, 92, 0.13);
+}
+.pl-modal-title {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: rgb(226, 228, 235);
+}
+.pl-modal-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgb(163, 163, 164);
+  margin: 0 0 22px;
+}
+.pl-modal-body b {
+  color: rgb(226, 228, 235);
+  font-weight: 600;
+}
+.pl-modal-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@keyframes pl-modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
-/* Sell section layout — Inputs narrow (left), Planner wide (right) */
-@media (min-width: 1024px) {
-  .planner-skin .planner-grid--sell {
-    grid-template-columns: 0.85fr 1.45fr;
+@keyframes pl-modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1080px) {
+  .pl .pl-tk-spacer {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .pl .pl-phead-right .pl-stat {
+    display: none;
+  }
+  .pl .field.grow,
+  .pl .dd {
+    width: 100%;
+    flex: 1 1 100%;
   }
 }

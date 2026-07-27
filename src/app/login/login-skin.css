@@ -1,0 +1,252 @@
+/* ============================================================
+   LedgerOne · Sign-in skin
+   Ported from the "LedgerOne Sign In" design export.
+   Everything is scoped under .l1-auth so the design tokens and
+   the ported classes never leak into the rest of the app.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;700&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+.l1-auth {
+  /* ---------- Surfaces ---------- */
+  --color-bg-base:         #0D0E14;
+  --color-bg-surface:      #101117;
+  --color-bg-elevated:     #131420;
+  --color-border:          #1B1D2A;
+  --color-border-strong:   #2E3050;
+
+  /* ---------- Accent ---------- */
+  --color-accent-purple:        #5E54C0;
+  --color-accent-purple-hover:  #7E6FFF;
+  --color-accent-purple-muted:  #3D3680;
+
+  /* ---------- Text ---------- */
+  --color-text-primary:    #FFFFFF;
+  --color-text-secondary:  #9899B0;
+  --color-text-muted:      #4E5070;
+
+  /* ---------- Semantic ---------- */
+  --color-danger:          #E05B5B;
+
+  /* ---------- Fonts ---------- */
+  --font-display: 'Sora', system-ui, -apple-system, sans-serif;
+  --font-ui:      'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-base: 200ms;
+
+  background: var(--color-bg-base);
+  font-family: var(--font-ui);
+}
+
+/* ---- Full-viewport centered stack ---- */
+.l1-auth .auth-wrap {
+  position: relative; z-index: 1;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 72px 24px;
+}
+
+/* ---- Back-to-home button (top-left) ---- */
+.l1-auth .auth-back {
+  position: absolute; top: 28px; left: 28px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 500; font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 8px 15px 8px 12px; border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: rgba(255,255,255,0.02);
+  text-decoration: none;
+  transition: color var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out);
+}
+.l1-auth .auth-back:hover {
+  color: #fff;
+  border-color: var(--color-accent-purple-muted);
+  background: rgba(255,255,255,0.04);
+}
+.l1-auth .auth-back svg { transition: transform var(--dur-base) var(--ease-out); }
+.l1-auth .auth-back:hover svg { transform: translateX(-2px); }
+
+@media (max-width: 520px) {
+  .l1-auth .auth-back { top: 18px; left: 18px; padding: 7px 13px 7px 11px; font-size: 12px; }
+}
+
+.l1-auth .auth-aurora {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 900px; height: 760px; max-width: 120vw;
+  background: radial-gradient(closest-side,
+    rgba(155,140,255,0.14) 0%, rgba(124,111,247,0.055) 38%, transparent 72%);
+  filter: blur(26px); pointer-events: none; z-index: 0;
+}
+
+.l1-auth .auth-stack {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 440px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+
+/* ---- Brand badge ---- */
+.l1-auth .auth-badge {
+  font-family: var(--font-ui); font-weight: 500;
+  font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--color-text-secondary);
+  padding: 9px 20px; border-radius: 999px;
+  border: 1px solid var(--color-border-strong);
+  background: rgba(255,255,255,0.02);
+  transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+}
+.l1-auth .auth-badge:hover { color: #fff; border-color: var(--color-accent-purple-muted); }
+
+.l1-auth .auth-title {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 38px; line-height: 1.08; letter-spacing: -0.025em;
+  color: var(--color-text-primary);
+  margin: 30px 0 12px; text-wrap: balance;
+}
+
+.l1-auth .auth-sub {
+  font-size: 16px; line-height: 1.5;
+  color: var(--color-text-secondary); margin: 0 0 40px;
+}
+
+/* ---- Card ---- */
+.l1-auth .auth-card {
+  width: 100%; text-align: left;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 34px 34px 30px;
+  display: flex; flex-direction: column; gap: 22px;
+  box-shadow: 0 40px 110px -44px rgba(0,0,0,0.85),
+              inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* ---- Fields ---- */
+.l1-auth .l1-field { display: flex; flex-direction: column; gap: 8px; }
+
+.l1-auth .auth-card .l1-field label {
+  font-family: var(--font-ui); font-weight: 500;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.l1-auth .auth-card .l1-field input {
+  width: 100%;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--color-text-primary);
+  padding: 14px 16px;
+  outline: none;
+  transition: border-color var(--dur-base) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out);
+}
+.l1-auth .auth-card .l1-field input:focus {
+  border-color: var(--color-accent-purple);
+  box-shadow: 0 0 0 2px rgba(107,91,239,0.20);
+}
+.l1-auth .auth-card .l1-field input::placeholder { color: var(--color-text-muted); }
+
+.l1-auth .auth-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.l1-auth .auth-forgot {
+  font-family: var(--font-ui); font-weight: 500; font-size: 13px;
+  color: var(--color-accent-purple-hover);
+  text-decoration: none;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.l1-auth .auth-forgot:hover { color: #fff; }
+
+/* ---- Buttons ---- */
+.l1-auth .l1-btn {
+  font-family: var(--font-ui); font-weight: 500;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 10px 20px; font-size: 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  white-space: nowrap;
+  transition: transform 240ms cubic-bezier(0.2, 0.65, 0.2, 1),
+              background 240ms ease, border-color 240ms ease,
+              color 240ms ease, box-shadow 240ms ease;
+}
+.l1-auth .l1-btn:hover { transform: translateY(-1px); }
+.l1-auth .l1-btn:active { transform: translateY(0); transition-duration: 90ms; }
+
+.l1-auth .l1-btn-primary { background: var(--color-accent-purple); color: #fff; }
+.l1-auth .l1-btn-primary:hover {
+  background: var(--color-accent-purple-hover);
+  box-shadow: 0 0 20px rgba(107,91,239,0.4);
+}
+
+.l1-auth .l1-btn[disabled] {
+  cursor: not-allowed; opacity: 0.65;
+  transform: none; box-shadow: none;
+}
+
+.l1-auth .auth-submit {
+  width: 100%; margin-top: 2px;
+  padding-top: 15px; padding-bottom: 15px; font-size: 15px; border-radius: 10px;
+}
+
+/* ---- Footer / switch ---- */
+.l1-auth .auth-switch {
+  text-align: center; font-size: 14px;
+  color: var(--color-text-secondary); margin: 4px 0 0;
+}
+.l1-auth .auth-switch a {
+  color: var(--color-accent-purple-hover); text-decoration: none;
+  transition: color var(--dur-base) var(--ease-out);
+}
+.l1-auth .auth-switch a:hover { color: #fff; }
+
+.l1-auth .auth-note {
+  max-width: 400px; margin: 24px auto 0;
+  font-size: 12.5px; line-height: 1.6; color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ---- Error state ---- */
+.l1-auth .auth-error {
+  font-family: var(--font-ui);
+  font-size: 13px; line-height: 1.5;
+  color: var(--color-danger);
+  background: rgba(224,91,91,0.08);
+  border: 1px solid rgba(224,91,91,0.35);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* ---- Success / info state ---- */
+.l1-auth .auth-success {
+  font-family: var(--font-ui);
+  font-size: 13px; line-height: 1.5;
+  color: #3ECFA4;
+  background: rgba(62,207,164,0.08);
+  border: 1px solid rgba(62,207,164,0.32);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* ---- Small inline hint (under a field / inside the card) ---- */
+.l1-auth .auth-hint {
+  font-family: var(--font-ui);
+  font-size: 11.5px; line-height: 1.55;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 520px) {
+  .l1-auth .auth-title { font-size: 30px; }
+  .l1-auth .auth-card { padding: 26px 22px; border-radius: 12px; }
+}
