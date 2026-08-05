@@ -11,6 +11,9 @@ import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTable'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
+import MobileDashboard from '@/components/dashboard/MobileDashboard'
+import { useIsMobile } from '@/lib/useMediaQuery'
+import './dashboard-mobile.css'
 
 import {
   buildBuyLevels,
@@ -492,6 +495,7 @@ function ScrollingNumericText({ text }: { text: string }) {
 export default function Page() {
   const { user, loading: authLoading } = useUser()
   const router = useRouter()
+  const isMobile = useIsMobile()
   const [tf, setTf] = useState<Timeframe>('30d')
   const STORAGE_KEY_TOTAL_PL = 'lg1.dashboard.showTotalPL'
   const [showTotalPL, setShowTotalPL] = useState(false)
@@ -818,6 +822,34 @@ const { delta, pct } = useMemo(() => {
   if (!hasBootstrapped && !initialPageReady) return null
 
   const chartRefreshing = coinIds.length > 0 && !!historiesMap && historiesValidating
+
+  // Phones get the dedicated mobile layout. Every number below is already computed
+  // above, so the mobile view fetches nothing extra and stays in lockstep with desktop.
+  if (isMobile) {
+    return (
+      <div data-dashboard-page className="-mx-4">
+        <MobileDashboard
+          tf={tf}
+          onTfChange={setTf}
+          showTotalPL={showTotalPL}
+          onShowTotalPLChange={setShowTotalPL}
+          chartSeries={chartSeries}
+          chartLoading={coinIds.length > 0 && !historiesMap}
+          liveValue={liveValue}
+          totalProfit={totalProfit}
+          realizedProfit={realizedProfit}
+          unrealizedProfit={unrealizedProfit}
+          delta={delta}
+          pct={pct}
+          coinIds={coinIds}
+          historiesMapLive={historiesMapLive ?? {}}
+          trades={trades}
+          coins={coins}
+          tradesByCoinForAlerts={tradesByCoinForAlerts}
+        />
+      </div>
+    )
+  }
 
 return (
     <div data-dashboard-page className="space-y-6">

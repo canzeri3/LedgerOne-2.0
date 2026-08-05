@@ -1,0 +1,61 @@
+/* ============================================================
+   LedgerOne — Dashboard mobile skin · UI only
+   Scoped to [data-dashboard-mobile]; desktop is untouched.
+   ============================================================ */
+
+/* The reference layout puts one wide pill where the buy/sell/deposit row sat.
+   We reuse <AlertsTooltip> verbatim (all alert logic stays in one place) and
+   only restyle its trigger + panel for touch. */
+[data-mobile-alert-pill] button {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 14px 18px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  touch-action: manipulation;
+}
+
+[data-mobile-alert-pill] button,
+[data-mobile-alert-pill] button:hover {
+  background-color: rgba(136, 128, 213, 0.12);
+}
+
+[data-mobile-alert-pill] button > span {
+  justify-content: center;
+}
+
+[data-mobile-alert-pill] button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Drop the anchored 260px popover for a full-width sheet under the pill. */
+[data-mobile-alert-pill] div[role='dialog'] {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+[data-mobile-alert-pill] div[role='dialog'] a {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Recharts marks the chart <svg> as role="application" with tabindex="0", so a
+   tap focuses it and the browser paints its focus ring around the whole plot.
+   These charts aren't keyboard-editable controls — drop the ring and the touch
+   highlight. Scoped to the mobile wrapper, so desktop keeps its focus styles. */
+[data-dashboard-mobile] .recharts-wrapper,
+[data-dashboard-mobile] .recharts-wrapper:focus,
+[data-dashboard-mobile] .recharts-wrapper:focus-visible,
+[data-dashboard-mobile] .recharts-surface,
+[data-dashboard-mobile] .recharts-surface:focus,
+[data-dashboard-mobile] .recharts-surface:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}

@@ -40,6 +40,19 @@
 .coin .recharts-surface:focus-visible {
   outline: none;
 }
+
+/* Touch layout: also clear any ring/tap highlight a tap can leave on the chart.
+   Scoped to the mobile wrapper, so the desktop coin page is unaffected. */
+[data-coin-mobile] .recharts-wrapper,
+[data-coin-mobile] .recharts-wrapper:focus,
+[data-coin-mobile] .recharts-wrapper:focus-visible,
+[data-coin-mobile] .recharts-surface,
+[data-coin-mobile] .recharts-surface:focus,
+[data-coin-mobile] .recharts-surface:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
 .coin .card-h {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; flex-wrap: wrap;

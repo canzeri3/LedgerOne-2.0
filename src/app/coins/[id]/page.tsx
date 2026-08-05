@@ -8,6 +8,8 @@ import TradesList from '@/components/coins/TradesList'
 import CoinValueChart from '@/components/coins/CoinValueChart'
 import CoinPlannersUnderAddTrade from '@/components/coin/CoinPlannersUnderAddTrade'
 import StickyToggleAddTrade from '@/components/coin/StickyToggleAddTrade'
+import CoinMobileSwitch from '@/components/coins/CoinMobileSwitch'
+import MobileCoinPage from '@/components/coins/MobileCoinPage'
 import './coin-skin.css'
 
 type RouteParams = { id: string }
@@ -35,30 +37,44 @@ export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
   const name = meta?.name ?? id
   const symbol = meta?.symbol ?? id
 
+  // Add Trade, planners and the trades list are shared by both layouts; only the
+  // branch the switch returns is mounted, so this is rendered once at runtime.
+  const positionStack = (
+    <div className="mt-6 space-y-12">
+      {/* Boundary so sticky ends at the bottom of planners */}
+      <div style={{ position: 'relative' }} className="space-y-6">
+        <StickyToggleAddTrade id={id} />
+        <CoinPlannersUnderAddTrade />
+      </div>
+
+      <div className="px-6 md:px-8 lg:px-6">
+        <TradesList id={id} />
+      </div>
+    </div>
+  )
+
   return (
     <div className="coin coins-page space-y-6">
-      {/* Header stat card with price + 24h change */}
-      <CoinOverview id={id} name={name} symbol={symbol} />
-      <CoinStatsGrid id={id} />
+      <CoinMobileSwitch
+        mobile={
+          <div className="-mx-4">
+            <MobileCoinPage id={id} name={name} symbol={symbol}>
+              {positionStack}
+            </MobileCoinPage>
+          </div>
+        }
+      >
+        {/* Header stat card with price + 24h change */}
+        <CoinOverview id={id} name={name} symbol={symbol} />
+        <CoinStatsGrid id={id} />
 
- {/* Full-width Value chart */}
-<div style={{ marginTop: '3rem' }} className="px-6 md:px-6 lg:px-5">
-  <CoinValueChart coingeckoId={id} />
-</div>
-
-
-      {/* Stack: Add Trade (with sticky toggle), Planners, Recent Trades */}
-      <div className="mt-6 space-y-12">
-        {/* Boundary so sticky ends at the bottom of planners */}
-        <div style={{ position: 'relative' }} className="space-y-6">
-          <StickyToggleAddTrade id={id} />
-          <CoinPlannersUnderAddTrade />
+        {/* Full-width Value chart */}
+        <div style={{ marginTop: '3rem' }} className="px-6 md:px-6 lg:px-5">
+          <CoinValueChart coingeckoId={id} />
         </div>
 
-        <div className="px-6 md:px-8 lg:px-6">
-  <TradesList id={id} />
-</div>
-      </div>
+        {positionStack}
+      </CoinMobileSwitch>
     </div>
   )
 }

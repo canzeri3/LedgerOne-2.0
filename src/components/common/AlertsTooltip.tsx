@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMenuTransition } from '@/lib/useMenuTransition'
+import { useHoverCapable } from '@/lib/useMediaQuery'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -114,6 +115,11 @@ export function AlertsTooltip({
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const closeTimer = useRef<number | null>(null)
 
+  // Touch screens can't hover: a tap fires pointerenter then pointerleave, so the
+  // hover wiring below would open and immediately shut the panel. On those devices
+  // the trigger becomes a toggle and the panel stays until a tap lands outside it.
+  const hoverCapable = useHoverCapable()
+
   // Enter/exit animation: keep the panel mounted through the close transition so
   // it can retract smoothly (the CSS "easeReverse").
   const { mounted: render, shown } = useMenuTransition(open)
@@ -143,6 +149,31 @@ export function AlertsTooltip({
       setOpen(false)
     }, 90)
   }
+
+  // Tap-to-dismiss for touch devices. Capture phase so a child that stops
+  // propagation can't strand the panel open.
+  useEffect(() => {
+    if (hoverCapable || !open) return
+
+    const onDocPointerDown = (event: PointerEvent) => {
+      const wrap = wrapRef.current
+      const target = event.target
+      if (wrap && target instanceof Node && wrap.contains(target)) return
+      setOpen(false)
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('pointerdown', onDocPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [hoverCapable, open])
 
 
   // --- DATA FETCHES (same sources already used on this page) ---
@@ -629,8 +660,8 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
     <div
       ref={wrapRef}
       className="relative"
-      onPointerEnter={openNow}
-      onPointerLeave={(e) => scheduleClose(e)}
+      onPointerEnter={hoverCapable ? openNow : undefined}
+      onPointerLeave={hoverCapable ? (e) => scheduleClose(e) : undefined}
     >
           {/* Button (only this and the panel can open the tooltip) */}
       <button
@@ -641,7 +672,8 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
         type="button"
         aria-haspopup="true"
         aria-expanded={open}
-        onPointerEnter={openNow}
+        onPointerEnter={hoverCapable ? openNow : undefined}
+        onClick={hoverCapable ? undefined : () => setOpen(v => !v)}
       >
 
         <div className="absolute inset-0 bg-gradient-to-r from-indigo-400/10 via-indigo-400/10 to-indigo-300/10 blur-xl transition-opacity" />
@@ -681,8 +713,8 @@ const Badge = ({ kind }: { kind: 'Buy' | 'Sell' | 'Cycle' }) => {
             "hdr-pop absolute right-0 z-50 mt-2 w-[260px] rounded-lg bg-[rgb(42,44,49)] ring-1 ring-slate-700/40 shadow-2xl p-2",
             shown ? "is-open" : "",
           ].join(" ")}
-          onPointerEnter={openNow}
-          onPointerLeave={(e) => scheduleClose(e)}
+          onPointerEnter={hoverCapable ? openNow : undefined}
+          onPointerLeave={hoverCapable ? (e) => scheduleClose(e) : undefined}
         >
           <div className="grid gap-1">
             {user && entLoading ? (
@@ -715,8 +747,9 @@ href={
 
   prefetch
   className="hdr-pop-item flex items-center justify-between px-2 py-2 rounded-lg hover:bg-slate-700/20 text-slate-100/95 text-xs ring-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(125,138,206)]/50 transition-colors"
-  onPointerEnter={openNow} /* keeps tooltip open while moving toward it */
+  onPointerEnter={hoverCapable ? openNow : undefined} /* keeps tooltip open while moving toward it */
   onFocus={openNow}
+  onClick={hoverCapable ? undefined : () => setOpen(false)}
 >
   <span className="flex items-center gap-2">
     <Badge kind={it.side} />
