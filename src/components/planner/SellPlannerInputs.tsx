@@ -6,6 +6,7 @@ import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import { useMenuTransition } from '@/lib/useMenuTransition'
+import SlotPortal from '@/components/planner/SlotPortal'
 
 
 /* ── shared UI tokens matched to BuyPlannerInputs ─────────── */
@@ -634,9 +635,23 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         />
       </div>
 
-      {/* Generate — same handler, skin button */}
+      {/* Edit Planner — top control; runs the same regenerate action as
+          Generate Ladder, which now lives in the footer next to Delete */}
       <div className="field">
         <label aria-hidden="true">&nbsp;</label>
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={busy}
+          className="btn disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          Edit Planner
+        </button>
+      </div>
+
+      {/* Generate Ladder — moved to the card footer next to Delete. Portaled so it
+          keeps this component's onGenerate handler and busy/disabled state. */}
+      <SlotPortal slotId="sell-generate-slot">
         <button
           type="button"
           onClick={onGenerate}
@@ -645,7 +660,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         >
           Generate Ladder
         </button>
-      </div>
+      </SlotPortal>
 
       {(help || err || msg) && (
         <div className="field" style={{ justifyContent: 'flex-end' }}>

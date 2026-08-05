@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { useMemo, useEffect } from 'react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
 
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import {
@@ -105,6 +105,28 @@ const plan: BuyLevel[] = useMemo(() => {
     },
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
+
+  // Auto-refresh when a trade is added (or a planner is regenerated). TradesPanel
+  // fires 'buyPlannerUpdated'/'sellPlannerUpdated' after every Add Trade; mirror
+  // the SellPlannerLadder so the buy ladder re-reads its planner + fills at once.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const bump = (e: any) => {
+      const detailCoin = e?.detail?.coinId
+      if (detailCoin && detailCoin !== coingeckoId) return
+      if (!user) return
+      globalMutate(['/buy-planner/active-ladder', user.id, coingeckoId])
+      if (planner?.id) {
+        globalMutate(['/trades/buys/for-ladder', user.id, coingeckoId, planner.id])
+      }
+    }
+    window.addEventListener('buyPlannerUpdated', bump)
+    window.addEventListener('sellPlannerUpdated', bump)
+    return () => {
+      window.removeEventListener('buyPlannerUpdated', bump)
+      window.removeEventListener('sellPlannerUpdated', bump)
+    }
+  }, [user?.id, coingeckoId, planner?.id])
 
   const buys: BuyTrade[] = useMemo(() => {
     const rows = buysRaw ?? []
@@ -241,7 +263,9 @@ const plan: BuyLevel[] = useMemo(() => {
 
       {actionableNow.alertRows > 0 && (
         <div className="pl-banner">
-          <span className="dot" aria-hidden="true" />
+          <span className="dot" aria-hidden="true">
+            <Zap strokeWidth={2.5} />
+          </span>
           <b className="alert-txt">Actionable now</b>
 
           <span className="sep">·</span>

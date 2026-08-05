@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -321,7 +321,9 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
 
       {actionableNow.alertRows > 0 && (
         <div className="pl-banner">
-          <span className="dot" aria-hidden="true" />
+          <span className="dot" aria-hidden="true">
+            <Zap strokeWidth={2.5} />
+          </span>
           <b className="alert-txt">Actionable now</b>
 
           <span className="sep">·</span>

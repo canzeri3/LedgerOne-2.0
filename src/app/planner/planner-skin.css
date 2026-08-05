@@ -29,6 +29,12 @@
   --pl-sell-line: rgba(240, 112, 92, 0.38);
   --pl-alert: #e6a53c;
   --pl-alert-soft: rgba(230, 165, 60, 0.13);
+  --pl-alert-ring: rgba(230, 165, 60, 0.38);
+  --pl-alert-glow: rgba(230, 165, 60, 0.22);
+  --pl-alert-contrast: #241a03;
+  /* softer/lighter amber for the actionable text so it reads warm, not harsh,
+     against the dark surface (the rail/badge still use the fuller --pl-alert) */
+  --pl-alert-text: #f2d199;
   --pl-ladder-green: rgb(42, 158, 94);
 
   --pl-r: 6px;
@@ -578,36 +584,70 @@
   margin: 0;
 }
 
-/* actionable banner */
+/* actionable banner — the primary "act now" cue on the panel. It reads as
+   part of the planner: it sits on the same surface as the cards/table, with
+   the planner's own border. No glow, no motion — the amber left rail and the
+   solid amber pill are what make it the focal row the user follows. */
 .pl .pl-banner {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
   margin: 18px 26px 0;
-  padding: 12px 16px;
-  border: 1px solid var(--pl-alert-soft);
-  background: var(--pl-alert-soft);
-  border-radius: var(--pl-r-sm);
-  font-size: 13px;
-  color: var(--pl-text-2);
+  padding: 14px 20px;
+  border: 1px solid var(--pl-border);
+  border-left: 3px solid var(--pl-alert);
+  background: var(--pl-surface-2);
+  border-radius: var(--pl-r-sm, 10px);
+  font-size: 16.5px;
+  color: var(--pl-text);
 }
 .pl .pl-banner .dot {
-  width: 7px;
-  height: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
   background: var(--pl-alert);
+  color: var(--pl-alert-contrast);
   flex: none;
 }
+.pl .pl-banner .dot svg {
+  width: 16px;
+  height: 16px;
+}
+/* the detail line reads as part of the alert: labels stay legible, but the
+   key figures (count, coins, target) pick up the amber accent so the whole
+   row ties back to the pill instead of looking like plain text beside it. */
+.pl .pl-banner {
+  font-weight: 700;
+}
 .pl .pl-banner b {
-  color: var(--pl-text);
-  font-weight: 600;
+  color: var(--pl-alert-text);
+  font-weight: 800;
+  font-size: 19px;
 }
 .pl .pl-banner .sep {
-  color: var(--pl-text-3);
+  color: var(--pl-alert-text);
+  opacity: 0.6;
+  font-weight: 700;
 }
+/* "Actionable now" is a plain label now (no pill) — the detail figures are
+   the star, so this just quietly names the alert. */
 .pl .pl-banner .alert-txt {
-  color: var(--pl-alert);
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  color: var(--pl-alert-text);
+  padding: 0;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* informational note (dashed) */

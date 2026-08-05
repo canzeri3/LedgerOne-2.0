@@ -231,20 +231,41 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
 
         {/* Coins dropdown */}
       <div className="mt-4 border-t border-[rgb(41,42,45)] pt-4 md:pt-5">
-          <button
-            type="button"
-            onClick={() => setCoinsOpen((v) => !v)}
-className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04] max-md:min-h-11"
-            aria-expanded={coinsOpen}
-            aria-controls="coins-panel"
-          >
-            <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
-              Coins
-            </span>
-            <ChevronRight
-              className={`h-3.5 w-3.5 text-slate-500 transition-transform ${coinsOpen ? 'rotate-90' : ''}`}
-            />
-          </button>
+          {/* Header row: Coins toggle + inline search */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCoinsOpen((v) => !v)}
+              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04] max-md:min-h-11"
+              aria-expanded={coinsOpen}
+              aria-controls="coins-panel"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500">
+                Coins
+              </span>
+              <ChevronRight
+                className={`h-3.5 w-3.5 text-slate-500 transition-transform ${coinsOpen ? 'rotate-90' : ''}`}
+              />
+            </button>
+
+            {/* Inline search input (shrunk to fit next to the Coins card) */}
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-500" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setCoinsOpen(true)}
+                className={[
+                  'w-full rounded-md pl-7 pr-2 py-1 text-[13px] text-slate-200 placeholder:text-slate-500',
+                  'bg-[rgb(32,33,35)]',                 // subtle fill that blends with the sidebar
+                  'border border-[rgb(41,42,45)]',      // faint border
+                  'focus:outline-none focus:border-[rgb(58,59,63)]', // subtle focus, no bright ring
+                  'transition-colors',
+                ].join(' ')}
+                placeholder="Search..."
+              />
+            </div>
+          </div>
 
           {coinsMounted && (
 <div
@@ -252,24 +273,6 @@ className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-
   style={{ transformOrigin: 'top' }}
   className={`hdr-pop mt-2 px-1 md:px-2${coinsShown ? ' is-open' : ''}`}
 >
-                {/* Search input */}
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                <input
-  value={query}
-  onChange={(e) => setQuery(e.target.value)}
-  className={[
-'w-full rounded-md pl-8 pr-2 py-2 text-base text-slate-200 placeholder:text-slate-500 md:text-[14px]',
-    'bg-[rgb(32,33,35)]',                 // subtle fill that blends with the sidebar
-    'border border-[rgb(41,42,45)]',      // faint border
-    'focus:outline-none focus:border-[rgb(58,59,63)]', // subtle focus, no bright ring
-    'transition-colors',
-  ].join(' ')}
-  placeholder="Search coins..."
-/>
-
-              </div>
-
               {/* Unified coins list (UI-only reordering: favourites float to the top) */}
 <ul className="flex flex-col gap-1 max-h-[min(52dvh,28rem)] overflow-auto overflow-x-hidden overscroll-contain pr-1 scrollbar-auto-hide md:max-h-72">
                   {filteredCoins.map((c) => {

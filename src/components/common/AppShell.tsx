@@ -93,9 +93,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
     let raf = 0
     let last = -1
 
+    // <body> is the actual scroll container (it carries overflow-x:hidden), so
+    // window.scrollY stays 0 and scroll events fire on <body>, not window.
+    // Read the real offset from whichever element scrolls, and listen in the
+    // capture phase so the (non-bubbling) body scroll event still reaches us.
+    const getScrollY = () =>
+      window.scrollY ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0
+
     const update = () => {
       raf = 0
-      const next = window.scrollY > threshold ? 1 : 0
+      const next = getScrollY() > threshold ? 1 : 0
       if (next !== last) {
         last = next
         setScrolled(next === 1)
@@ -107,12 +117,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
       raf = window.requestAnimationFrame(update)
     }
 
+    const scrollOpts = { passive: true, capture: true } as AddEventListenerOptions
+
     update()
-    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('scroll', onScroll, scrollOpts)
     window.addEventListener('resize', onScroll)
 
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('scroll', onScroll, scrollOpts)
       window.removeEventListener('resize', onScroll)
       if (raf) window.cancelAnimationFrame(raf)
     }

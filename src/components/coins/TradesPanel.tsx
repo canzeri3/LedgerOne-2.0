@@ -115,6 +115,18 @@ function formatGrouped(raw: string): string {
   return decPart !== undefined ? `${intGrouped}.${decPart}` : intGrouped
 }
 
+/**
+ * Format a live price for the grouped price input. Decimals scale with
+ * magnitude (small coins keep precision, large ones stay clean), toFixed
+ * avoids scientific notation and float noise, trailing zeros are trimmed.
+ */
+function priceToInputString(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return ''
+  const decimals = n >= 1000 ? 2 : n >= 1 ? 4 : n >= 0.01 ? 6 : 8
+  const fixed = n.toFixed(decimals).replace(/\.?0+$/, '')
+  return formatGrouped(fixed)
+}
+
 /** Parse number from a formatted string with commas */
 function parseNum(v: string): number {
   if (!v) return NaN
@@ -378,6 +390,24 @@ const onPriceChange = makeLiveNumericChangeHandler(
   priceRef as React.RefObject<HTMLInputElement>,
   setPrice,
 )
+// Clicking/focusing an empty Price prefills the current live price as a
+// suggestion, then selects it so the first keystroke overwrites it. Only fills
+// when empty, so a value the user already entered is never clobbered. Reuses
+// the existing `livePrice` — no extra polling/CPU.
+const onPriceFocus = () => {
+  if (price !== '') return
+  const p = livePrice
+  if (!(typeof p === 'number' && Number.isFinite(p) && p > 0)) return
+  const formatted = priceToInputString(p)
+  if (!formatted) return
+  setPrice(formatted)
+  // Select after commit (same rAF pattern as the caret handler) so the first
+  // keystroke replaces the suggestion instead of appending to it.
+  requestAnimationFrame(() => {
+    const node = priceRef.current
+    if (node) { try { node.select() } catch {} }
+  })
+}
 const onQtyChange = makeLiveNumericChangeHandler(
   qtyRef as React.RefObject<HTMLInputElement>,
   setQty,
@@ -1446,6 +1476,7 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
               inputMode="decimal"
               type="text"
               value={price}
+              onFocus={onPriceFocus}
               onChange={onPriceChange}
             />
           </div>

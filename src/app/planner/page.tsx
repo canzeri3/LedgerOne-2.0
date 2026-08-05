@@ -720,30 +720,21 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             {/* Controls bar (Total budget + Risk profile + Save New Plan) */}
             <BuyPlannerInputs coingeckoId={coingeckoId} />
 
-            {/* Save New Plan — rendered into the controls bar next to Risk profile;
-                same confirmation gate as before (openConfirmSaveNew) */}
+            {/* Edit Current Plan — rendered into the controls bar next to Risk profile
+                (swapped with Save New Plan, which now lives in the footer actions) */}
             <SlotPortal slotId="buy-controls-save">
               <button
                 type="button"
-                onClick={() => {
-                  // Only warn about preserving history when a planner actually exists.
-                  // activeBuyPlanner === null means it has loaded AND there is none, so
-                  // save straight away. undefined (still loading) or a row → keep the
-                  // confirmation so we never overwrite an existing planner unwarned.
-                  if (activeBuyPlanner === null) {
-                    window.dispatchEvent(
-                      new CustomEvent('buyplanner:action', { detail: { action: 'save' } })
-                    )
-                  } else {
-                    openConfirmSaveNew()
-                  }
-                }}
-                className="btn btn-primary"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent('buyplanner:action', {
+                      detail: { action: 'edit' },
+                    })
+                  )
+                }
+                className="btn"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Save New Plan
+                Edit Current Plan
               </button>
             </SlotPortal>
 
@@ -774,19 +765,29 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
                   </svg>
                   Delete
                 </button>
-                {/* Edit current planner (top/budget/growth) */}
+                {/* Save New Plan — moved here from the controls bar (swapped with
+                    Edit Current Plan); same confirmation gate (openConfirmSaveNew) */}
                 <button
                   type="button"
-                  onClick={() =>
-                    window.dispatchEvent(
-                      new CustomEvent('buyplanner:action', {
-                        detail: { action: 'edit' },
-                      })
-                    )
-                  }
-                  className="btn"
+                  onClick={() => {
+                    // Only warn about preserving history when a planner actually exists.
+                    // activeBuyPlanner === null means it has loaded AND there is none, so
+                    // save straight away. undefined (still loading) or a row → keep the
+                    // confirmation so we never overwrite an existing planner unwarned.
+                    if (activeBuyPlanner === null) {
+                      window.dispatchEvent(
+                        new CustomEvent('buyplanner:action', { detail: { action: 'save' } })
+                      )
+                    } else {
+                      openConfirmSaveNew()
+                    }
+                  }}
+                  className="btn btn-primary"
                 >
-                  Edit Current Plan
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Save New Plan
                 </button>
               </div>
             </div>

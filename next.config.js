@@ -73,12 +73,8 @@ const nextConfig = {
         source: "/live,:ids",
         destination: "/api/price-live?ids=:ids",
       },
-      // Serve the standalone "How It Works" export (public/how-it-works.html)
-      // at the clean /how-it-works route. The old React page was removed.
-      {
-        source: "/how-it-works",
-        destination: "/how-it-works.html",
-      },
+      // /how-it-works is now a real React page (src/app/(marketing)/how-it-works)
+      // that uses the shared AppShell header, so the static-export rewrite is gone.
     ];
   },
 };

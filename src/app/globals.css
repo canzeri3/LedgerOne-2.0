@@ -585,7 +585,7 @@ html.lg1-route-enter #l1-app-main {
   min-height: 130px;
   transition: min-height 360ms cubic-bezier(0.2, 0.65, 0.2, 1);
 }
-.l1-nav.scrolled .l1-nav-inner { min-height: 56px; }
+.l1-nav.scrolled .l1-nav-inner { min-height: 78px; padding-top: 2px; padding-bottom: 2px; }
 .l1-nav-brand { display: flex; align-items: center; }
 .l1-nav-brand img {
   height: 92px;
@@ -594,7 +594,7 @@ html.lg1-route-enter #l1-app-main {
   image-rendering: -webkit-optimize-contrast;
   transition: height 360ms cubic-bezier(0.2, 0.65, 0.2, 1);
 }
-.l1-nav.scrolled .l1-nav-brand img { height: 44px !important; }
+.l1-nav.scrolled .l1-nav-brand img { height: 74px !important; }
 
 /* ---- Tag pill ---- */
 .l1-tag {

@@ -372,8 +372,10 @@ export default function SellPlannerCombinedCardPlanner({
           </div>
         </div>
 
-        {canDeleteSelected && (
-          <div className="flex justify-end" style={{ margin: '14px 26px 0' }}>
+        {/* Footer actions — Delete (when available) + Generate Ladder (portaled in
+            from SellPlannerInputs so it keeps its handler + busy state) */}
+        <div className="flex justify-end gap-2" style={{ margin: '14px 26px 0' }}>
+          {canDeleteSelected && (
             <button
               type="button"
               onClick={() => openConfirmSellDelete(handleDeleteSelected)}
@@ -387,8 +389,9 @@ export default function SellPlannerCombinedCardPlanner({
               </svg>
               Delete
             </button>
-          </div>
-        )}
+          )}
+          <div id="sell-generate-slot" className="contents" />
+        </div>
 
         {/* Optional helper – now also uses the same text color */}
         {hasLivePrice ? (

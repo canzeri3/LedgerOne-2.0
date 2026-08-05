@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
 import { useLivePrice } from '@/lib/useLivePrice'
 import { usePrice } from '@/lib/dataCore'
 import {
@@ -256,40 +256,33 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
               className="space-y-3"
             >
               {actionableNow.alertRows > 0 && (
-                <div className="rounded-md border border-yellow-500/20 bg-yellow-500/[0.07] px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-[13px]">
-                    <span className="inline-flex items-center gap-2 font-medium text-yellow-200/95">
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.2)]"
-                        aria-hidden="true"
-                      />
-                      Actionable now
-                    </span>
+                <div className="pl-banner">
+                  <span className="dot" aria-hidden="true">
+                    <Zap strokeWidth={2.5} />
+                  </span>
+                  <b className="alert-txt">Actionable now</b>
 
-                    <span className="text-yellow-200/80">•</span>
+                  <span className="sep">·</span>
 
-                    <span className="text-slate-200">
-                      <span className="tabular-nums">{actionableNow.alertRows}</span>{' '}
-                      {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
-                    </span>
+                  <span>
+                    <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
+                    {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
+                  </span>
 
-                    <span className="text-slate-500">·</span>
+                  <span className="sep">·</span>
 
-                    <span className="text-slate-200 tabular-nums">
-                      {actionableNow.remainingTokens.toFixed(6)} coins
-                    </span>
+                  <span>
+                    Sell <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b> coins
+                  </span>
 
-
-                    {actionableNow.lowestAlertPrice !== null && (
-                      <>
-                        <span className="text-slate-500">·</span>
-                        <span className="text-slate-200">
-                          Target:{' '}
-                          <span className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</span>
-                        </span>
-                      </>
-                    )}
-                  </div>
+                  {actionableNow.lowestAlertPrice !== null && (
+                    <>
+                      <span className="sep">@</span>
+                      <span>
+                        Target <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
 

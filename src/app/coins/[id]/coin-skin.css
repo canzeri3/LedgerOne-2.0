@@ -30,6 +30,16 @@
   border: 1px solid var(--cn-border);
   border-radius: var(--cn-r);
 }
+
+/* Recharts' accessibility layer makes the chart wrapper/surface focusable, so
+   clicking anywhere in a chart shows the browser's default focus outline (the
+   "blue border"). Suppress it — the chart isn't a keyboard-editable control. */
+.coin .recharts-wrapper:focus,
+.coin .recharts-wrapper:focus-visible,
+.coin .recharts-surface:focus,
+.coin .recharts-surface:focus-visible {
+  outline: none;
+}
 .coin .card-h {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; flex-wrap: wrap;

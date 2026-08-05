@@ -459,6 +459,11 @@ html[data-theme="light"] .pl {
   --pl-sell-line: rgba(214, 69, 48, 0.38);
   --pl-alert: #a16207;
   --pl-alert-soft: rgba(161, 98, 7, 0.12);
+  --pl-alert-ring: rgba(161, 98, 7, 0.32);
+  --pl-alert-glow: rgba(161, 98, 7, 0.18);
+  --pl-alert-contrast: #fffaf0;
+  /* keep the actionable text legible on the light surface */
+  --pl-alert-text: #8a5405;
   --pl-ladder-green: #1f8a5d;
 }
 
