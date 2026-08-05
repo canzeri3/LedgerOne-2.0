@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -69,6 +69,22 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     dedupingInterval: 15000,
   })
   const livePrice = priceRow?.price ?? null
+
+  // Ticker for the banner copy. Coin metadata (not market data), so it reads
+  // from the coins table the same way the reports page does.
+  const { data: coinSymbol } = useSWR<string | null>(
+    coingeckoId ? ['/sell-planner/coin-symbol', coingeckoId] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('coins')
+        .select('symbol')
+        .eq('coingecko_id', coingeckoId)
+        .maybeSingle()
+      if (error) throw error
+      return ((data?.symbol as string | undefined) ?? '').toUpperCase() || null
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
 
   const { data: active } = useSWR<SellPlanner | null>(
     user ? ['/sell-active', user.id, coingeckoId] : null,
@@ -264,10 +280,11 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
         remainingTokens: 0,
         remainingUsd: 0,
         lowestAlertPrice: null as number | null,
+        actionablePrice: null as number | null,
       }
     }
 
-    return rows.reduce(
+    const summary = rows.reduce(
       (acc, r) => {
         const missingTokens = Math.max(0, r.plannedTokens * (1 - r.pct))
         const green = r.pct >= 0.97
@@ -295,6 +312,16 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
         lowestAlertPrice: null as number | null,
       }
     )
+
+    // Price to quote in the banner: the one you'd actually sell at. The alert
+    // band allows live up to 1.5% below a target, so only clamp upward — if the
+    // market has run past the lowest alerting target, that's the better fill.
+    const actionablePrice =
+      summary.lowestAlertPrice === null
+        ? null
+        : Math.max(summary.lowestAlertPrice, livePrice as number)
+
+    return { ...summary, actionablePrice }
   }, [hasLive, rows, livePrice])
 
   return (
@@ -322,9 +349,9 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       {actionableNow.alertRows > 0 && (
         <div className="pl-banner">
           <span className="dot" aria-hidden="true">
-            <Zap strokeWidth={2.5} />
+            <TriangleAlert strokeWidth={2.5} />
           </span>
-          <b className="alert-txt">Actionable now</b>
+          <b className="alert-txt act-now">Sell now</b>
 
           <span className="sep">·</span>
 
@@ -336,15 +363,15 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
           <span className="sep">·</span>
 
           <span>
-            Sell <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b> coins ≈{' '}
-            <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
+            Qty : <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b>
+            {coinSymbol ? ` ${coinSymbol}` : ''}
           </span>
 
-          {actionableNow.lowestAlertPrice !== null && (
+          {actionableNow.actionablePrice !== null && (
             <>
               <span className="sep">@</span>
               <span>
-                <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+                Price: <b className="tabular-nums">{fmtCurrency(actionableNow.actionablePrice)}</b>
               </span>
             </>
           )}

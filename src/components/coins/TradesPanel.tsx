@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { usePrice } from '@/lib/dataCore'
-import { fmtCurrency } from '@/lib/format'
+import { fmtCurrency, displayCurrencySymbol, displayToUsd } from '@/lib/format'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import { buildBuyLevels, computeBuyFills, computeSellFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 import { AlertTriangle, LockKeyhole, LockKeyholeOpen, X } from 'lucide-react'
 import { mutate as globalMutate } from 'swr'
@@ -368,6 +369,11 @@ type Props = { id: string }
 
 export default function TradesPanel({ id }: Props) {
   const { user } = useUser()
+
+  // Active display currency: the fiat quantity is typed (and labelled) in this
+  // currency, then converted back to USD on submit. Trades stay stored in USD.
+  const { code: displayCode } = useDisplayCurrency()
+  const fiatLabel = `${displayCode} ${displayCurrencySymbol()}`
 
   // form state
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
@@ -1127,7 +1133,8 @@ async function submitTrade() {
   let quantityTokens = qEntered
   if (qtyMode === 'usd') {
     if (!(p > 0)) { setErr('Enter a valid Price to convert $ to tokens.'); setSaving(false); return }
-    quantityTokens = qEntered / p
+    // Amount is typed in the active display currency; Price is USD, so convert first.
+    quantityTokens = displayToUsd(qEntered) / p
   }
 
   if (side === 'buy') {
@@ -1314,7 +1321,7 @@ function resetAfterSubmit() {
   const tradeShell =
     'rounded-lg border border-[rgb(58,59,63)] bg-[rgb(41,42,43)] transition-[box-shadow,colors] duration-150 focus-within:outline-none focus-within:ring-0 focus-within:border-transparent'
         // Dynamic placeholder for Quantity
-  const qtyPlaceholder = qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'
+  const qtyPlaceholder = qtyMode === 'usd' ? `Quantity ${fiatLabel}` : 'Quantity Tokens'
   const confirmVerb = confirmOffPlanCtx?.tradeSide === 'buy' ? 'buy' : 'sell'
   return (
     <>
@@ -1496,7 +1503,7 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
             <input
               ref={qtyRef}
               className="no-spinner"
-              placeholder={qtyMode === 'usd' ? 'Quantity USD $' : 'Quantity Tokens'}
+              placeholder={qtyMode === 'usd' ? `Quantity ${fiatLabel}` : 'Quantity Tokens'}
               inputMode="decimal"
               type="text"
               value={qty}
@@ -1510,7 +1517,7 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
                 className={`${qtyMode === 'usd' ? 'on' : ''}${qtyLocked ? ' opacity-50 cursor-not-allowed' : ''}`}
                 aria-pressed={qtyMode === 'usd'}
               >
-                USD $
+                {fiatLabel}
               </button>
               <button
                 type="button"

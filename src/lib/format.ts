@@ -24,6 +24,11 @@ export function usdToDisplay(value: number): number {
   return value * FX_RATE_FROM_USD
 }
 
+/** Convert an amount typed in the active display currency back into USD (for inputs). */
+export function displayToUsd(value: number): number {
+  return value / FX_RATE_FROM_USD
+}
+
 /** Bare symbol for hand-built strings: "$" for USD/CAD, "€" for EUR. */
 export function displayCurrencySymbol(): string {
   return DISPLAY_CURRENCY === 'EUR' ? '€' : '$'

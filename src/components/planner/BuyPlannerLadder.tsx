@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -59,6 +59,22 @@ export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string 
       return (data as ActiveBuyPlanner) ?? null
     },
     { revalidateOnFocus: false, dedupingInterval: 15000 }
+  )
+
+  // Ticker for the banner copy. Coin metadata (not market data), so it reads
+  // from the coins table the same way the reports page does.
+  const { data: coinSymbol } = useSWR<string | null>(
+    coingeckoId ? ['/buy-planner/coin-symbol', coingeckoId] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('coins')
+        .select('symbol')
+        .eq('coingecko_id', coingeckoId)
+        .maybeSingle()
+      if (error) throw error
+      return ((data?.symbol as string | undefined) ?? '').toUpperCase() || null
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
   )
 
 // Build planned levels from planner settings
@@ -183,16 +199,20 @@ const plan: BuyLevel[] = useMemo(() => {
   const EPS = 1e-8
 
   const actionableNow = useMemo(() => {
-    if (!plan.length) {
-      return { alertRows: 0, remainingCoins: 0, remainingUsd: 0, lowestAlertPrice: null as number | null }
+    const empty = {
+      alertRows: 0,
+      remainingCoins: 0,
+      remainingUsd: 0,
+      lowestAlertPrice: null as number | null,
+      actionablePrice: null as number | null,
     }
+
+    if (!plan.length) return empty
 
     const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
-    if (!hasLivePrice) {
-      return { alertRows: 0, remainingCoins: 0, remainingUsd: 0, lowestAlertPrice: null as number | null }
-    }
+    if (!hasLivePrice) return empty
 
-    return plan.reduce(
+    const summary = plan.reduce(
       (acc, lv, i) => {
         const plannedUsd = Number(lv.allocation ?? 0)
         const filledUsd = Number(fills.allocatedUsd[i] ?? 0)
@@ -225,6 +245,17 @@ const plan: BuyLevel[] = useMemo(() => {
         lowestAlertPrice: null as number | null,
       }
     )
+
+    // Price to quote in the banner: the one you'd actually pay right now. The
+    // alert band allows live up to 1.5% above a level, so only clamp downward —
+    // if the market has fallen below the lowest alerting level, the same budget
+    // buys more tokens at the live price.
+    const actionablePrice =
+      summary.lowestAlertPrice === null
+        ? null
+        : Math.min(summary.lowestAlertPrice, livePrice as number)
+
+    return { ...summary, actionablePrice }
   }, [plan, fills.allocatedUsd, livePrice])
 
   return (
@@ -264,9 +295,9 @@ const plan: BuyLevel[] = useMemo(() => {
       {actionableNow.alertRows > 0 && (
         <div className="pl-banner">
           <span className="dot" aria-hidden="true">
-            <Zap strokeWidth={2.5} />
+            <TriangleAlert strokeWidth={2.5} />
           </span>
-          <b className="alert-txt">Actionable now</b>
+          <b className="alert-txt act-now">Buy now</b>
 
           <span className="sep">·</span>
 
@@ -278,14 +309,15 @@ const plan: BuyLevel[] = useMemo(() => {
           <span className="sep">·</span>
 
           <span>
-            Buy <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
+            Qty : <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
+            {coinSymbol ? ` ${coinSymbol}` : ''}
           </span>
 
-          {actionableNow.lowestAlertPrice !== null && (
+          {actionableNow.actionablePrice !== null && (
             <>
               <span className="sep">@</span>
               <span>
-                <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+                Price: <b className="tabular-nums">{fmtCurrency(actionableNow.actionablePrice)}</b>
               </span>
             </>
           )}

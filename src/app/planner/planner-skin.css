@@ -32,6 +32,9 @@
   --pl-alert-ring: rgba(230, 165, 60, 0.38);
   --pl-alert-glow: rgba(230, 165, 60, 0.22);
   --pl-alert-contrast: #241a03;
+  /* deeper, more saturated yellow used only by the banner's warning triangle so
+     the glyph reads as a proper caution sign against the dark surface */
+  --pl-alert-icon: #d99a06;
   /* softer/lighter amber for the actionable text so it reads warm, not harsh,
      against the dark surface (the rail/badge still use the fuller --pl-alert) */
   --pl-alert-text: #f2d199;
@@ -604,34 +607,35 @@
   font-size: 16.5px;
   color: var(--pl-text);
 }
+/* the cue is the warning triangle itself — no filled pill behind it, so the
+   glyph can carry the deeper yellow instead of sitting in contrast on amber */
 .pl .pl-banner .dot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  background: var(--pl-alert);
-  color: var(--pl-alert-contrast);
+  width: 36px;
+  height: 36px;
+  background: none;
+  color: var(--pl-alert-icon);
   flex: none;
 }
 .pl .pl-banner .dot svg {
-  width: 16px;
-  height: 16px;
+  width: 30px;
+  height: 30px;
 }
-/* the detail line reads as part of the alert: labels stay legible, but the
-   key figures (count, coins, target) pick up the amber accent so the whole
-   row ties back to the pill instead of looking like plain text beside it. */
+/* the detail line reads as part of the alert: the connecting words ("Buy",
+   "coins") stay in the plain text colour, while the label and the key figures
+   carry the same deep yellow as the warning triangle. */
 .pl .pl-banner {
   font-weight: 700;
 }
 .pl .pl-banner b {
-  color: var(--pl-alert-text);
+  color: var(--pl-alert-icon);
   font-weight: 800;
   font-size: 19px;
 }
 .pl .pl-banner .sep {
-  color: var(--pl-alert-text);
+  color: var(--pl-alert-icon);
   opacity: 0.6;
   font-weight: 700;
 }
@@ -641,13 +645,18 @@
   display: inline-flex;
   align-items: center;
   background: none;
-  color: var(--pl-alert-text);
+  color: var(--pl-alert-icon);
   padding: 0;
   font-weight: 800;
   font-size: 14px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+/* the banners lead with their call to action, so the label sits at the same
+   weight as the figures beside it */
+.pl .pl-banner .alert-txt.act-now {
+  font-size: 19px;
 }
 
 /* informational note (dashed) */

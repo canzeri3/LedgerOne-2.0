@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import { Layers, Target, Coins, DollarSign, TrendingUp, Zap } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
 import { useLivePrice } from '@/lib/useLivePrice'
 import { usePrice } from '@/lib/dataCore'
 import {
@@ -70,6 +70,22 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
     dedupingInterval: 15000,
   })
   const livePrice = priceRow?.price ?? null
+
+  // Ticker for the banner copy. Coin metadata (not market data), so it reads
+  // from the coins table the same way the reports page does.
+  const { data: coinSymbol } = useSWR<string | null>(
+    coingeckoId ? ['/sell-history/coin-symbol', coingeckoId] : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('coins')
+        .select('symbol')
+        .eq('coingecko_id', coingeckoId)
+        .maybeSingle()
+      if (error) throw error
+      return ((data?.symbol as string | undefined) ?? '').toUpperCase() || null
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  )
 
   // Frozen (history) planners for this coin
   const { data: planners } = useSWR<FrozenSellPlanner[]>(
@@ -246,6 +262,17 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
             }
           )
 
+          // Price to quote in the banner: the one you'd actually sell at. The
+          // alert band allows live up to 1.5% below a target, so only clamp
+          // upward — if the market has run past the lowest alerting target,
+          // that's the better fill.
+          const actionablePrice =
+            actionableNow.lowestAlertPrice === null
+              ? null
+              : live === null
+                ? actionableNow.lowestAlertPrice
+                : Math.max(actionableNow.lowestAlertPrice, live)
+
           const plannerHasAlert = actionableNow.alertRows > 0
 
           return (
@@ -258,28 +285,29 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
               {actionableNow.alertRows > 0 && (
                 <div className="pl-banner">
                   <span className="dot" aria-hidden="true">
-                    <Zap strokeWidth={2.5} />
+                    <TriangleAlert strokeWidth={2.5} />
                   </span>
-                  <b className="alert-txt">Actionable now</b>
+                  <b className="alert-txt act-now">Sell now</b>
 
                   <span className="sep">·</span>
 
                   <span>
                     <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
-                    {actionableNow.alertRows === 1 ? 'alert row' : 'alert rows'}
+                    {actionableNow.alertRows === 1 ? 'row' : 'rows'}
                   </span>
 
                   <span className="sep">·</span>
 
                   <span>
-                    Sell <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b> coins
+                    Qty : <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b>
+                    {coinSymbol ? ` ${coinSymbol}` : ''}
                   </span>
 
-                  {actionableNow.lowestAlertPrice !== null && (
+                  {actionablePrice !== null && (
                     <>
                       <span className="sep">@</span>
                       <span>
-                        Target <b className="tabular-nums">{fmtCurrency(actionableNow.lowestAlertPrice)}</b>
+                        Price: <b className="tabular-nums">{fmtCurrency(actionablePrice)}</b>
                       </span>
                     </>
                   )}
