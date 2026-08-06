@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Offline — LedgerOne</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #131415;
+        color: rgb(226, 232, 240);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
+          calc(24px + env(safe-area-inset-left));
+      }
+      img { width: 64px; height: 64px; border-radius: 14px; margin-bottom: 20px; }
+      h1 { font-size: 19px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.01em; }
+      p { font-size: 14px; line-height: 1.5; color: rgb(148, 163, 184); margin: 0 0 24px; max-width: 30ch; }
+      button {
+        appearance: none;
+        border: 1px solid rgb(137, 128, 213);
+        background: rgba(136, 128, 213, 0.12);
+        color: rgb(190, 184, 245);
+        font: inherit;
+        font-size: 14px;
+        padding: 10px 22px;
+        border-radius: 999px;
+      }
+      button:active { background: rgba(136, 128, 213, 0.2); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>You're offline</h1>
+      <p>LedgerOne needs a connection to load live prices and your ledger.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </div>
+  </body>
+</html>

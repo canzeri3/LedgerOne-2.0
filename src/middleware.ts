@@ -80,8 +80,10 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // run on everything except Next internals & static files
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)',
+    // run on everything except Next internals, static files, and PWA assets.
+    // The service worker refetches these constantly; there's no session to
+    // refresh for them, and sw.js must be served untouched at the root scope.
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|sw\\.js|manifest\\.webmanifest|offline\\.html|icons/).*)',
   ],
 }
 

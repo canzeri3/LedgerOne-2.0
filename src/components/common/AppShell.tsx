@@ -321,7 +321,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <DisplayCurrencyProvider>
-    <div className="min-h-screen text-slate-100" style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}>
+    <div data-app-shell className="min-h-screen text-slate-100" style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}>
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
 
@@ -407,6 +407,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         >
           {/* Semi-opaque header */}
              <header
+            data-app-header
             className={[
               'sticky top-0 z-40 border-b transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out will-change-auto',
               isLanding ? `l1-nav${scrolled ? ' scrolled' : ''}` : 'backdrop-blur-md',

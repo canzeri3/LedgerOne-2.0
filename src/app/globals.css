@@ -2999,3 +2999,32 @@ html.lg1-route-enter #l1-app-main {
 .pl-dd-portal .dd-opt-name {
   font-family: var(--font-sora), system-ui, sans-serif;
 }
+
+/* ── Installed PWA (iOS standalone) safe areas ──────────────────────────── */
+/* Only applies when launched from the Home Screen. PWAClient sets
+   data-standalone, so normal browser rendering is completely untouched.
+   Requires viewport-fit=cover (set in the root layout's viewport export) for
+   env(safe-area-inset-*) to report real values. */
+
+html[data-standalone='1'] [data-app-shell] {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* The header is sticky at top:0 and the status bar is translucent, so pad it
+   down past the notch/dynamic island. */
+html[data-standalone='1'] [data-app-header] {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Keep the last row of content clear of the home indicator. */
+html[data-standalone='1'] #l1-app-main {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+/* Standalone has no browser UI to rubber-band against; stop the whole app
+   sliding on overscroll while inner scrollers keep working. */
+html[data-standalone='1'],
+html[data-standalone='1'] body {
+  overscroll-behavior-y: none;
+}
