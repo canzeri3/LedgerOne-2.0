@@ -344,6 +344,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {!isLanding && (
         <>
           <div
+            data-mobile-nav-backdrop
             aria-hidden="true"
             className={[
               'fixed inset-0 z-[60] bg-black/55 transition-opacity duration-200 ease-out md:hidden',
@@ -353,6 +354,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           />
 
           <div
+            data-mobile-nav-drawer
             aria-hidden={!isMobileNavOpen}
             id="mobile-navigation-drawer"
             className={[

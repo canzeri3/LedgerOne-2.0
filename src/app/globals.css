@@ -3029,6 +3029,37 @@ html[data-standalone='1'] body {
   overscroll-behavior-y: none;
 }
 
+/* iOS can preserve an installed app's original black-translucent viewport
+   even after its launch metadata changes. In that mode WebKit's fixed/layout
+   viewport ends one top-safe-area short of the physical screen. Compensate at
+   runtime so existing Home Screen installs fill the screen without changing
+   normal mobile Safari or any desktop layout. When iOS uses the newer opaque
+   status-bar viewport, safe-area-inset-top is zero and these rules are inert. */
+@media (max-width: 767.98px) {
+  html[data-standalone='1'] [data-app-shell],
+  html[data-standalone='1'] .l1-auth,
+  html[data-standalone='1'] .l1-auth .auth-wrap {
+    min-height: calc(100dvh + env(safe-area-inset-top));
+  }
+
+  html[data-standalone='1'] .l1-auth .auth-wrap {
+    padding-top: calc(72px + env(safe-area-inset-top));
+  }
+
+  html[data-standalone='1'] .l1-auth .auth-back {
+    top: calc(18px + env(safe-area-inset-top));
+  }
+
+  html[data-standalone='1'] :is(
+    .lg1-loader-overlay,
+    .l1-coinsheet-backdrop,
+    [data-mobile-nav-backdrop],
+    [data-mobile-nav-drawer]
+  ) {
+    bottom: calc(0px - env(safe-area-inset-top));
+  }
+}
+
 /* ── Mobile bottom tab bar ──────────────────────────────────────────────── */
 /* Namespaced .l1-bottomnav (not .menu) so it can't collide with other styles.
    Ported from the Uiverse glass pill, recoloured to the app accent. The
@@ -3181,6 +3212,24 @@ html[data-standalone='1'] body {
 @media (max-width: 767.98px) {
   [data-has-tabbar] #l1-app-main {
     padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  html[data-standalone='1'] [data-has-tabbar] #l1-app-main {
+    padding-bottom: calc(
+      78px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+    );
+  }
+
+  html[data-standalone='1'] .l1-bottomnav {
+    bottom: calc(
+      12px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+    );
+  }
+
+  html[data-standalone='1'] .l1-coinsheet {
+    bottom: calc(
+      113px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+    );
   }
 }
 
