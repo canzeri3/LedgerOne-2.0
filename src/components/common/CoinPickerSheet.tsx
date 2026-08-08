@@ -125,7 +125,7 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
               {coins ? 'No coins match that search.' : 'Loading coins…'}
             </p>
           ) : (
-            filtered.map((c) => {
+            filtered.map((c, i) => {
               const href = `/coins/${c.coingecko_id}`
               const active = pathname === href
               return (
@@ -135,6 +135,9 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
                   onClick={onClose}
                   className={active ? 'is-active' : undefined}
                   aria-current={active ? 'page' : undefined}
+                  // Drives the staggered entrance. Capped so rows far down the
+                  // list aren't still waiting to appear when you scroll to them.
+                  style={{ ['--i' as string]: Math.min(i, 10) }}
                 >
                   <CoinLogo
                     symbol={c.symbol || c.coingecko_id}

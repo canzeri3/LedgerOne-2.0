@@ -26,14 +26,20 @@ const EXPANDED = 50
 const POS = 'rgb(116,170,98)'
 const NEG = 'rgb(214,66,78)'
 
-async function fetchRecentTrades(userId: string, limit: number): Promise<Row[]> {
+async function fetchRecentTrades(
+  userId: string,
+  limit: number,
+  coinId?: string
+): Promise<Row[]> {
   // One extra row tells us whether anything is hidden, without a second count query.
-  const { data, error } = await supabaseBrowser
+  let q = supabaseBrowser
     .from('trades')
     .select('id, coingecko_id, side, price, quantity, fee, trade_time')
     .eq('user_id', userId)
-    .order('trade_time', { ascending: false })
-    .limit(limit + 1)
+
+  if (coinId) q = q.eq('coingecko_id', coinId)
+
+  const { data, error } = await q.order('trade_time', { ascending: false }).limit(limit + 1)
 
   if (error) throw error
   return (data ?? []) as Row[]
@@ -64,13 +70,20 @@ function fmtDay(iso: string): string {
  * Phone transactions list: icon badge, action + date, signed quantity and fiat value.
  * Rows link through to the coin page, which is where trades are edited.
  */
-export default function MobileTransactions({ coins }: { coins?: CoinMeta[] }) {
+export default function MobileTransactions({
+  coins,
+  coinId,
+}: {
+  coins?: CoinMeta[]
+  /** Scopes the list to a single coin (used by the coin page). */
+  coinId?: string
+}) {
   const { user } = useUser()
   const [limit, setLimit] = useState(COLLAPSED)
 
   const { data: rows, isLoading } = useSWR<Row[]>(
-    user ? ['mobile-trades/recent', user.id, limit] : null,
-    () => fetchRecentTrades(user!.id, limit),
+    user ? ['mobile-trades/recent', user.id, limit, coinId ?? 'all'] : null,
+    () => fetchRecentTrades(user!.id, limit, coinId),
     { refreshInterval: 60_000, keepPreviousData: true }
   )
 
