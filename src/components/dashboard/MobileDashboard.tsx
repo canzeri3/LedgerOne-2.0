@@ -80,10 +80,13 @@ function Tab({ label, active, onClick }: { label: string; active: boolean; onCli
 function StatCell({ label, value, tone }: { label: string; value: string; tone: 'pos' | 'neg' | 'neutral' }) {
   const color = tone === 'pos' ? POS : tone === 'neg' ? NEG : 'rgb(203,213,225)'
   return (
-    <div className="min-w-0 flex-1 border-l border-[rgb(41,42,45)] px-3 first:border-l-0 first:pl-0">
-      <div className="text-[9.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">{label}</div>
+    <div className="flex-1 border-l border-[rgb(41,42,45)] px-3 first:border-l-0 first:pl-0">
+      {/* Matches the desktop HeroStat: 10.5px caps label, 19px medium value.
+          Values stay on one line and the strip scrolls, as desktop does — a
+          five-figure P&L would otherwise truncate at this width. */}
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">{label}</div>
       <div
-        className="mt-1 truncate text-[15px] font-medium"
+        className="mt-1.5 whitespace-nowrap text-[19px] font-medium"
         style={{ color, fontVariantNumeric: 'tabular-nums' }}
       >
         {value}
@@ -190,26 +193,36 @@ export default function MobileDashboard({
 
       {/* ── Headline value + delta ───────────────────────────── */}
       <div className="px-5 pt-5">
+        {/* Same type scale as the desktop hero: font-display 4xl (desktop drops
+            to this size below md), with the delta in the tinted pill. */}
         <div
-          className="font-display text-[38px] font-bold leading-none tracking-tight text-slate-100"
+          className="mb-2 mt-1.5 font-display text-4xl font-bold tracking-tight text-slate-100"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {headWhole}
           <span className="text-slate-500">{headCents}</span>
         </div>
         <div
-          className="mt-2.5 flex items-baseline gap-2 whitespace-nowrap text-[14px]"
+          className="flex items-center gap-2.5 whitespace-nowrap"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
-          <span style={{ color: up ? POS : NEG }}>
+          <span
+            className={[
+              'inline-flex items-center gap-1 rounded-md px-2 py-[3px] text-[15px] font-medium',
+              up
+                ? 'bg-[rgba(116,170,98,0.12)] text-[rgb(116,170,98)]'
+                : 'bg-[rgba(214,66,78,0.1)] text-[rgb(214,66,78)]',
+            ].join(' ')}
+          >
+            <span>{up ? '▴' : '▾'}</span>
+            <span>{Math.abs(pct).toFixed(2)}</span>
+            <span>%</span>
+          </span>
+          <span className="text-[15px]" style={{ color: up ? POS : NEG }}>
             {delta >= 0 ? '+' : '-'}
             {fmtCurrency(Math.abs(delta))}
           </span>
-          <span style={{ color: up ? POS : NEG }}>
-            ({up ? '+' : '-'}
-            {Math.abs(pct).toFixed(2)}%)
-          </span>
-          <span className="text-slate-500">{TF_LABEL[tf]}</span>
+          <span className="text-[12px] text-slate-500">{TF_LABEL[tf]}</span>
         </div>
       </div>
 
@@ -251,19 +264,23 @@ export default function MobileDashboard({
 
       {/* ── P&L breakdown (Performance tab only) ─────────────── */}
       {showTotalPL && (
-        <div className="mt-4 flex items-start border-t border-[rgb(41,42,45)] px-5 pt-4">
+        <div className="scrollbar-auto-hide mt-4 flex items-start overflow-x-auto border-t border-[rgb(41,42,45)] px-5 pb-5 pt-4 [-webkit-overflow-scrolling:touch]">
           <StatCell label="Total P&L" value={fmtCurrency(totalProfit)} tone={toneOf(totalProfit)} />
           <StatCell label="Realized" value={fmtCurrency(realizedProfit)} tone={toneOf(realizedProfit)} />
           <StatCell label="Unrealized" value={fmtCurrency(unrealizedProfit)} tone={toneOf(unrealizedProfit)} />
         </div>
       )}
 
-      {/* ── Single alert pill (replaces buy/sell/deposit row) ── */}
-      <div className="mt-4 border-t border-[rgb(41,42,45)] px-5 pb-4 pt-4">
-        <div data-mobile-alert-pill>
-          <AlertsTooltip coinIds={coinIds} tradesByCoin={tradesByCoinForAlerts} coins={coins} />
+      {/* ── Single alert pill (replaces buy/sell/deposit row) ──
+          Overview only — the Performance tab is a read-only P&L view, so the
+          execution cue doesn't belong there. */}
+      {!showTotalPL && (
+        <div className="mt-4 border-t border-[rgb(41,42,45)] px-5 pb-4 pt-4">
+          <div data-mobile-alert-pill>
+            <AlertsTooltip coinIds={coinIds} tradesByCoin={tradesByCoinForAlerts} coins={coins} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── My assets ────────────────────────────────────────── */}
       <div className="border-t border-[rgb(41,42,45)] pt-4">
@@ -271,7 +288,7 @@ export default function MobileDashboard({
           type="button"
           onClick={() => setAssetsOpen(v => !v)}
           aria-expanded={assetsOpen}
-          className="flex select-none items-center gap-1.5 px-5 pb-1 text-[15px] font-medium text-[rgb(137,128,213)] focus:outline-none"
+          className="flex select-none items-center gap-1.5 px-5 pb-1 text-[15px] font-semibold tracking-tight text-[rgb(137,128,213)] focus:outline-none"
         >
           My assets
           <ChevronDown
@@ -295,7 +312,7 @@ export default function MobileDashboard({
                     <CoinLogo symbol={a.symbol} name={a.name} className="h-9 w-9 flex-none" />
 
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[15px] font-medium text-slate-100">{a.name}</div>
+                      <div className="truncate text-[15px] font-semibold text-slate-100">{a.name}</div>
                       <div
                         className="mt-0.5 truncate text-[12.5px] text-slate-500"
                         style={{ fontVariantNumeric: 'tabular-nums' }}

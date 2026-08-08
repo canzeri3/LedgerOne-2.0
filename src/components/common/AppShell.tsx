@@ -16,6 +16,8 @@ import HeaderCurrencySwitcher from '@/components/common/HeaderCurrencySwitcher'
 import ThemeToggle from '@/components/common/ThemeToggle'
 import { CurrencyRemount, DisplayCurrencyProvider } from '@/lib/displayCurrency'
 import SWRRouteCover from '@/components/common/SWRRouteCover'
+import MobileTabBar from '@/components/common/MobileTabBar'
+import CoinPickerSheet from '@/components/common/CoinPickerSheet'
 
 
 // Deep page background (rich-black, very deep blue) — in-app routes.
@@ -41,6 +43,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [showPageLoader, setShowPageLoader] = useState(false)
   const [amountsHidden, setAmountsHidden] = useState(false)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [isCoinPickerOpen, setIsCoinPickerOpen] = useState(false)
   const [isMobileMarketingMenuOpen, setIsMobileMarketingMenuOpen] = useState(false)
 
   // Init from localStorage AFTER mount (avoids hydration issues)
@@ -57,6 +60,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
    const pathname = usePathname()
   const MARKETING_ROUTES = new Set(['/', '/platform', '/how-it-works', '/use-cases', '/pricing', '/contact'])
   const isLanding = MARKETING_ROUTES.has(pathname)
+
+  // The floating tab bar is for signed-in app routes only — never over the
+  // marketing site or the auth screens.
+  const AUTH_ROUTE_PREFIXES = ['/login', '/signup', '/reset', '/auth']
+  const isAuthRoute = AUTH_ROUTE_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  )
+  const showTabBar = !isLanding && !isAuthRoute
 
   // Page title shown on the left of the in-app header (one per route)
   const pageTitle = (() => {
@@ -321,7 +332,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <DisplayCurrencyProvider>
-    <div data-app-shell className="min-h-screen text-slate-100" style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}>
+    <div
+      data-app-shell
+      data-has-tabbar={showTabBar ? '' : undefined}
+      className="min-h-screen text-slate-100"
+      style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}
+    >
       {/* Mount once to keep server cookies in sync with client auth */}
       <AuthListener />
 
@@ -642,6 +658,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </main>
     </div>
   </div>
+
+  {/* Floating bottom nav (phones only) */}
+  {showTabBar && (
+    <>
+      <MobileTabBar onOpenCoins={() => setIsCoinPickerOpen(true)} />
+      <CoinPickerSheet open={isCoinPickerOpen} onClose={() => setIsCoinPickerOpen(false)} />
+    </>
+  )}
 
   {/* Keeps the cover visible until SWR-backed components finish loading for the new route */}
   <SWRRouteCover />

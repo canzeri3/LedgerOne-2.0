@@ -116,7 +116,7 @@ export default function MobileTransactions({ coins }: { coins?: CoinMeta[] }) {
       <div className="flex items-center justify-between px-5 pb-1">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-slate-500" />
-          <h2 className="text-[15px] font-medium text-slate-100">Transactions</h2>
+          <h2 className="text-[15px] font-semibold tracking-tight text-slate-100">Transactions</h2>
         </div>
 
         {(hasMore || expanded) && (
@@ -160,7 +160,7 @@ export default function MobileTransactions({ coins }: { coins?: CoinMeta[] }) {
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[15px] font-medium text-slate-100">
+                    <div className="truncate text-[15px] font-semibold text-slate-100">
                       {isBuy ? 'Bought' : 'Sold'} {ticker}
                     </div>
                     <div className="mt-0.5 truncate text-[12.5px] text-slate-500">

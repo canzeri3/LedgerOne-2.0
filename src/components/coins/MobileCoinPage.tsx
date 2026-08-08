@@ -125,9 +125,9 @@ function CircleButton({
 function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-[12.5px] text-slate-500">{label}</div>
+      <div className="truncate text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">{label}</div>
       <div
-        className="mt-1 truncate text-[19px] font-medium"
+        className="mt-1.5 truncate text-[19px] font-medium"
         style={{ color: color ?? 'rgb(226,232,240)', fontVariantNumeric: 'tabular-nums' }}
       >
         {value}
@@ -304,26 +304,35 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
 
       {/* ── Headline: value of this holding ──────────────────── */}
       <div className="px-5 pt-4">
+        {/* Same type scale as the desktop dashboard hero. */}
         <div
-          className="font-display text-[38px] font-bold leading-none tracking-tight text-slate-100"
+          className="mb-2 mt-1.5 font-display text-4xl font-bold tracking-tight text-slate-100"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {headWhole}
           <span className="text-slate-500">{headCents}</span>
         </div>
         <div
-          className="mt-2.5 flex items-baseline gap-2 whitespace-nowrap text-[14px]"
+          className="flex items-center gap-2.5 whitespace-nowrap"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
-          <span style={{ color: up ? POS : NEG }}>
+          <span
+            className={[
+              'inline-flex items-center gap-1 rounded-md px-2 py-[3px] text-[15px] font-medium',
+              up
+                ? 'bg-[rgba(116,170,98,0.12)] text-[rgb(116,170,98)]'
+                : 'bg-[rgba(214,66,78,0.1)] text-[rgb(214,66,78)]',
+            ].join(' ')}
+          >
+            <span>{up ? '▴' : '▾'}</span>
+            <span>{Math.abs(pct).toFixed(2)}</span>
+            <span>%</span>
+          </span>
+          <span className="text-[15px]" style={{ color: up ? POS : NEG }}>
             {delta >= 0 ? '+' : '-'}
             {fmtCurrency(Math.abs(delta))}
           </span>
-          <span style={{ color: up ? POS : NEG }}>
-            ({up ? '+' : '-'}
-            {Math.abs(pct).toFixed(2)}%)
-          </span>
-          <span className="text-slate-500">{TF_LABEL[tf]}</span>
+          <span className="text-[12px] text-slate-500">{TF_LABEL[tf]}</span>
         </div>
       </div>
 
@@ -368,12 +377,12 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
         <div className="rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] p-4">
           <div className="mb-4 flex items-center gap-2">
             <Activity className="h-4 w-4 text-slate-500" />
-            <h2 className="text-[15px] font-medium text-slate-100">Performance</h2>
+            <h2 className="text-[15px] font-semibold tracking-tight text-slate-100">Performance</h2>
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
             <StatCell
-              label="Unrealized profit &amp; loss"
+              label="Unrealized P&amp;L"
               value={
                 pnl.positionQty > 0
                   ? `${unrealized >= 0 ? '+' : '-'}${fmtCurrency(Math.abs(unrealized))}`
@@ -391,7 +400,7 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
             />
 
             <div className="min-w-0">
-              <div className="truncate text-[12.5px] text-slate-500">Portfolio diversity</div>
+              <div className="truncate text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">Portfolio diversity</div>
               <div className="mt-1 flex items-center gap-2">
                 <span
                   className="truncate text-[19px] font-medium text-slate-200"

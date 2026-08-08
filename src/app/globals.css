@@ -3028,3 +3028,346 @@ html[data-standalone='1'],
 html[data-standalone='1'] body {
   overscroll-behavior-y: none;
 }
+
+/* ── Mobile bottom tab bar ──────────────────────────────────────────────── */
+/* Namespaced .l1-bottomnav (not .menu) so it can't collide with other styles.
+   Ported from the Uiverse glass pill, recoloured to the app accent. The
+   original referenced --glass-border and --ease-spring, which don't exist in
+   this project, so both are given concrete values here. */
+
+.l1-bottomnav {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: calc(100% - 20px);
+  max-width: 520px;
+  backdrop-filter: blur(12px) saturate(180%) contrast(200%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%) contrast(200%);
+  background: rgba(136, 128, 213, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  padding: 5px;
+  border-radius: 99rem;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  z-index: 50;
+}
+
+.l1-bottomnav::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /* The glassy rim, not the fill, is what reads as a bubble — keep it strong so
+     the pill still has shape at a low background opacity. */
+  box-shadow:
+    inset 2px 2px 6px -2px rgba(255, 255, 255, 0.55),
+    inset -2px -2px 6px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.l1-bottomnav a,
+.l1-bottomnav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  padding: 6px 6px;
+  border-radius: 999rem;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition:
+    background 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+    color 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 0.3s ease-in-out;
+}
+
+/* Hover only where a real pointer exists — on touch it would stick after a tap. */
+@media (hover: hover) and (pointer: fine) {
+  .l1-bottomnav a:hover,
+  .l1-bottomnav button:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    box-shadow:
+      inset 2px 2px 5px -2px rgba(255, 255, 255, 0.4),
+      inset -2px -1px 5px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -2px 0 rgba(255, 255, 255, 0.2);
+    color: rgb(75, 65, 168);
+  }
+}
+
+.l1-bottomnav svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.l1-bottomnav span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  margin-top: 3px;
+}
+
+.l1-bottomnav a.active,
+.l1-bottomnav button.active {
+  background: rgba(237, 237, 237, 0.6);
+  color: rgb(75, 65, 168);
+}
+
+.l1-bottomnav a:active,
+.l1-bottomnav button:active {
+  transform: scale(0.98);
+}
+
+/* Phones only. */
+@media (min-width: 768px) {
+  .l1-bottomnav {
+    display: none;
+  }
+}
+
+/* Keep the last row of page content clear of the floating bar. */
+@media (max-width: 767.98px) {
+  [data-has-tabbar] #l1-app-main {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Coin picker sheet (pops out of the tab bar's Coins tab) ────────────── */
+/* Same glass language as .l1-bottomnav: purple tint, blur, bright specular rim.
+   Fill is heavier than the bar's because a scrolling list has to stay legible. */
+
+.l1-coinsheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.l1-coinsheet-backdrop.is-open {
+  opacity: 1;
+}
+
+.l1-coinsheet {
+  position: fixed;
+  left: 50%;
+  /* Floats clear of the tab bar with a visible gap between the two pills. */
+  bottom: calc(113px + env(safe-area-inset-bottom));
+  width: calc(100% - 20px);
+  max-width: 520px;
+  max-height: min(58vh, 460px);
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 26px;
+  padding: 6px;
+  background: rgba(46, 41, 78, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  opacity: 0;
+  transform: translateX(-50%) translateY(14px) scale(0.96);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 0.24s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.06);
+}
+
+.l1-coinsheet.is-open {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+/* Matching specular rim so it reads as the same material as the bubble. */
+.l1-coinsheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 2px 2px 6px -2px rgba(255, 255, 255, 0.5),
+    inset -2px -2px 6px 2px rgba(255, 255, 255, 0.42),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.l1-coinsheet-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 8px;
+  position: relative;
+  flex: none;
+}
+
+.l1-coinsheet-search-icon {
+  position: absolute;
+  left: 14px;
+  width: 1rem;
+  height: 1rem;
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+.l1-coinsheet-head input {
+  flex: 1 1 auto;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgb(240, 242, 248);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 12px 10px 38px;
+  border-radius: 999rem;
+  outline: none;
+}
+
+.l1-coinsheet-head input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.l1-coinsheet-head input:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.l1-coinsheet-head button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999rem;
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.l1-coinsheet-head button svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.l1-coinsheet-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+}
+
+.l1-coinsheet-list a {
+  display: grid;
+  grid-template-columns: auto 3.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: rgb(226, 232, 240);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.l1-coinsheet-list a:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.l1-coinsheet-list a.is-active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.l1-coinsheet-list .tk {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.l1-coinsheet-list .nm {
+  font-size: 0.86rem;
+  color: rgba(226, 232, 240, 0.72);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.l1-coinsheet-list .rk {
+  font-size: 0.75rem;
+  color: rgba(226, 232, 240, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.l1-coinsheet-empty {
+  margin: 0;
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 0.86rem;
+  color: rgba(226, 232, 240, 0.65);
+}
+
+@media (min-width: 768px) {
+  .l1-coinsheet-root {
+    display: none;
+  }
+}
+
+/* ── Tab bar: scroll-linked shrink ──────────────────────────────────────── */
+/* MobileTabBar writes --tb-p (0 = full size, 1 = fully compact) straight to the
+   element on each scroll frame, so the pill tracks the finger instead of
+   playing a fixed-duration animation. Deliberately no transitions on these
+   properties — a transition would lag behind the gesture. */
+
+.l1-bottomnav {
+  --tb-p: 0;
+  width: calc(100% - 20px - 55px * var(--tb-p));
+  padding: calc(5px - 1px * var(--tb-p));
+}
+
+.l1-bottomnav a,
+.l1-bottomnav button {
+  padding: calc(6px - 3px * var(--tb-p)) 6px;
+}
+
+.l1-bottomnav svg {
+  width: calc(1.15rem - 0.15rem * var(--tb-p));
+  height: calc(1.15rem - 0.15rem * var(--tb-p));
+}
+
+/* Labels collapse rather than unmount, so screen readers still read them.
+   The 1.6 factor fades the text out before the pill finishes shrinking;
+   opacity self-clamps below 0. */
+.l1-bottomnav span {
+  max-height: calc(1rem * (1 - var(--tb-p)));
+  margin-top: calc(4px * (1 - var(--tb-p)));
+  opacity: calc(1 - 1.6 * var(--tb-p));
+  overflow: hidden;
+}
+
+/* Nothing here animates on a timer, so reduced-motion just pins it full size. */
+@media (prefers-reduced-motion: reduce) {
+  .l1-bottomnav {
+    --tb-p: 0 !important;
+  }
+}
