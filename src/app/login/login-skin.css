@@ -7,6 +7,14 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;700&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* Auth routes render outside AppShell, so their background must also paint the
+   root canvas. This prevents iOS Home Screen safe-area pixels from falling
+   back to the app shell's lighter #131415 body colour. */
+html:has(.l1-auth),
+body:has(.l1-auth) {
+  background-color: #0D0E14;
+}
+
 .l1-auth {
   /* ---------- Surfaces ---------- */
   --color-bg-base:         #0D0E14;
@@ -39,12 +47,15 @@
 
   background: var(--color-bg-base);
   font-family: var(--font-ui);
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ---- Full-viewport centered stack ---- */
 .l1-auth .auth-wrap {
   position: relative; z-index: 1;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex; align-items: center; justify-content: center;
   padding: 72px 24px;
 }
