@@ -278,6 +278,42 @@ function applyWacTrade(cur: WacCursor, tr: TradeLite) {
   }
 }
 
+function priceAtTimestamp(series: Point[], atMs: number): number | null {
+  if (!series.length) return null
+  if (atMs <= series[0].t) return series[0].v
+  if (atMs >= series[series.length - 1].t) return series[series.length - 1].v
+
+  let lo = 0
+  let hi = series.length - 1
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (series[mid].t <= atMs) lo = mid
+    else hi = mid
+  }
+
+  const a = series[lo]
+  const b = series[hi]
+  const span = b.t - a.t
+  if (span <= 0) return a.v
+  const ratio = (atMs - a.t) / span
+  return a.v + (b.v - a.v) * ratio
+}
+
+function coinPnlSnapshot(
+  trades: TradeLite[],
+  atMs: number,
+  price: number | null
+): { pnl: number; basis: number } | null {
+  const cur: WacCursor = { priceIdx: 0, tradeIdx: 0, qtyHeld: 0, basis: 0, realized: 0 }
+  while (cur.tradeIdx < trades.length && new Date(trades[cur.tradeIdx].trade_time).getTime() <= atMs) {
+    applyWacTrade(cur, trades[cur.tradeIdx++])
+  }
+
+  if (cur.qtyHeld > 0 && (price == null || !Number.isFinite(price))) return null
+  const unrealized = cur.qtyHeld > 0 ? cur.qtyHeld * Number(price) - cur.basis : 0
+  return { pnl: cur.realized + unrealized, basis: cur.basis }
+}
+
 function computePortfolioCostBasisAt(
   coinIds: string[],
   tradesByCoin: Map<string, TradeLite[]>,
@@ -697,6 +733,37 @@ const windowStart = rangeStartFor(tf, firstTradeMs)
   return series
 }, [historiesMap, trades, coinIds.join(','), tf, tradesByCoin, livePricesById, firstTradeMs])
 
+const performanceBasis = useMemo(() => {
+  if (totalPLSeries.length < 2) return 0
+  const first = totalPLSeries[0]
+  const last = totalPLSeries[totalPLSeries.length - 1]
+  return Math.max(
+    computePortfolioCostBasisAt(coinIds, tradesByCoin, first.t),
+    computePortfolioCostBasisAt(coinIds, tradesByCoin, last.t)
+  )
+}, [totalPLSeries, coinIds.join(','), tradesByCoin])
+
+const assetPerformance = useMemo(() => {
+  const startMs = totalPLSeries[0]?.t ?? rangeStartFor(tf, firstTradeMs) ?? Date.now()
+  const endMs = Date.now()
+
+  return coinIds
+    .map(id => {
+      const list = tradesByCoin.get(id) ?? []
+      const history = historiesMap?.[id] ?? []
+      const start = coinPnlSnapshot(list, startMs, priceAtTimestamp(history, startMs))
+      const endPrice = livePricesById[id] ?? priceAtTimestamp(history, endMs)
+      const end = coinPnlSnapshot(list, endMs, endPrice)
+      if (!start || !end) return null
+
+      const change = end.pnl - start.pnl
+      const basis = Math.max(start.basis, end.basis)
+      return { id, delta: change, pct: basis > 0 ? (change / basis) * 100 : 0 }
+    })
+    .filter((row): row is { id: string; delta: number; pct: number } => row != null)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+}, [coinIds.join(','), tradesByCoin, historiesMap, livePricesById, totalPLSeries, tf, firstTradeMs])
+
   // Live, timeframe-invariant total portfolio value
   const liveValue = useMemo(() => {
     if (!historiesMapLive || !trades || coinIds.length === 0) return 0
@@ -791,13 +858,9 @@ const { delta, pct } = useMemo(() => {
 
   // TOTAL P/L mode (toggle ON): percent change in total P/L over the window,
   // scaled by capital deployed over that window (avoid distortions when you add/remove capital).
-  const basisStart = computePortfolioCostBasisAt(coinIds, tradesByCoin, firstPoint.t)
-  const basisEnd = computePortfolioCostBasisAt(coinIds, tradesByCoin, lastPoint.t)
-  const denom = Math.max(basisStart, basisEnd)
-
-  const p = denom > 0 ? (d / denom) * 100 : 0
+  const p = performanceBasis > 0 ? (d / performanceBasis) * 100 : 0
   return { delta: d, pct: p }
-}, [chartSeries, showTotalPL, coinIds.join(','), tradesByCoin])
+}, [chartSeries, showTotalPL, performanceBasis])
 
 
   const pctAbsText = Math.abs(pct).toFixed(2)
@@ -836,11 +899,10 @@ const { delta, pct } = useMemo(() => {
           chartSeries={chartSeries}
           chartLoading={coinIds.length > 0 && !historiesMap}
           liveValue={liveValue}
-          totalProfit={totalProfit}
-          realizedProfit={realizedProfit}
-          unrealizedProfit={unrealizedProfit}
           delta={delta}
           pct={pct}
+          performanceBasis={performanceBasis}
+          assetPerformance={assetPerformance}
           coinIds={coinIds}
           historiesMapLive={historiesMapLive ?? {}}
           trades={trades}

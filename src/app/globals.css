@@ -3088,17 +3088,17 @@ html[data-standalone='1'] body {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(255, 255, 255, 0.03) 40%,
+      rgba(255, 255, 255, 0.045) 0%,
+      rgba(255, 255, 255, 0.015) 40%,
       rgba(136, 128, 213, 0.07) 72%,
       rgba(136, 128, 213, 0.13) 100%
     ),
     rgba(136, 128, 213, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow:
     0 18px 38px rgba(0, 0, 0, 0.45),
     0 8px 20px rgba(136, 128, 213, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   padding: 5px;
   border-radius: 99rem;
   display: flex;
@@ -3119,8 +3119,8 @@ html[data-standalone='1'] body {
   border-radius: 99rem;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.34) 0%,
-    rgba(255, 255, 255, 0.1) 55%,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.03) 55%,
     rgba(255, 255, 255, 0) 100%
   );
   pointer-events: none;
@@ -3136,10 +3136,10 @@ html[data-standalone='1'] body {
      the pill still has shape at a low background opacity. The last inset is
      light bouncing back up off the surface below. */
   box-shadow:
-    inset 2px 2px 7px -3px rgba(255, 255, 255, 0.65),
-    inset -2px -2px 7px 1px rgba(255, 255, 255, 0.55),
-    inset 0 -3px 7px -3px rgba(255, 255, 255, 0.4),
-    inset 0 -2px 0 rgba(255, 255, 255, 0.3);
+    inset 2px 2px 7px -3px rgba(255, 255, 255, 0.26),
+    inset -2px -2px 7px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -3px 7px -3px rgba(255, 255, 255, 0.16),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.12);
   pointer-events: none;
   z-index: -1;
 }
@@ -3195,8 +3195,8 @@ html[data-standalone='1'] body {
 
 .l1-bottomnav a.active,
 .l1-bottomnav button.active {
-  background: rgba(237, 237, 237, 0.6);
-  color: rgb(75, 65, 168);
+  background: rgba(237, 237, 237, 0.2);
+  color: rgb(163, 152, 242);
 }
 
 .l1-bottomnav a:active,

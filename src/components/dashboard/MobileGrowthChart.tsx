@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ResponsiveContainer, AreaChart, Area, YAxis, Tooltip } from 'recharts'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ResponsiveContainer, AreaChart, Area, CartesianGrid, YAxis, Tooltip } from 'recharts'
 import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
 
 export type Point = { t: number; v: number }
@@ -20,6 +20,10 @@ function fmtMarker(n: number): string {
   })}`
 }
 
+function fmtPercentMarker(n: number): string {
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`
+}
+
 function toMDY(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
@@ -34,11 +38,13 @@ function ScrubTooltip({
   payload,
   coordinate,
   spanMs,
+  valueMode,
 }: {
   active?: boolean
   payload?: any[]
   coordinate?: { x: number; y: number }
   spanMs: number
+  valueMode: 'currency' | 'percent'
 }) {
   if (!active || !payload?.length || !coordinate) return null
   const value = Number(payload[0]?.value)
@@ -73,7 +79,9 @@ function ScrubTooltip({
       }}
     >
       <div style={{ fontSize: 14, fontWeight: 600, color: 'rgb(226,232,240)' }}>
-        {Number.isFinite(value) ? fmtMarker(value) : '--'}
+        {Number.isFinite(value)
+          ? valueMode === 'percent' ? fmtPercentMarker(value) : fmtMarker(value)
+          : '--'}
       </div>
       <div style={{ fontSize: 10.5, marginTop: 1, color: 'rgb(122,124,132)' }}>{timeText}</div>
     </div>
@@ -84,7 +92,17 @@ function ScrubTooltip({
  * Edge-to-edge sparkline-style portfolio chart for phones: no axes, no grid,
  * with the window high/low called out in the corners.
  */
-export default function MobileGrowthChart({ data }: { data: Point[] }) {
+export default function MobileGrowthChart({
+  data,
+  valueMode = 'currency',
+  showGrid = false,
+  markersRight = false,
+}: {
+  data: Point[]
+  valueMode?: 'currency' | 'percent'
+  showGrid?: boolean
+  markersRight?: boolean
+}) {
   const series = useMemo(
     () =>
       (data ?? [])
@@ -113,6 +131,33 @@ export default function MobileGrowthChart({ data }: { data: Point[] }) {
 
   const spanMs = series.length > 1 ? series[series.length - 1].t - series[0].t : 0
   const gradId = useMemo(() => 'mgfill-' + Math.random().toString(36).slice(2), [])
+  const chartHostRef = useRef<HTMLDivElement>(null)
+  const [initialSize, setInitialSize] = useState<{ width: number; height: number } | null>(null)
+
+  // iOS installed PWAs can report a transient zero/negative chart size while
+  // the standalone viewport is settling. Mount Recharts only after this host
+  // has real dimensions so its reveal clip-path is calculated at full width.
+  useLayoutEffect(() => {
+    const host = chartHostRef.current
+    if (!host) return
+
+    const measure = () => {
+      const { width, height } = host.getBoundingClientRect()
+      if (width > 0 && height > 0) {
+        setInitialSize(current => current ?? { width, height })
+      }
+    }
+
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      const frame = window.requestAnimationFrame(measure)
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [series.length])
 
   // Recharts keeps its active point after a touch ends (there's no mouseleave on
   // touch), so the readout would stay pinned to the chart. Show it only while a
@@ -130,6 +175,7 @@ export default function MobileGrowthChart({ data }: { data: Point[] }) {
 
   return (
     <div
+      ref={chartHostRef}
       className="relative h-full w-full"
       // pan-y lets a vertical swipe still scroll the page, while horizontal drags
       // stay with us so holding and sliding scrubs along the series.
@@ -139,43 +185,59 @@ export default function MobileGrowthChart({ data }: { data: Point[] }) {
       onPointerCancel={endScrub}
       onPointerLeave={endScrub}
     >
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={series} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.34} />
-              <stop offset="100%" stopColor={ACCENT} stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
+      {initialSize && (
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minWidth={0}
+          minHeight={0}
+          initialDimension={initialSize}
+        >
+          <AreaChart data={series} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={ACCENT} stopOpacity={0.34} />
+                <stop offset="100%" stopColor={ACCENT} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
 
-          <YAxis hide domain={[yMin, yMax]} />
+            {showGrid && (
+              <CartesianGrid
+                vertical={false}
+                stroke="rgba(148,163,184,0.16)"
+                strokeDasharray="0"
+              />
+            )}
+            <YAxis hide domain={[yMin, yMax]} />
 
-          {/* Unmounted between touches so neither the card nor the cursor line lingers. */}
-          {scrubbing && (
-            <Tooltip
-              wrapperStyle={{ pointerEvents: 'none', visibility: 'visible' }}
-              position={{ x: 0, y: 0 }}
-              allowEscapeViewBox={{ x: true, y: true }}
-              offset={0}
-              cursor={{ stroke: 'rgba(136,128,213,0.45)', strokeWidth: 1 }}
-              content={<ScrubTooltip spanMs={spanMs} />}
+            {/* Unmounted between touches so neither the card nor the cursor line lingers. */}
+            {scrubbing && (
+              <Tooltip
+                wrapperStyle={{ pointerEvents: 'none', visibility: 'visible' }}
+                position={{ x: 0, y: 0 }}
+                allowEscapeViewBox={{ x: true, y: true }}
+                offset={0}
+                cursor={{ stroke: 'rgba(136,128,213,0.45)', strokeWidth: 1 }}
+                content={<ScrubTooltip spanMs={spanMs} valueMode={valueMode} />}
+              />
+            )}
+
+            <Area
+              type="monotone"
+              dataKey="v"
+              stroke={ACCENT}
+              strokeWidth={2}
+              fill={`url(#${gradId})`}
+              dot={false}
+              activeDot={scrubbing ? { r: 3, fill: ACCENT, stroke: 'rgb(19,20,21)', strokeWidth: 2 } : false}
+              isAnimationActive={true}
+              animationDuration={300}
+              animationBegin={0}
+              animationEasing="ease-in-out"
             />
-          )}
-
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke={ACCENT}
-            strokeWidth={2}
-            fill={`url(#${gradId})`}
-            dot={false}
-            activeDot={scrubbing ? { r: 3, fill: ACCENT, stroke: 'rgb(19,20,21)', strokeWidth: 2 } : false}
-            // The reveal animation latches onto the width measured at mount, which on a
-            // full-bleed container is still settling — it leaves the curve clipped to a sliver.
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
 
       {/* Window high / low markers, mirroring the reference layout's corner labels */}
       {high != null && (
@@ -183,15 +245,18 @@ export default function MobileGrowthChart({ data }: { data: Point[] }) {
           className="pointer-events-none absolute right-5 top-1 text-[12.5px] text-slate-500"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
-          {fmtMarker(high)}
+          {valueMode === 'percent' ? fmtPercentMarker(high) : fmtMarker(high)}
         </span>
       )}
       {low != null && (
         <span
-          className="pointer-events-none absolute bottom-1 left-5 text-[12.5px] text-slate-500"
+          className={[
+            'pointer-events-none absolute bottom-1 text-[12.5px] text-slate-500',
+            markersRight ? 'right-5' : 'left-5',
+          ].join(' ')}
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
-          {fmtMarker(low)}
+          {valueMode === 'percent' ? fmtPercentMarker(low) : fmtMarker(low)}
         </span>
       )}
     </div>
