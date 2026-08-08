@@ -659,6 +659,12 @@
   font-size: 19px;
 }
 
+/* The compact action alert has its own mobile composition. The original
+   planner banner remains the desktop presentation. */
+.pl .pl-action-alert-mobile {
+  display: none;
+}
+
 /* informational note (dashed) */
 .pl .pl-note {
   display: flex;
@@ -1114,5 +1120,131 @@
   .pl .dd {
     width: 100%;
     flex: 1 1 100%;
+  }
+
+  .pl .pl-banner-desktop {
+    display: none;
+  }
+
+  .pl .pl-action-alert-mobile {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    margin: 14px 16px;
+    border: 1px solid rgb(48, 49, 53);
+    border-radius: 12px;
+    background:
+      linear-gradient(110deg, rgba(230, 165, 60, 0.075), transparent 48%),
+      rgb(27, 28, 31);
+    color: rgb(226, 228, 235);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  }
+
+  .pl .pl-action-alert-mobile::before {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: rgb(230, 165, 60);
+    content: '';
+  }
+
+  .pl .pl-action-alert-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 13px 14px 12px 15px;
+  }
+
+  .pl .pl-action-alert-icon {
+    display: grid;
+    flex: 0 0 34px;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(230, 165, 60, 0.2);
+    border-radius: 9px;
+    background: rgba(230, 165, 60, 0.09);
+    color: rgb(230, 165, 60);
+  }
+
+  .pl .pl-action-alert-icon svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .pl .pl-action-alert-title {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .pl .pl-action-alert-title .eyebrow {
+    color: rgb(137, 139, 147);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 12px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .pl .pl-action-alert-title strong {
+    color: rgb(238, 239, 244);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 19px;
+    letter-spacing: -0.01em;
+  }
+
+  .pl .pl-action-alert-count {
+    flex: none;
+    padding: 4px 8px;
+    border: 1px solid rgba(230, 165, 60, 0.2);
+    border-radius: 999px;
+    background: rgba(230, 165, 60, 0.08);
+    color: rgb(218, 168, 82);
+    font-size: 10.5px;
+    font-weight: 650;
+    line-height: 14px;
+    white-space: nowrap;
+  }
+
+  .pl .pl-action-alert-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid rgb(45, 46, 50);
+  }
+
+  .pl .pl-action-alert-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 10px 14px 11px 15px;
+  }
+
+  .pl .pl-action-alert-metric + .pl-action-alert-metric {
+    border-left: 1px solid rgb(45, 46, 50);
+  }
+
+  .pl .pl-action-alert-metric .label {
+    color: rgb(122, 124, 132);
+    font-size: 10.5px;
+    font-weight: 650;
+    line-height: 14px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .pl .pl-action-alert-metric strong {
+    overflow: hidden;
+    color: rgb(218, 220, 228);
+    font-size: clamp(13.5px, 3.7vw, 15px);
+    font-weight: 650;
+    line-height: 19px;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

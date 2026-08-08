@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -9,6 +9,7 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import { usePrice } from '@/lib/dataCore'
 import SlotPortal from '@/components/planner/SlotPortal'
+import PlannerActionAlert from '@/components/planner/PlannerActionAlert'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -58,8 +59,16 @@ function num(n: any): number {
 
 const SELL_TOLERANCE = 0.0005 // strict for active
 
-export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
-  const { user } = useUser()
+export default function SellPlannerLadder({
+  coingeckoId,
+  onAlertStateChange,
+  showEmptyState = false,
+}: {
+  coingeckoId: string
+  onAlertStateChange?: (hasAlert: boolean) => void
+  showEmptyState?: boolean
+}) {
+  const { user, loading: userLoading } = useUser()
   const { mutate: mutateGlobal } = useSWRConfig()
 
 
@@ -264,15 +273,6 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
   })
   const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
 
-  // "Active has alert" = at least one row is YELLOW (same condition used in row rendering)
-  const activeHasAlert =
-    hasLive &&
-    rows.some((r) => {
-      const green = r.pct >= 0.97
-      if (green) return false
-      return r.targetPrice > 0 && (livePrice as number) >= r.targetPrice * 0.985
-    })
-
   const actionableNow = useMemo(() => {
     if (!hasLive || !rows.length) {
       return {
@@ -324,10 +324,45 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
     return { ...summary, actionablePrice }
   }, [hasLive, rows, livePrice])
 
+  const hasActionableAlert = actionableNow.alertRows > 0
+
+  useEffect(() => {
+    onAlertStateChange?.(hasActionableAlert)
+  }, [hasActionableAlert, onAlertStateChange])
+
+  const activeLookupFinished = !userLoading && (!user || active !== undefined)
+  const levelsLookupFinished = !user || active == null || levels !== undefined
+  const hasUsableLevels = lvls.some(
+    (level) => level.targetPrice > 0 && level.plannedTokens > 0
+  )
+  const hasNoPlanner =
+    activeLookupFinished &&
+    levelsLookupFinished &&
+    (!user || active === null || !hasUsableLevels)
+
+  if (showEmptyState && hasNoPlanner) {
+    return (
+      <div
+        role="status"
+        className="flex min-h-[190px] w-full flex-col items-center justify-center px-7 py-12 text-center"
+      >
+        <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-[rgb(56,58,64)] bg-[rgb(27,28,31)] text-slate-500">
+          <Target className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-200">
+          No active Sell Planner
+        </h3>
+        <p className="mt-1.5 max-w-[270px] text-[13px] leading-5 text-slate-500">
+          Create a Sell Planner to see its planned levels here.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div
       className="w-full h-full flex flex-col"
-      data-has-alert={activeHasAlert ? '1' : '0'}
+      data-has-alert={hasActionableAlert ? '1' : '0'}
       data-active-id={active?.id ?? ''}
     >     
       {/* Panel-head stat pills (display-only; sums of already-fetched values) */}
@@ -347,35 +382,17 @@ export default function SellPlannerLadder({ coingeckoId }: { coingeckoId: string
       </SlotPortal>
 
       {actionableNow.alertRows > 0 && (
-        <div className="pl-banner">
-          <span className="dot" aria-hidden="true">
-            <TriangleAlert strokeWidth={2.5} />
-          </span>
-          <b className="alert-txt act-now">Sell now</b>
-
-          <span className="sep">·</span>
-
-          <span>
-            <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
-            {actionableNow.alertRows === 1 ? 'row' : 'rows'}
-          </span>
-
-          <span className="sep">·</span>
-
-          <span>
-            Qty : <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b>
-            {coinSymbol ? ` ${coinSymbol}` : ''}
-          </span>
-
-          {actionableNow.actionablePrice !== null && (
-            <>
-              <span className="sep">@</span>
-              <span>
-                Price: <b className="tabular-nums">{fmtCurrency(actionableNow.actionablePrice)}</b>
-              </span>
-            </>
-          )}
-        </div>
+        <PlannerActionAlert
+          action="sell"
+          rows={actionableNow.alertRows}
+          quantity={actionableNow.remainingTokens.toFixed(6)}
+          symbol={coinSymbol}
+          price={
+            actionableNow.actionablePrice !== null
+              ? fmtCurrency(actionableNow.actionablePrice)
+              : null
+          }
+        />
       )}
 
       <div className="pl-ladder flex-1">

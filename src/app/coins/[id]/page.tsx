@@ -10,6 +10,7 @@ import CoinPlannersUnderAddTrade from '@/components/coin/CoinPlannersUnderAddTra
 import StickyToggleAddTrade from '@/components/coin/StickyToggleAddTrade'
 import CoinMobileSwitch from '@/components/coins/CoinMobileSwitch'
 import MobileCoinPage from '@/components/coins/MobileCoinPage'
+import MobileCoinWorkspace from '@/components/coins/MobileCoinWorkspace'
 import MobileTransactions from '@/components/dashboard/MobileTransactions'
 import './coin-skin.css'
 
@@ -62,8 +63,8 @@ export default function CoinPage({ params }: { params: Promise<RouteParams> }) {
   // Phones reuse the dashboard's transactions list, scoped to this coin, so the
   // two surfaces read identically.
   const positionStackMobile = (
-    <div className="mt-6 space-y-12">
-      {addTradeAndPlanners}
+    <div>
+      <MobileCoinWorkspace id={id} />
       <MobileTransactions coins={coins} coinId={id} />
     </div>
   )

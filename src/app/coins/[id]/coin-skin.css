@@ -53,6 +53,148 @@
   box-shadow: none !important;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Mobile-only coin workspace. The desktop trade card and planner panels keep
+   their original chrome; phones use full-width tab panels with no outer card. */
+@media (max-width: 767.98px) {
+  [data-mobile-coin-actions] .mobile-coin-action-panel[hidden] {
+    display: none !important;
+  }
+
+  [data-mobile-coin-actions] [role='tab'][data-alert='true'] {
+    color: rgb(230, 165, 60) !important;
+  }
+
+  [data-mobile-coin-actions] .add-trade-card {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  [data-mobile-coin-actions] .ct-h {
+    align-items: flex-start;
+    padding: 20px 20px 0;
+  }
+
+  [data-mobile-coin-actions] .ct-h .plans {
+    width: 100%;
+    line-height: 1.5;
+  }
+
+  [data-mobile-coin-actions] .ct-body {
+    gap: 13px;
+    padding: 14px 20px 24px;
+  }
+
+  [data-mobile-coin-actions] .ct-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 11px;
+    width: 100%;
+  }
+
+  [data-mobile-coin-actions] .ct-side {
+    width: 100%;
+    height: 44px;
+  }
+
+  [data-mobile-coin-actions] .ct-side button {
+    flex: 1 1 0;
+  }
+
+  [data-mobile-coin-actions] .ct-field,
+  [data-mobile-coin-actions] .ct-field.grow {
+    width: 100%;
+    height: 50px;
+    flex: none !important;
+  }
+
+  [data-mobile-coin-actions] .ct-row.foot {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  [data-mobile-coin-actions] .ct-toggles {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  [data-mobile-coin-actions] .ct-acts {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  [data-mobile-coin-actions] [data-pin-toggle-slot] {
+    display: none;
+  }
+
+  [data-mobile-coin-actions] .cbtn {
+    height: 44px;
+    justify-content: center;
+    width: 100%;
+  }
+
+  [data-mobile-coin-actions] .mobile-coin-planner {
+    background: transparent;
+    padding-bottom: 24px;
+  }
+
+  [data-mobile-coin-actions] [data-mobile-sell-planner-switcher] {
+    display: flex;
+    align-items: center;
+    min-height: 62px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--pl-border);
+  }
+
+  [data-mobile-coin-actions] [data-mobile-sell-planner-switcher] .plan-seg-group {
+    max-width: 100%;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-mobile-coin-actions] [data-mobile-sell-planner-switcher] .plan-seg-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  [data-mobile-coin-actions] [data-mobile-sell-planner-switcher] .plan-seg {
+    flex: 0 0 auto;
+  }
+
+  [data-mobile-coin-actions] .pl-ladder {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--pl-border);
+    margin: 0;
+  }
+
+  [data-mobile-coin-actions] .ldr-scroll {
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-mobile-coin-actions] .pl-banner {
+    justify-content: flex-start;
+    margin: 16px 20px;
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+
+  [data-mobile-coin-actions] .pl-banner b,
+  [data-mobile-coin-actions] .pl-banner .alert-txt.act-now {
+    font-size: 15px;
+  }
+
+}
 .coin .card-h {
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; flex-wrap: wrap;

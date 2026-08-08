@@ -15,6 +15,7 @@ type Props = {
   HistoryView: ReactNode
   newestFirst?: boolean
   className?: string
+  switcherPlacement?: 'portal' | 'inline'
 }
 
 export default function SellPlannerCombinedCard({
@@ -23,6 +24,7 @@ export default function SellPlannerCombinedCard({
   HistoryView,
   newestFirst = true,
   className,
+  switcherPlacement = 'portal',
 }: Props) {
   const pathname = usePathname()
   const coinIdFromPath = useMemo(() => {
@@ -165,43 +167,52 @@ export default function SellPlannerCombinedCard({
   const livePrice: number | null = priceRow?.price ?? null
   const hasLivePrice = Number.isFinite(livePrice as number) && (livePrice as number) > 0
 
+  const planSwitcher = (
+    <div className="plan-seg-group overflow-x-auto" role="group" aria-label="Sell planner versions">
+      <button
+        type="button"
+        onClick={() => setSelected('active')}
+        aria-pressed={selected === 'active'}
+        className={[
+          'plan-seg live-seg',
+          activeHasAlert ? 'alert' : '',
+          selected === 'active' ? 'on' : '',
+        ].join(' ').trim()}
+      >
+        <span className="plan-live" aria-hidden="true" />
+        Active
+      </button>
+      {labels.map((n) => {
+        const hasAlertForLabel = alertLabels.includes(n)
+        return (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setSelected(n)}
+            aria-label={`History planner ${n}`}
+            aria-pressed={selected === n}
+            className={[
+              'plan-seg plan-num',
+              hasAlertForLabel ? 'alert' : '',
+              selected === n ? 'on' : '',
+            ].join(' ').trim()}
+          >
+            {n}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   return (
     <>
       {/* Plan switcher pills — rendered into the coin panel head (display-only placement) */}
       {historyLength > 0 && (
-        <SlotPortal slotId="coin-sell-plans">
-          <div className="plan-seg-group overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setSelected('active')}
-              className={[
-                'plan-seg live-seg',
-                activeHasAlert ? 'alert' : '',
-                selected === 'active' ? 'on' : '',
-              ].join(' ').trim()}
-            >
-              <span className="plan-live" aria-hidden="true" />
-              Active
-            </button>
-            {labels.map((n) => {
-              const hasAlertForLabel = alertLabels.includes(n)
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setSelected(n)}
-                  className={[
-                    'plan-seg plan-num',
-                    hasAlertForLabel ? 'alert' : '',
-                    selected === n ? 'on' : '',
-                  ].join(' ').trim()}
-                >
-                  {n}
-                </button>
-              )
-            })}
-          </div>
-        </SlotPortal>
+        switcherPlacement === 'inline' ? (
+          <div data-mobile-sell-planner-switcher>{planSwitcher}</div>
+        ) : (
+          <SlotPortal slotId="coin-sell-plans">{planSwitcher}</SlotPortal>
+        )
       )}
 
       <div className={['relative w-full', className || ''].join(' ')}>

@@ -70,6 +70,32 @@ export default function PWAClient() {
     window.addEventListener('orientationchange', applyStandalone)
     window.visualViewport?.addEventListener('resize', applyStandalone)
 
+    // A production worker can remain registered if this origin was previously
+    // run with `next start`. Next's development chunks use stable paths, so
+    // that old worker could otherwise serve an earlier mobile UI indefinitely.
+    // Keep localhost self-healing without touching production registrations.
+    if (process.env.NODE_ENV !== 'production') {
+      const clearDevelopmentPwaState = async () => {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations()
+          await Promise.all(registrations.map((registration) => registration.unregister()))
+        }
+
+        if ('caches' in window) {
+          const cacheNames = await window.caches.keys()
+          await Promise.all(
+            cacheNames
+              .filter((name) => name.startsWith('lg1-static-'))
+              .map((name) => window.caches.delete(name))
+          )
+        }
+      }
+
+      void clearDevelopmentPwaState().catch(() => {
+        /* Development cleanup is best-effort. */
+      })
+    }
+
     // Dev builds change chunk names constantly; a worker there only causes
     // stale-asset confusion, so register in production only.
     if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {

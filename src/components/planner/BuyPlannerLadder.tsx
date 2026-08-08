@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -15,6 +15,7 @@ import {
 import { fmtCurrency } from '@/lib/format'
 import { usePrice } from '@/lib/dataCore'
 import SlotPortal from '@/components/planner/SlotPortal'
+import PlannerActionAlert from '@/components/planner/PlannerActionAlert'
 
 type ActiveBuyPlanner = {
   id: string
@@ -30,8 +31,16 @@ type ActiveBuyPlanner = {
 }
 
 
-export default function BuyPlannerLadder({ coingeckoId }: { coingeckoId: string }) {
-  const { user } = useUser()
+export default function BuyPlannerLadder({
+  coingeckoId,
+  onAlertStateChange,
+  showEmptyState = false,
+}: {
+  coingeckoId: string
+  onAlertStateChange?: (hasAlert: boolean) => void
+  showEmptyState?: boolean
+}) {
+  const { user, loading: userLoading } = useUser()
 
   // NEW: robust live price via data core (no legacy adapters)
   const { row: priceRow } = usePrice(coingeckoId, 'USD', {
@@ -258,6 +267,33 @@ const plan: BuyLevel[] = useMemo(() => {
     return { ...summary, actionablePrice }
   }, [plan, fills.allocatedUsd, livePrice])
 
+  const hasActionableAlert = actionableNow.alertRows > 0
+
+  useEffect(() => {
+    onAlertStateChange?.(hasActionableAlert)
+  }, [hasActionableAlert, onAlertStateChange])
+
+  const hasNoPlanner = !userLoading && (user ? planner === null : true)
+
+  if (showEmptyState && hasNoPlanner) {
+    return (
+      <div
+        role="status"
+        className="flex min-h-[190px] w-full flex-col items-center justify-center px-7 py-12 text-center"
+      >
+        <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-[rgb(56,58,64)] bg-[rgb(27,28,31)] text-slate-500">
+          <Target className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-200">
+          No active Buy Planner
+        </h3>
+        <p className="mt-1.5 max-w-[270px] text-[13px] leading-5 text-slate-500">
+          Create a Buy Planner to see its planned levels here.
+        </p>
+      </div>
+    )
+  }
+
   return (
     // Full-bleed inner card: fill parent width/height (skin: transparent, panel provides surface)
     <div className="w-full h-full">
@@ -293,35 +329,17 @@ const plan: BuyLevel[] = useMemo(() => {
       )}
 
       {actionableNow.alertRows > 0 && (
-        <div className="pl-banner">
-          <span className="dot" aria-hidden="true">
-            <TriangleAlert strokeWidth={2.5} />
-          </span>
-          <b className="alert-txt act-now">Buy now</b>
-
-          <span className="sep">·</span>
-
-          <span>
-            <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
-            {actionableNow.alertRows === 1 ? 'row' : 'rows'}
-          </span>
-
-          <span className="sep">·</span>
-
-          <span>
-            Qty : <b className="tabular-nums">{fmtCurrency(actionableNow.remainingUsd)}</b>
-            {coinSymbol ? ` ${coinSymbol}` : ''}
-          </span>
-
-          {actionableNow.actionablePrice !== null && (
-            <>
-              <span className="sep">@</span>
-              <span>
-                Price: <b className="tabular-nums">{fmtCurrency(actionableNow.actionablePrice)}</b>
-              </span>
-            </>
-          )}
-        </div>
+        <PlannerActionAlert
+          action="buy"
+          rows={actionableNow.alertRows}
+          quantity={fmtCurrency(actionableNow.remainingUsd)}
+          symbol={coinSymbol}
+          price={
+            actionableNow.actionablePrice !== null
+              ? fmtCurrency(actionableNow.actionablePrice)
+              : null
+          }
+        />
       )}
 
       <div className="pl-ladder">

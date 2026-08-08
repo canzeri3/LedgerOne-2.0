@@ -12,13 +12,22 @@
  *
  * Bump VERSION to roll the cache.
  */
-const VERSION = 'v2'
+const VERSION = 'v3'
 const STATIC_CACHE = `lg1-static-${VERSION}`
 const OFFLINE_URL = '/offline.html'
+const IS_LOCAL_DEVELOPMENT =
+  self.location.hostname === 'localhost' ||
+  self.location.hostname === '127.0.0.1' ||
+  self.location.hostname === '::1'
 
 const PRECACHE = [OFFLINE_URL, '/icons/icon-192.png', '/icons/apple-touch-icon.png']
 
 self.addEventListener('install', (event) => {
+  if (IS_LOCAL_DEVELOPMENT) {
+    event.waitUntil(self.skipWaiting())
+    return
+  }
+
   event.waitUntil(
     caches
       .open(STATIC_CACHE)
@@ -33,8 +42,13 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== STATIC_CACHE).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => IS_LOCAL_DEVELOPMENT || k !== STATIC_CACHE)
+            .map((k) => caches.delete(k))
+        )
       )
+      .then(() => (IS_LOCAL_DEVELOPMENT ? self.registration.unregister() : undefined))
       .then(() => self.clients.claim())
   )
 })
@@ -49,6 +63,10 @@ function isCacheableAsset(url) {
 }
 
 self.addEventListener('fetch', (event) => {
+  // Never intercept a local development request. Dev chunk URLs are not
+  // content-hashed and must always come from the running Next.js process.
+  if (IS_LOCAL_DEVELOPMENT) return
+
   const { request } = event
 
   // Anything that mutates state, or isn't ours, goes straight to the network.

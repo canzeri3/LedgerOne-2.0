@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Search, X } from 'lucide-react'
 import CoinLogo from '@/components/common/CoinLogo'
@@ -28,6 +28,7 @@ type Props = {
  */
 export default function CoinPickerSheet({ open, onClose }: Props) {
   const pathname = usePathname() ?? ''
+  const router = useRouter()
   const { mounted, shown } = useMenuTransition(open)
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
@@ -132,7 +133,24 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
                 <Link
                   key={c.coingecko_id}
                   href={href}
-                  onClick={onClose}
+                  onClick={(event) => {
+                    // Closing the animated sheet during Next's own Link click
+                    // can interrupt the client-side navigation on mobile. Own
+                    // the plain-tap navigation so the selected coin id is the
+                    // route that commits; preserve modified clicks as links.
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return
+                    }
+
+                    event.preventDefault()
+                    router.push(href)
+                    onClose()
+                  }}
                   className={active ? 'is-active' : undefined}
                   aria-current={active ? 'page' : undefined}
                   // Drives the staggered entrance. Capped so rows far down the

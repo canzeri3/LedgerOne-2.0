@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import { Layers, Target, Coins, DollarSign, TrendingUp, TriangleAlert } from 'lucide-react'
+import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
 import { useLivePrice } from '@/lib/useLivePrice'
 import { usePrice } from '@/lib/dataCore'
+import PlannerActionAlert from '@/components/planner/PlannerActionAlert'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -60,7 +61,15 @@ function num(n: any): number {
 }
 const EPS = 1e-8
 
-export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: string }) {
+export default function SellPlannerHistory({
+  coingeckoId,
+  alertOnly = false,
+  onAlertStateChange,
+}: {
+  coingeckoId: string
+  alertOnly?: boolean
+  onAlertStateChange?: (hasAlert: boolean) => void
+}) {
   const { user } = useUser()
   useLivePrice(coingeckoId, 15000)
 
@@ -210,6 +219,24 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
     })
   }, [JSON.stringify(planners), JSON.stringify(levelsByPlanner), JSON.stringify(sellsByPlanner)])
 
+  const historyHasAlert = useMemo(() => {
+    const hasLive = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+    if (!hasLive) return false
+
+    return views.some((view) =>
+      view.rows.some((row) => {
+        const filled = row.pct >= 0.98
+        return !filled && row.targetPrice > 0 && (livePrice as number) >= row.targetPrice * 0.985
+      })
+    )
+  }, [views, livePrice])
+
+  useEffect(() => {
+    onAlertStateChange?.(historyHasAlert)
+  }, [historyHasAlert, onAlertStateChange])
+
+  if (alertOnly) return null
+
   if (!views || !views.length) {
     return (
       <div className="w-full h-full">
@@ -283,35 +310,13 @@ export default function SellPlannerHistory({ coingeckoId }: { coingeckoId: strin
               className="space-y-3"
             >
               {actionableNow.alertRows > 0 && (
-                <div className="pl-banner">
-                  <span className="dot" aria-hidden="true">
-                    <TriangleAlert strokeWidth={2.5} />
-                  </span>
-                  <b className="alert-txt act-now">Sell now</b>
-
-                  <span className="sep">·</span>
-
-                  <span>
-                    <b className="tabular-nums">{actionableNow.alertRows}</b>{' '}
-                    {actionableNow.alertRows === 1 ? 'row' : 'rows'}
-                  </span>
-
-                  <span className="sep">·</span>
-
-                  <span>
-                    Qty : <b className="tabular-nums">{actionableNow.remainingTokens.toFixed(6)}</b>
-                    {coinSymbol ? ` ${coinSymbol}` : ''}
-                  </span>
-
-                  {actionablePrice !== null && (
-                    <>
-                      <span className="sep">@</span>
-                      <span>
-                        Price: <b className="tabular-nums">{fmtCurrency(actionablePrice)}</b>
-                      </span>
-                    </>
-                  )}
-                </div>
+                <PlannerActionAlert
+                  action="sell"
+                  rows={actionableNow.alertRows}
+                  quantity={actionableNow.remainingTokens.toFixed(6)}
+                  symbol={coinSymbol}
+                  price={actionablePrice !== null ? fmtCurrency(actionablePrice) : null}
+                />
               )}
 
               <div className="ldr-scroll">
