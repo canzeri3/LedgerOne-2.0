@@ -12,7 +12,7 @@
  *
  * Bump VERSION to roll the cache.
  */
-const VERSION = 'v1'
+const VERSION = 'v2'
 const STATIC_CACHE = `lg1-static-${VERSION}`
 const OFFLINE_URL = '/offline.html'
 
