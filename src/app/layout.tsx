@@ -12,6 +12,12 @@ import { Inter, Sora, IBM_Plex_Sans } from 'next/font/google'
 // MARKETING_ROUTES in AppShell / src/lib/theme.tsx).
 const themeInitScript = `(function(){try{var m={'/':1,'/platform':1,'/how-it-works':1,'/use-cases':1,'/pricing':1,'/contact':1};if(m[window.location.pathname]){return;}if(window.localStorage.getItem('lg1-theme')==='light'){document.documentElement.setAttribute('data-theme','light');document.documentElement.style.colorScheme='light';}}catch(e){}})();`
 
+// Mark installed apps before first paint and measure the physical pixels that
+// iOS leaves outside its standalone layout viewport. PWAClient repeats this
+// after hydration and on rotation/resizes; this early pass prevents a flash of
+// the shorter Safari-sized canvas while the app boots.
+const pwaViewportInitScript = `(function(){try{var n=window.navigator;var standalone=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||n.standalone===true;if(!standalone)return;var r=document.documentElement;r.setAttribute('data-standalone','1');var p=document.createElement('div');p.style.cssText='position:absolute;visibility:hidden;pointer-events:none;height:env(safe-area-inset-top)';r.appendChild(p);var safeTop=p.getBoundingClientRect().height||0;p.remove();var portrait=!window.matchMedia||window.matchMedia('(orientation: portrait)').matches;var screenBlock=portrait?Math.max(screen.width,screen.height):Math.min(screen.width,screen.height);var viewportBlock=Math.max(window.innerHeight||0,r.clientHeight||0);var measured=Math.max(0,screenBlock-viewportBlock);var gap=safeTop>0.5?Math.max(safeTop,measured):0;r.style.setProperty('--l1-pwa-viewport-gap',Math.min(120,Math.round(gap))+'px');}catch(e){}})();`
+
 export const metadata: Metadata = {
   title: 'LedgerOne',
   description: 'Crypto planner & tracker',
@@ -83,6 +89,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 <body className="antialiased font-sans bg-[#131415] overflow-x-hidden scrollbar-auto-hide">
         {/* Apply persisted theme before paint (no flash of the wrong theme) */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: pwaViewportInitScript }} />
         <PWAClient />
         <SWRProvider>
           <ThemeProvider>

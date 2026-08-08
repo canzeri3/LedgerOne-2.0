@@ -3029,17 +3029,18 @@ html[data-standalone='1'] body {
   overscroll-behavior-y: none;
 }
 
-/* iOS can preserve an installed app's original black-translucent viewport
-   even after its launch metadata changes. In that mode WebKit's fixed/layout
-   viewport ends one top-safe-area short of the physical screen. Compensate at
-   runtime so existing Home Screen installs fill the screen without changing
-   normal mobile Safari or any desktop layout. When iOS uses the newer opaque
-   status-bar viewport, safe-area-inset-top is zero and these rules are inert. */
+/* iOS can preserve an installed app's original black-translucent viewport.
+   PWAClient measures the physical gap that WebKit leaves outside that viewport
+   and stores it in --l1-pwa-viewport-gap. The env() fallback covers the first
+   frame if JavaScript is delayed. Normal Safari and desktop never match these
+   standalone mobile selectors. */
 @media (max-width: 767.98px) {
   html[data-standalone='1'] [data-app-shell],
   html[data-standalone='1'] .l1-auth,
   html[data-standalone='1'] .l1-auth .auth-wrap {
-    min-height: calc(100dvh + env(safe-area-inset-top));
+    min-height: calc(
+      100dvh + var(--l1-pwa-viewport-gap, env(safe-area-inset-top))
+    );
   }
 
   html[data-standalone='1'] .l1-auth .auth-wrap {
@@ -3056,7 +3057,9 @@ html[data-standalone='1'] body {
     [data-mobile-nav-backdrop],
     [data-mobile-nav-drawer]
   ) {
-    bottom: calc(0px - env(safe-area-inset-top));
+    bottom: calc(
+      0px - var(--l1-pwa-viewport-gap, env(safe-area-inset-top))
+    );
   }
 }
 
@@ -3216,19 +3219,22 @@ html[data-standalone='1'] body {
 
   html[data-standalone='1'] [data-has-tabbar] #l1-app-main {
     padding-bottom: calc(
-      78px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+      78px + env(safe-area-inset-bottom) -
+        var(--l1-pwa-viewport-gap, env(safe-area-inset-top))
     );
   }
 
   html[data-standalone='1'] .l1-bottomnav {
     bottom: calc(
-      12px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+      12px + env(safe-area-inset-bottom) -
+        var(--l1-pwa-viewport-gap, env(safe-area-inset-top))
     );
   }
 
   html[data-standalone='1'] .l1-coinsheet {
     bottom: calc(
-      113px + env(safe-area-inset-bottom) - env(safe-area-inset-top)
+      113px + env(safe-area-inset-bottom) -
+        var(--l1-pwa-viewport-gap, env(safe-area-inset-top))
     );
   }
 }
