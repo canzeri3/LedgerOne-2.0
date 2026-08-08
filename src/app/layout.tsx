@@ -23,9 +23,10 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'LedgerOne',
-    // 'black-translucent' lets the app paint under the status bar; the
-    // safe-area padding in globals.css keeps content clear of it.
-    statusBarStyle: 'black-translucent',
+    // Keep the iOS Home Screen viewport below the status bar. WebKit can size
+    // fixed/full-height content short in black-translucent mode, leaving the
+    // bottom of the physical screen uncovered and top controls under the clock.
+    statusBarStyle: 'black',
   },
   icons: {
     icon: [
