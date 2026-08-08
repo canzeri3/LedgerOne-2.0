@@ -335,7 +335,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div
       data-app-shell
       data-has-tabbar={showTabBar ? '' : undefined}
-      className="min-h-screen text-slate-100"
+      className="min-h-screen min-h-dvh text-slate-100"
       style={{ backgroundColor: isLanding ? MARKETING_BG : PAGE_BG }}
     >
       {/* Mount once to keep server cookies in sync with client auth */}
@@ -417,8 +417,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div
           className={
             isLanding
-              ? 'col-span-full min-h-screen flex flex-col'
-              : 'col-span-full md:col-[span_72/span_72] lg:col-[span_77/span_77] min-h-screen flex flex-col -ml-px'
+              ? 'col-span-full min-h-screen min-h-dvh flex flex-col'
+              : 'col-span-full md:col-[span_72/span_72] lg:col-[span_77/span_77] min-h-screen min-h-dvh flex flex-col -ml-px'
           }
         >
           {/* Semi-opaque header */}
@@ -673,4 +673,3 @@ export default function AppShell({ children }: { children: ReactNode }) {
     </DisplayCurrencyProvider>
   )
 }
-
