@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import BuyPlannerLadder from '@/components/planner/BuyPlannerLadder'
 import SellPlannerCombinedCard from '@/components/planner/SellPlannerCombinedCard'
@@ -18,11 +18,13 @@ import '@/app/planner/planner-skin.css'
 function PlannerPanel({
   side,
   defaultOpen,
+  hasAlert,
   pheadSlots,
   children,
 }: {
   side: 'buy' | 'sell'
   defaultOpen: boolean
+  hasAlert: boolean
   pheadSlots: ReactNode
   children: ReactNode
 }) {
@@ -89,7 +91,7 @@ function PlannerPanel({
       >
         <div className="pl-title">
           <span className="pl-badge">{label}</span>
-          <div className="tt">{label} Planner</div>
+          <div className={`tt${hasAlert ? ' alert' : ''}`}>{label} Planner</div>
         </div>
         <div
           className="pl-phead-right"
@@ -128,6 +130,31 @@ function PlannerPanel({
 
 export default function CoinPlannersUnderAddTrade() {
   const pathname = usePathname()
+  const [plannerAlerts, setPlannerAlerts] = useState({
+    buy: false,
+    sellActive: false,
+    sellHistory: false,
+  })
+
+  const setBuyAlert = useCallback((buy: boolean) => {
+    setPlannerAlerts((current) =>
+      current.buy === buy ? current : { ...current, buy }
+    )
+  }, [])
+
+  const setSellAlert = useCallback((sellActive: boolean) => {
+    setPlannerAlerts((current) =>
+      current.sellActive === sellActive ? current : { ...current, sellActive }
+    )
+  }, [])
+
+  const setSellHistoryAlert = useCallback((sellHistory: boolean) => {
+    setPlannerAlerts((current) =>
+      current.sellHistory === sellHistory
+        ? current
+        : { ...current, sellHistory }
+    )
+  }, [])
 
   // Resolve coin id (keeps existing behavior)
   const coinId = useMemo(() => {
@@ -151,10 +178,14 @@ export default function CoinPlannersUnderAddTrade() {
       <PlannerPanel
         side="buy"
         defaultOpen={false}
+        hasAlert={plannerAlerts.buy}
         pheadSlots={<div id="buy-phead-stats" className="contents" />}
       >
         <div className="pt-1">
-          <BuyPlannerLadder coingeckoId={coinId} />
+          <BuyPlannerLadder
+            coingeckoId={coinId}
+            onAlertStateChange={setBuyAlert}
+          />
         </div>
       </PlannerPanel>
 
@@ -162,6 +193,7 @@ export default function CoinPlannersUnderAddTrade() {
       <PlannerPanel
         side="sell"
         defaultOpen={true}
+        hasAlert={plannerAlerts.sellActive || plannerAlerts.sellHistory}
         pheadSlots={
           <>
             <div id="sell-phead-stats" className="contents" />
@@ -172,8 +204,18 @@ export default function CoinPlannersUnderAddTrade() {
         <SellPlannerCombinedCard
           title=""
           newestFirst={true}
-          ActiveView={<SellPlannerLadder coingeckoId={coinId} />}
-          HistoryView={<SellPlannerHistory coingeckoId={coinId} />}
+          ActiveView={
+            <SellPlannerLadder
+              coingeckoId={coinId}
+              onAlertStateChange={setSellAlert}
+            />
+          }
+          HistoryView={
+            <SellPlannerHistory
+              coingeckoId={coinId}
+              onAlertStateChange={setSellHistoryAlert}
+            />
+          }
         />
       </PlannerPanel>
     </div>
