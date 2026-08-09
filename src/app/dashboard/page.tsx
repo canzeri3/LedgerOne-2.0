@@ -901,6 +901,8 @@ const { delta, pct } = useMemo(() => {
           liveValue={liveValue}
           delta={delta}
           pct={pct}
+          realizedProfit={realizedProfit}
+          unrealizedProfit={unrealizedProfit}
           performanceBasis={performanceBasis}
           assetPerformance={assetPerformance}
           coinIds={coinIds}

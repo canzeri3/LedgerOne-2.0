@@ -126,6 +126,8 @@ type Props = {
   liveValue: number
   delta: number
   pct: number
+  realizedProfit: number
+  unrealizedProfit: number
   performanceBasis: number
   assetPerformance: AssetPerformance[]
   coinIds: string[]
@@ -145,6 +147,8 @@ export default function MobileDashboard({
   liveValue,
   delta,
   pct,
+  realizedProfit,
+  unrealizedProfit,
   performanceBasis,
   assetPerformance,
   coinIds,
@@ -304,7 +308,57 @@ export default function MobileDashboard({
             <TimeframeRow value={tf} onChange={onTfChange} />
           </div>
 
-          <section className="mx-5 mt-6 overflow-hidden rounded-xl border border-[rgb(41,42,45)] bg-[rgb(28,29,31)]">
+          <section
+            data-performance-summary
+            aria-label="Portfolio performance summary"
+            className="mt-4 grid w-full grid-cols-3 border-y border-[rgb(41,42,45)]"
+          >
+            <div className="min-w-0 px-3 py-4 text-center">
+              <div className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Assets held
+              </div>
+              <div
+                className="mt-1.5 truncate text-[15px] font-semibold text-slate-100"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {assets.length}
+              </div>
+            </div>
+
+            <div className="min-w-0 border-l border-[rgb(41,42,45)] px-2 py-4 text-center">
+              <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-slate-500">
+                Realized P&amp;L
+              </div>
+              <div
+                className="mt-1.5 truncate text-[13px] font-semibold"
+                style={{
+                  color: realizedProfit > 0 ? POS : realizedProfit < 0 ? NEG : 'rgb(226,228,235)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+                title={signedCurrency(realizedProfit)}
+              >
+                {performanceHidden ? '••••' : signedCurrency(realizedProfit)}
+              </div>
+            </div>
+
+            <div className="min-w-0 border-l border-[rgb(41,42,45)] px-2 py-4 text-center">
+              <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-slate-500">
+                Unrealized P&amp;L
+              </div>
+              <div
+                className="mt-1.5 truncate text-[13px] font-semibold"
+                style={{
+                  color: unrealizedProfit > 0 ? POS : unrealizedProfit < 0 ? NEG : 'rgb(226,228,235)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+                title={signedCurrency(unrealizedProfit)}
+              >
+                {performanceHidden ? '••••' : signedCurrency(unrealizedProfit)}
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 w-full overflow-hidden border-y border-[rgb(41,42,45)]">
             <div className="flex items-center justify-between px-4 pb-3 pt-4">
               <h2 className="text-[15px] font-semibold tracking-tight text-slate-100">Asset performance</h2>
               <span className="text-[11px] uppercase tracking-wide text-slate-500">{TF_LABEL[tf]}</span>

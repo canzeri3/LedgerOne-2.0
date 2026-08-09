@@ -10,10 +10,12 @@ import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
-import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info, Lock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info, Lock, ShieldCheck } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
+import MobileHoldingSheet, { type MobileHoldingDetail } from '@/components/portfolio/MobileHoldingSheet'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
+import { useIsMobile } from '@/lib/useMediaQuery'
 import * as React from 'react'
 
 /* ── SortSelect: wrapper owns the card chrome so shape/color match Search input ──
@@ -159,6 +161,60 @@ type Accent = 'pos' | 'neg' | 'neutral'
 
 function kpiAccent(n: number | null | undefined): Accent {
   return n == null ? 'neutral' : n > 0 ? 'pos' : n < 0 ? 'neg' : 'neutral'
+}
+
+function signedMoney(value: number): string {
+  if (value > 0) return `+${fmtCurrency(value)}`
+  if (value < 0) return `−${fmtCurrency(Math.abs(value))}`
+  return fmtCurrency(0)
+}
+
+function MobileMetricPill({ label, value, tone = 'neutral' }: {
+  label: string
+  value: string
+  tone?: 'positive' | 'negative' | 'neutral'
+}) {
+  const valueColor = tone === 'positive'
+    ? 'text-[rgb(116,170,98)]'
+    : tone === 'negative'
+      ? 'text-[rgb(214,66,78)]'
+      : 'text-slate-100'
+
+  return (
+    <div className="min-w-0 text-center">
+      <div className="flex h-[58px] flex-col items-center justify-center gap-1 rounded-[18px] border border-[rgba(137,128,213,0.28)] bg-[rgba(137,128,213,0.10)] px-3">
+        <span className={`max-w-full truncate text-[14px] font-semibold tabular-nums ${valueColor}`} title={value}>
+          {value}
+        </span>
+        <span className="max-w-full truncate text-[8.5px] font-semibold uppercase leading-none tracking-[0.055em] text-slate-400">
+          {label}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function MobileRiskFactor({ name, note, level }: {
+  name: string
+  note: string
+  level: 'Low' | 'Moderate' | 'High' | 'Very High'
+}) {
+  return (
+    <div className="min-w-0 px-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-semibold text-slate-200">{name}</div>
+          <div className="mt-1 truncate text-[10.5px] text-slate-500" title={note}>{note}</div>
+        </div>
+        <span className={`pf-rk-lvl shrink-0 text-[10.5px] font-semibold ${lvCls(level)}`}>{level}</span>
+      </div>
+      <div className={`pf-rk-seg ${lvCls(level)} mt-3`} aria-hidden="true">
+        {[0, 1, 2, 3, 4, 5].map((index) => (
+          <i key={index} className={index < levelFill(level) ? 'on' : ''} />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /** P&L summary card that toggles its value between $ and % (vs invested basis). */
@@ -548,6 +604,7 @@ function StatTile({
 }
 
 export default function PortfolioPage() {
+  const isMobile = useIsMobile()
   const { user, loading: userLoading } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
@@ -838,6 +895,8 @@ export default function PortfolioPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [dense, setDense] = useState(false)
   const [holdingsPctMode, setHoldingsPctMode] = useState(false)
+  const [mobileHolding, setMobileHolding] = useState<MobileHoldingDetail | null>(null)
+  const closeMobileHolding = useCallback(() => setMobileHolding(null), [])
 
   const filteredSorted = useMemo(() => {
 
@@ -1230,6 +1289,228 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
   // The full-screen loader is owned solely by SWRRouteCover; render nothing
   // (the cover is on top) until the first data is ready.
   if (!hasBootstrapped && !pageReady) return null
+
+  if (isMobile) {
+    const riskFactors: Array<{
+      name: string
+      note: string
+      level: 'Low' | 'Moderate' | 'High' | 'Very High'
+    }> = [
+      { name: 'Structural', note: `${sectorAgg.score} structure score`, level: structuralLevel },
+      {
+        name: 'Volatility',
+        note: L2_annVol != null ? `σ ${(L2_annVol * 100).toFixed(1)}% annualized` : 'Waiting for history',
+        level: volatilityLevel,
+      },
+      { name: 'Tail risk', note: L3_active ? 'Breakdown signal active' : 'No active signal', level: tailLevel },
+      {
+        name: 'Diversification',
+        note: divBenefit != null ? `${Math.max(0, divBenefit * 100).toFixed(0)}% smoother mix` : 'Mix benefit pending',
+        level: divLevel,
+      },
+      {
+        name: 'Liquidity',
+        note: L5_days != null ? (L5_days < 1 ? 'Under 1 day to exit' : `About ${L5_days.toFixed(1)} days to exit`) : 'Based on coin size',
+        level: liquidityRiskLevel,
+      },
+      {
+        name: 'Expected shortfall',
+        note: L6_usd != null ? `About ${fmtCurrency(L6_usd)} on a bad day` : 'Waiting for history',
+        level: lossLevel,
+      },
+    ]
+
+    return (
+      <div
+        data-portfolio-page
+        data-portfolio-mobile
+        className="pf -mx-4 -my-4 min-h-dvh bg-[rgb(16,17,18)] pb-[calc(7.5rem+env(safe-area-inset-bottom))] text-slate-100"
+        style={{ paddingBottom: 'calc(7.5rem + env(safe-area-inset-bottom))' }}
+      >
+        <div data-mobile-portfolio-hero className="border-0 bg-transparent px-5 pb-6 pt-6 shadow-none">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium tracking-wide text-slate-400">Portfolio value</div>
+              <div className="mt-2 truncate font-display text-[38px] font-bold leading-none tracking-tight text-slate-100 tabular-nums">
+                {fmtCurrency(totals.value)}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-medium tabular-nums">
+                <span className={totals.delta24Usd >= 0 ? 'text-[rgb(116,170,98)]' : 'text-[rgb(214,66,78)]'}>
+                  {signedMoney(totals.delta24Usd)}
+                </span>
+                <span className={totals.delta24Usd >= 0 ? 'text-[rgb(116,170,98)]' : 'text-[rgb(214,66,78)]'}>
+                  {totals.delta24Pct != null ? `(${fmtPct(totals.delta24Pct)})` : '(—)'}
+                </span>
+                <span className="text-slate-500">24H</span>
+              </div>
+            </div>
+            <Link
+              href="/audit"
+              className="mt-1 inline-flex shrink-0 items-center rounded-full border border-[rgb(58,59,63)] px-3 py-2 text-[11px] font-medium text-slate-300 transition-colors active:bg-white/5"
+            >
+              Audit log
+            </Link>
+          </div>
+        </div>
+
+        <div
+          data-mobile-portfolio-totals
+          aria-label="Portfolio totals"
+          className="grid grid-cols-2 gap-x-2 gap-y-2 border-0 bg-transparent px-5 pb-5 pt-1 shadow-none"
+        >
+          <MobileMetricPill label="Capital invested" value={fmtCurrency(totals.invested)} />
+          <MobileMetricPill
+            label="Total P&amp;L"
+            value={signedMoney(totals.total)}
+            tone={totals.total > 0 ? 'positive' : totals.total < 0 ? 'negative' : 'neutral'}
+          />
+          <MobileMetricPill
+            label="Unrealized P&amp;L"
+            value={signedMoney(totals.unreal)}
+            tone={totals.unreal > 0 ? 'positive' : totals.unreal < 0 ? 'negative' : 'neutral'}
+          />
+          <MobileMetricPill
+            label="Realized P&amp;L"
+            value={signedMoney(totals.realized)}
+            tone={totals.realized > 0 ? 'positive' : totals.realized < 0 ? 'negative' : 'neutral'}
+          />
+        </div>
+
+        <div
+          data-mobile-portfolio-holdings
+          role="region"
+          aria-label="Holdings"
+          className="w-full overflow-hidden rounded-none border-x-0 border-y border-[rgb(41,42,45)] bg-transparent p-0 shadow-none"
+        >
+          <div className="flex items-center justify-between px-5 py-4">
+            <div>
+              <h1 className="font-display text-[21px] font-semibold tracking-tight text-slate-100">Holdings</h1>
+              <p className="mt-0.5 text-[11px] text-slate-500">Your live portfolio positions</p>
+            </div>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              {rows.length} {rows.length === 1 ? 'asset' : 'assets'}
+            </span>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="border-t border-[rgb(41,42,45)] px-5 py-8 text-center text-[13px] text-slate-400">
+              No holdings yet. Add a trade to build your portfolio.
+            </div>
+          ) : (
+            <ul>
+              {rows.map((holding) => {
+                const change = holding.delta24Pct
+                const positive = (change ?? 0) >= 0
+                return (
+                  <li key={holding.cid} className="border-t border-[rgb(41,42,45)]">
+                    <button
+                      type="button"
+                      onClick={() => setMobileHolding(holding)}
+                      className="flex min-h-[76px] w-full items-center gap-3 px-5 py-3.5 text-left transition-colors active:bg-[rgb(28,29,31)]"
+                      aria-label={`View ${holding.name} holding details`}
+                    >
+                      <CoinLogo symbol={holding.symbol} name={holding.name} className="h-10 w-10 shrink-0 shadow-none" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[15px] font-semibold text-slate-100">{holding.name}</div>
+                        <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                          {holding.symbol} · {holding.qty.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right tabular-nums">
+                        <div className="text-[15px] font-medium text-slate-100">{fmtCurrency(holding.value)}</div>
+                        <div className={`mt-0.5 text-[12.5px] font-medium ${positive ? 'text-[rgb(116,170,98)]' : 'text-[rgb(214,66,78)]'}`}>
+                          {change == null ? '—' : fmtPct(change)}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div
+          data-mobile-portfolio-risk
+          role="region"
+          aria-label="Portfolio Risk"
+          className="relative mt-7 w-full overflow-hidden rounded-none border-x-0 border-y border-[rgb(41,42,45)] bg-transparent p-0 shadow-none"
+        >
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="h-5 w-5 text-[rgb(137,128,213)]" aria-hidden="true" />
+              <div>
+                <h2 className="font-display text-[20px] font-semibold tracking-tight text-slate-100">Portfolio Risk</h2>
+                <p className="mt-0.5 text-[10.5px] text-slate-500">
+                  {priskErr ? 'Fallback risk model' : 'Live portfolio model'}
+                </p>
+              </div>
+            </div>
+            {canViewPortfolioRisk && (
+              <span className={`lvl-pill ${lvCls(combinedLevel)}`}>{combinedLevel}</span>
+            )}
+          </div>
+
+          {!canViewPortfolioRisk ? (
+            <div className="border-t border-[rgb(41,42,45)] px-5 py-8 text-center">
+              <Lock className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true" />
+              <div className="mt-3 text-[15px] font-semibold text-slate-100">Portfolio Risk is locked</div>
+              <p className="mx-auto mt-2 max-w-[320px] text-[12.5px] leading-5 text-slate-400">
+                Upgrade to unlock your combined risk score, market exposure, volatility, liquidity, and expected shortfall.
+              </p>
+              <Link
+                href="/pricing"
+                className="mt-5 inline-flex items-center justify-center rounded-full bg-[rgb(101,87,207)] px-5 py-2.5 text-[12px] font-semibold text-white"
+              >
+                View plans
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="border-t border-[rgb(41,42,45)] px-5 py-5">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Combined risk index</div>
+                    <div className="mt-1 font-display text-[34px] font-bold leading-none text-slate-100 tabular-nums">
+                      {combinedScore.toFixed(3)}
+                    </div>
+                  </div>
+                  <div className="pb-0.5 text-right text-[11px] leading-4 text-slate-500">
+                    1.00 is the major-coin<br />baseline
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="h-2 overflow-hidden rounded-full bg-[rgb(36,37,39)]">
+                    <div className="h-full w-full bg-[linear-gradient(90deg,rgba(116,170,98,0.82),rgba(207,180,45,0.82)_45%,rgba(189,120,45,0.88)_70%,rgba(214,66,78,0.90))]" />
+                  </div>
+                  <div className="relative -mt-2 h-2" aria-hidden="true">
+                    <span
+                      className="absolute top-0 h-4 w-4 -translate-x-1/2 -translate-y-[3px] rounded-full border-2 border-[rgb(16,17,18)] bg-slate-100 shadow"
+                      style={{ left: `${meterPct}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[9.5px] text-slate-500">
+                    <span>Low</span><span>Moderate</span><span>High</span><span>Very high</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2">
+                {riskFactors.map((factor) => (
+                  <div key={factor.name} className="border-t border-[rgb(41,42,45)] even:border-l even:border-[rgb(41,42,45)]">
+                    <MobileRiskFactor {...factor} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <MobileHoldingSheet holding={mobileHolding} onClose={closeMobileHolding} />
+      </div>
+    )
+  }
 
   return (
     <div data-portfolio-page className="pf relative px-4 md:px-6 py-8 max-w-screen-2xl mx-auto">
