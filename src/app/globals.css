@@ -571,6 +571,9 @@ html.lg1-route-enter #l1-app-main {
   --font-display: var(--l1-sora, system-ui, sans-serif);
   --font-ui:      var(--l1-dm-sans, system-ui, sans-serif);
   --font-mono:    var(--l1-jb-mono, ui-monospace, monospace);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--color-bg-base);
 }
 
 /* ---- Wrap ---- */
