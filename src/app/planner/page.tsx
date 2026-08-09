@@ -340,6 +340,7 @@ export default function PlannerPage() {
 
   // ── Local state: selected coin id ─────────────────────────────────────────
   const [coingeckoId, setCoingeckoId] = useState<string>('')
+  const [mobilePlannerView, setMobilePlannerView] = useState<'buy' | 'sell'>('buy')
 
 
   // ── UI state: confirm “Save New” (Buy Planner) ──────────────────────────
@@ -645,6 +646,47 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
         </div>
       ) : null}
 
+      {/* Mobile planner navigation. Both planners stay mounted so their data,
+          portals, and draft inputs are preserved while switching views. */}
+      <div className="pl-mobile-switch" role="tablist" aria-label="Planner type">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePlannerView === 'buy'}
+          aria-controls="mobile-buy-planner"
+          className={mobilePlannerView === 'buy' ? 'is-active buy' : 'buy'}
+          onClick={() => setMobilePlannerView('buy')}
+        >
+          <span className="pl-mobile-switch-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 4v14M7 13l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span>
+            <strong>Buy Planner</strong>
+            <small>Build positions</small>
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobilePlannerView === 'sell'}
+          aria-controls="mobile-sell-planner"
+          className={mobilePlannerView === 'sell' ? 'is-active sell' : 'sell'}
+          onClick={() => setMobilePlannerView('sell')}
+        >
+          <span className="pl-mobile-switch-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 20V6M7 11l5-5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span>
+            <strong>Sell Planner</strong>
+            <small>Plan exits</small>
+          </span>
+        </button>
+      </div>
+
       {/* Guard against undefined selection while coins load */}
       {!coingeckoId ? (
         <div className="text-slate-400 text-sm">Loading…</div>
@@ -671,7 +713,10 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
           )}
 
           {/* ───────── BUY: one seamless panel (Inputs + Ladder) ───────── */}
-          <section className="pl-panel buy w-full">
+          <section
+            id="mobile-buy-planner"
+            className={`pl-panel buy w-full ${mobilePlannerView === 'buy' ? 'mobile-current' : 'mobile-away'}`}
+          >
             <div className="pl-rail" aria-hidden="true" />
             <div className="pl-phead">
               <div className="pl-title">
@@ -794,7 +839,10 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
           </section>
 
           {/* ───────── SELL: inputs + active/history ───────── */}
-          <section className="pl-panel sell w-full">
+          <section
+            id="mobile-sell-planner"
+            className={`pl-panel sell w-full ${mobilePlannerView === 'sell' ? 'mobile-current' : 'mobile-away'}`}
+          >
             <div className="pl-rail" aria-hidden="true" />
             <div className="pl-phead">
               <div className="pl-title">

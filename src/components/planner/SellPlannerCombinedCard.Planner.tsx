@@ -374,7 +374,7 @@ export default function SellPlannerCombinedCardPlanner({
 
         {/* Footer actions — Delete (when available) + Generate Ladder (portaled in
             from SellPlannerInputs so it keeps its handler + busy state) */}
-        <div className="flex justify-end gap-2" style={{ margin: '14px 26px 0' }}>
+        <div className="pl-sell-actions flex justify-end gap-2">
           {canDeleteSelected && (
             <button
               type="button"
@@ -395,7 +395,7 @@ export default function SellPlannerCombinedCardPlanner({
 
         {/* Optional helper – now also uses the same text color */}
         {hasLivePrice ? (
-          <div className="text-xs" style={{ margin: '10px 26px 0', color: TEXT_RGB }}>
+          <div className="pl-live-context text-xs" style={{ color: TEXT_RGB }}>
             Live price context: ${Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </div>
         ) : null}

@@ -319,6 +319,12 @@ export default function SellPlannerHistory({
                 />
               )}
 
+              <div className="pl-mobile-table-hint">
+                <span>Swipe to review all ladder fields</span>
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12h14M15 8l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
               <div className="ldr-scroll">
                 <table className="ldr">
                   <thead>

@@ -137,33 +137,38 @@ export default function Sidebar() {
   return (
     // Sidebar scrolls independently if content exceeds viewport
 <div className="flex h-full max-h-[100dvh] flex-col overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-auto-hide md:overscroll-auto">
-          {/* Brand logo */}
-<div className="pt-3 pb-3 px-0 -ml-4 w-[calc(100%+16px)] md:pt-4 md:pb-4 border-b border-[rgb(41,42,45)]">
-
-        {/* Brand logo */}
-     <div className="pl-0 pr-1 pt-0 pb-0">
-
-   <div className="relative h-12 w-full overflow-hidden md:h-14">
+      {/* Brand logo. The desktop crop is intentionally preserved; mobile uses
+          the full drawer width without the desktop zoom/negative offset. */}
+      <div className="w-full border-b border-[rgb(41,42,45)] px-3 pb-3 pt-3 md:-ml-4 md:w-[calc(100%+16px)] md:px-0 md:pb-4 md:pt-4 md:pr-1">
+        <div className="relative h-14 w-full overflow-hidden md:hidden">
           <Image
             src="/lg1-logo.png"
             alt="LedgerOne · portfolio planner"
             fill
             priority
-            sizes="(min-width: 1024px) 16vw, (min-width: 768px) 25vw, 100vw"
+            sizes="86vw"
             style={{
-              objectFit: 'cover', // ensures it fills the full slot width
-              objectPosition: 'left center', // keeps the mark anchored to the left
-transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
+              objectFit: 'cover',
+              objectPosition: 'center center',
+            }}
+          />
+        </div>
+
+        <div className="relative hidden h-14 w-full overflow-hidden md:block">
+          <Image
+            src="/lg1-logo.png"
+            alt="LedgerOne · portfolio planner"
+            fill
+            priority
+            sizes="(min-width: 1024px) 16vw, 25vw"
+            style={{
+              objectFit: 'cover',
+              objectPosition: 'left center',
+              transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LOGO_SHIFT_Y_PX / LOGO_SCALE}px)`,
               transformOrigin: 'left center',
             }}
           />
         </div>
-      </div>
-
-
-
-
-
       </div>
 
 
@@ -330,4 +335,3 @@ transform: `scale(${LOGO_SCALE}) translate(${LOGO_SHIFT_PX / LOGO_SCALE}px, ${LO
     </div>
   )
 }
-

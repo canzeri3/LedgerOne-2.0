@@ -19,6 +19,14 @@
   padding-bottom: 48px;
 }
 
+/* Mobile app pages already receive precise bottom-tab clearance from AppShell.
+   Avoid stacking this desktop finishing space beneath the final audit row. */
+@media (max-width: 767.98px) {
+  .au[data-audit-page] {
+    padding-bottom: 0;
+  }
+}
+
 /* ---- page head ---- */
 .au .au-head {
   display: flex; align-items: flex-end; justify-content: space-between;

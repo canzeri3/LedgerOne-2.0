@@ -14,6 +14,7 @@ import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, 
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import MobileHoldingSheet, { type MobileHoldingDetail } from '@/components/portfolio/MobileHoldingSheet'
+import MobileRiskMetricSheet, { type MobileRiskMetricDetail } from '@/components/portfolio/MobileRiskMetricSheet'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 import { useIsMobile } from '@/lib/useMediaQuery'
 import * as React from 'react'
@@ -194,26 +195,36 @@ function MobileMetricPill({ label, value, tone = 'neutral' }: {
   )
 }
 
-function MobileRiskFactor({ name, note, level }: {
+function MobileRiskFactor({ name, note, level, onClick }: {
   name: string
   note: string
   level: 'Low' | 'Moderate' | 'High' | 'Very High'
+  onClick: () => void
 }) {
   return (
-    <div className="min-w-0 px-5 py-4">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-haspopup="dialog"
+      aria-label={`View ${name} risk details`}
+      className="min-w-0 w-full px-5 py-4 text-left transition-colors active:bg-white/[0.035] focus:outline-none focus-visible:bg-white/[0.035]"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[12.5px] font-semibold text-slate-200">{name}</div>
           <div className="mt-1 truncate text-[10.5px] text-slate-500" title={note}>{note}</div>
         </div>
-        <span className={`pf-rk-lvl shrink-0 text-[10.5px] font-semibold ${lvCls(level)}`}>{level}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className={`pf-rk-lvl text-[10.5px] font-semibold ${lvCls(level)}`}>{level}</span>
+          <Info className="h-3.5 w-3.5 text-slate-600" aria-hidden="true" />
+        </div>
       </div>
       <div className={`pf-rk-seg ${lvCls(level)} mt-3`} aria-hidden="true">
         {[0, 1, 2, 3, 4, 5].map((index) => (
           <i key={index} className={index < levelFill(level) ? 'on' : ''} />
         ))}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -896,7 +907,9 @@ export default function PortfolioPage() {
   const [dense, setDense] = useState(false)
   const [holdingsPctMode, setHoldingsPctMode] = useState(false)
   const [mobileHolding, setMobileHolding] = useState<MobileHoldingDetail | null>(null)
+  const [mobileRiskMetric, setMobileRiskMetric] = useState<MobileRiskMetricDetail | null>(null)
   const closeMobileHolding = useCallback(() => setMobileHolding(null), [])
+  const closeMobileRiskMetric = useCallback(() => setMobileRiskMetric(null), [])
 
   const filteredSorted = useMemo(() => {
 
@@ -1291,32 +1304,102 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
   if (!hasBootstrapped && !pageReady) return null
 
   if (isMobile) {
-    const riskFactors: Array<{
-      name: string
-      note: string
-      level: 'Low' | 'Moderate' | 'High' | 'Very High'
-    }> = [
-      { name: 'Structural', note: `${sectorAgg.score} structure score`, level: structuralLevel },
+    const riskFactors: MobileRiskMetricDetail[] = [
       {
+        id: 'structural',
+        name: 'Structural',
+        note: `${sectorAgg.score} structure score`,
+        level: structuralLevel,
+        valueLabel: 'Structural score',
+        value: String(sectorAgg.score),
+        summary: 'Shows the underlying quality and concentration of what you own. Larger, established coins receive less structural risk than smaller or unranked assets.',
+        details: [
+          { label: 'Risk multiplier', value: `×${sectorAgg.structuralSum.toFixed(2)}` },
+          { label: 'Top-10 exposure', value: fmtPct(sectorAgg.blue + sectorAgg.large) },
+          { label: 'Top-2 exposure', value: fmtPct(sectorAgg.blue) },
+          { label: 'Outside top 50', value: fmtPct(sectorAgg.unranked) },
+        ],
+        methodology: 'Each holding is weighted by portfolio size and its market-cap tier. The weighted tier multipliers are combined into the structural score.',
+      },
+      {
+        id: 'volatility',
         name: 'Volatility',
         note: L2_annVol != null ? `σ ${(L2_annVol * 100).toFixed(1)}% annualized` : 'Waiting for history',
         level: volatilityLevel,
+        valueLabel: 'Annualized volatility',
+        value: L2_annVol != null ? `${(L2_annVol * 100).toFixed(1)}%` : 'Pending',
+        summary: 'Measures how widely the full portfolio moves in either direction. Large up days and large down days both increase this metric.',
+        details: [
+          { label: 'Risk multiplier', value: `×${L2_mult.toFixed(2)}` },
+          { label: 'Current conditions', value: L2_regime === 'calm' ? 'Calm' : L2_regime === 'normal' ? 'Normal' : L2_regime === 'high' ? 'Choppy' : 'Stressed' },
+          { label: 'Measurement window', value: '45 days' },
+          { label: 'Portfolio baseline', value: '15–20% stocks' },
+        ],
+        methodology: 'Annualized realized volatility is calculated from daily portfolio returns. Covariance between holdings is already included in this measurement.',
       },
-      { name: 'Tail risk', note: L3_active ? 'Breakdown signal active' : 'No active signal', level: tailLevel },
       {
+        id: 'tail-risk',
+        name: 'Tail risk',
+        note: L3_active ? 'Breakdown signal active' : 'No active signal',
+        level: tailLevel,
+        valueLabel: 'Current signal',
+        value: L3_active ? 'Breaking down' : 'Normal range',
+        summary: 'A live warning light that checks whether your holdings are trading below their normal range. It identifies current stress; it is not a price forecast.',
+        details: [
+          { label: 'Risk multiplier', value: `×${L3_factor.toFixed(2)}` },
+          { label: 'Capital affected', value: fmtPct(L3_share) },
+          { label: 'Reference window', value: '20 days' },
+          { label: 'Signal state', value: L3_active ? 'Active' : 'Inactive' },
+        ],
+        methodology: 'The signal activates when price falls below its 20-day normal range: the 20-day average minus two standard deviations, weighted by position size.',
+      },
+      {
+        id: 'diversification',
         name: 'Diversification',
         note: divBenefit != null ? `${Math.max(0, divBenefit * 100).toFixed(0)}% smoother mix` : 'Mix benefit pending',
         level: divLevel,
+        valueLabel: 'Portfolio smoothing',
+        value: divBenefit != null ? `${Math.max(0, divBenefit * 100).toFixed(0)}%` : 'Pending',
+        summary: 'Shows whether combining your coins genuinely makes the portfolio smoother than holding the assets individually.',
+        details: [
+          { label: 'Diversification ratio', value: L2_divRatio != null ? L2_divRatio.toFixed(2) : '—' },
+          { label: 'Average BTC relation', value: corrAgg.avg != null ? corrAgg.avg.toFixed(2) : '—' },
+          { label: 'Measurement window', value: corrAgg.source === 'server' ? '45 days' : '95 days' },
+          { label: 'Score impact', value: 'Information only' },
+        ],
+        methodology: 'The diversification ratio compares the weighted volatility of each asset with the volatility of the combined portfolio. It is informational because covariance is already counted in Volatility.',
       },
       {
+        id: 'liquidity',
         name: 'Liquidity',
         note: L5_days != null ? (L5_days < 1 ? 'Under 1 day to exit' : `About ${L5_days.toFixed(1)} days to exit`) : 'Based on coin size',
         level: liquidityRiskLevel,
+        valueLabel: 'Estimated exit time',
+        value: L5_days != null ? (L5_days < 1 ? 'Under 1 day' : `${L5_days < 10 ? L5_days.toFixed(1) : Math.round(L5_days)} days`) : 'Tier estimate',
+        summary: 'Estimates how easily the portfolio could be sold without requiring an unrealistic share of normal market volume.',
+        details: [
+          { label: 'Risk multiplier', value: `×${L5_mult.toFixed(2)}` },
+          { label: 'Selling pace', value: fmtPct(L5_partic) },
+          { label: 'Volume coverage', value: L5_coverage != null ? fmtPct(L5_coverage) : 'Unavailable' },
+          { label: 'Easy-exit exposure', value: fmtPct(liquidityAgg.bands.blue + liquidityAgg.bands.large) },
+        ],
+        methodology: 'Exit time uses each holding’s value and 24-hour trading volume at the assumed participation rate, then blends the result with the coin’s market-cap tier.',
       },
       {
+        id: 'expected-shortfall',
         name: 'Expected shortfall',
         note: L6_usd != null ? `About ${fmtCurrency(L6_usd)} on a bad day` : 'Waiting for history',
         level: lossLevel,
+        valueLabel: 'Average bad-day loss',
+        value: L6_usd != null ? `−${fmtCurrency(L6_usd)}` : 'Pending',
+        summary: 'Estimates the average portfolio loss on the worst 5% of historical days—roughly the difficult one day in twenty.',
+        details: [
+          { label: 'Portfolio loss', value: L6_es != null ? `−${(Math.abs(L6_es) * 100).toFixed(1)}%` : '—' },
+          { label: 'Bad day begins at', value: L6_var != null ? `−${fmtPct(Math.abs(L6_var))}` : '—' },
+          { label: 'Days observed', value: L6_obs != null ? String(L6_obs) : '—' },
+          { label: 'Method', value: 'Historical ES 95%' },
+        ],
+        methodology: 'Expected Shortfall 95% averages the losses from the worst 5% of observed portfolio days. It describes historical downside and is not a forecast or guaranteed maximum loss.',
       },
     ]
 
@@ -1324,8 +1407,10 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
       <div
         data-portfolio-page
         data-portfolio-mobile
-        className="pf -mx-4 -my-4 min-h-dvh bg-[rgb(16,17,18)] pb-[calc(7.5rem+env(safe-area-inset-bottom))] text-slate-100"
-        style={{ paddingBottom: 'calc(7.5rem + env(safe-area-inset-bottom))' }}
+        className="pf -mx-4 -my-4 bg-[var(--pf-bg)] text-slate-100"
+        /* The shared mobile shell supplies bottom-tab and safe-area clearance.
+           A nested 100dvh plus another 7.5rem made the page scroll past Risk. */
+        style={{ paddingBottom: 0 }}
       >
         <div data-mobile-portfolio-hero className="border-0 bg-transparent px-5 pb-6 pt-6 shadow-none">
           <div className="flex items-start justify-between gap-4">
@@ -1442,7 +1527,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
               <div>
                 <h2 className="font-display text-[20px] font-semibold tracking-tight text-slate-100">Portfolio Risk</h2>
                 <p className="mt-0.5 text-[10.5px] text-slate-500">
-                  {priskErr ? 'Fallback risk model' : 'Live portfolio model'}
+                  {priskErr ? 'Fallback risk model' : 'Live portfolio model'} · Tap a metric
                 </p>
               </div>
             </div>
@@ -1481,12 +1566,12 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                 </div>
 
                 <div className="mt-5">
-                  <div className="h-2 overflow-hidden rounded-full bg-[rgb(36,37,39)]">
+                  <div className="h-2 overflow-hidden rounded-full bg-[var(--pf-surface-2)]">
                     <div className="h-full w-full bg-[linear-gradient(90deg,rgba(116,170,98,0.82),rgba(207,180,45,0.82)_45%,rgba(189,120,45,0.88)_70%,rgba(214,66,78,0.90))]" />
                   </div>
                   <div className="relative -mt-2 h-2" aria-hidden="true">
                     <span
-                      className="absolute top-0 h-4 w-4 -translate-x-1/2 -translate-y-[3px] rounded-full border-2 border-[rgb(16,17,18)] bg-slate-100 shadow"
+                      className="absolute top-0 h-4 w-4 -translate-x-1/2 -translate-y-[3px] rounded-full border-2 border-[var(--pf-bg)] bg-slate-100 shadow"
                       style={{ left: `${meterPct}%` }}
                     />
                   </div>
@@ -1499,7 +1584,12 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
               <div className="grid grid-cols-2">
                 {riskFactors.map((factor) => (
                   <div key={factor.name} className="border-t border-[rgb(41,42,45)] even:border-l even:border-[rgb(41,42,45)]">
-                    <MobileRiskFactor {...factor} />
+                    <MobileRiskFactor
+                      name={factor.name}
+                      note={factor.note}
+                      level={factor.level}
+                      onClick={() => setMobileRiskMetric(factor)}
+                    />
                   </div>
                 ))}
               </div>
@@ -1508,6 +1598,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
         </div>
 
         <MobileHoldingSheet holding={mobileHolding} onClose={closeMobileHolding} />
+        <MobileRiskMetricSheet metric={mobileRiskMetric} onClose={closeMobileRiskMetric} />
       </div>
     )
   }
