@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { Layers, Target, Coins, TrendingUp } from 'lucide-react'
 
 import useSWR, { mutate as globalMutate, useSWRConfig } from 'swr'
 import { useUser } from '@/lib/useUser'
@@ -10,6 +10,7 @@ import { fmtCurrency } from '@/lib/format'
 import { usePrice } from '@/lib/dataCore'
 import SlotPortal from '@/components/planner/SlotPortal'
 import PlannerActionAlert from '@/components/planner/PlannerActionAlert'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -70,6 +71,7 @@ export default function SellPlannerLadder({
 }) {
   const { user, loading: userLoading } = useUser()
   const { mutate: mutateGlobal } = useSWRConfig()
+  const { code: displayCode } = useDisplayCurrency()
 
 
   // NEW: robust live price via data core
@@ -426,13 +428,13 @@ export default function SellPlannerLadder({
 
                 <th className="!text-right">
                   <span className="th-l !justify-end">
-                    Planned <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                    Planned <span aria-hidden="true">{displayCode}</span>
                   </span>
                 </th>
 
                 <th className="!text-right">
                   <span className="th-l !justify-end">
-                    Missing <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                    Missing <span aria-hidden="true">{displayCode}</span>
                   </span>
                 </th>
 

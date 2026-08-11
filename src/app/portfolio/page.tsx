@@ -9,12 +9,12 @@ import { fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { TrendingUp, TrendingDown, Search, ArrowUpDown, ChevronUp, ChevronDown, Info, Lock, ShieldCheck } from 'lucide-react'
 import './portfolio-ui.css'
 import CoinLogo from '@/components/common/CoinLogo'
 import MobileHoldingSheet, { type MobileHoldingDetail } from '@/components/portfolio/MobileHoldingSheet'
 import MobileRiskMetricSheet, { type MobileRiskMetricDetail } from '@/components/portfolio/MobileRiskMetricSheet'
+import AllocationDonut from '@/components/portfolio/AllocationDonut'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 import { useIsMobile } from '@/lib/useMediaQuery'
 import * as React from 'react'
@@ -261,61 +261,6 @@ function lvCls(level: string): string {
 /** Filled segment count (of 6) for the risk-factor level meter. */
 function levelFill(level: string): number {
   return level === 'Low' ? 2 : level === 'Moderate' ? 3 : level === 'High' ? 5 : 6
-}
-
-/* ── Allocation treemap (presentational layout math only) ───── */
-type TreemapDatum = { name: string; value: number; color: string; cid: string }
-type TreemapTile = TreemapDatum & { realValue: number; x: number; y: number; w: number; h: number; a: number }
-
-/** readable text color for a given tile background */
-function txtOn(hex: string): string {
-  const c = hex.replace('#', '')
-  if (c.length < 6) return 'rgba(255,255,255,0.96)'
-  const r = parseInt(c.substr(0, 2), 16)
-  const g = parseInt(c.substr(2, 2), 16)
-  const b = parseInt(c.substr(4, 2), 16)
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return lum > 0.62 ? '#16171d' : 'rgba(255,255,255,0.96)'
-}
-
-/** squarified treemap layout in a normalized 100×100 box (presentational) */
-function squarify(data: (TreemapDatum & { realValue: number })[]): TreemapTile[] {
-  const items = data.slice().sort((a, b) => b.value - a.value)
-  const total = items.reduce((s, i) => s + i.value, 0)
-  if (total <= 0) return []
-  let x = 0, y = 0, w = 100, h = 100
-  const scale = (w * h) / total
-  const areas = items.map(i => ({ ...i, a: i.value * scale, x: 0, y: 0, w: 0, h: 0 }))
-  const out: TreemapTile[] = []
-  const worst = (row: typeof areas, len: number) => {
-    const s = row.reduce((t, r) => t + r.a, 0)
-    const mx = Math.max(...row.map(r => r.a))
-    const mn = Math.min(...row.map(r => r.a))
-    return Math.max((len * len * mx) / (s * s), (s * s) / (len * len * mn))
-  }
-  let i = 0
-  while (i < areas.length) {
-    const len = Math.min(w, h)
-    let row = [areas[i]]
-    let j = i + 1
-    while (j < areas.length) {
-      const test = row.concat([areas[j]])
-      if (worst(test, len) <= worst(row, len)) { row = test; j++ } else break
-    }
-    const s = row.reduce((t, r) => t + r.a, 0)
-    const thick = s / len
-    if (w >= h) {
-      let yy = y
-      row.forEach(r => { const hh = r.a / thick; out.push({ ...r, x, y: yy, w: thick, h: hh }); yy += hh })
-      x += thick; w -= thick
-    } else {
-      let xx = x
-      row.forEach(r => { const ww = r.a / thick; out.push({ ...r, x: xx, y, w: ww, h: thick }); xx += ww })
-      y += thick; h -= thick
-    }
-    i = j
-  }
-  return out
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -1646,7 +1591,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
       </div>
 
 
-      {/* Portfolio Risk (left) + Allocation treemap (right) */}
+      {/* Portfolio Risk (left) + Allocation donut (right) */}
       <div className="pf-cols">
         {/* LEFT: Portfolio Risk card */}
         <section className="pf-card relative overflow-hidden min-h-[380px]">
@@ -2290,46 +2235,20 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
             )}
           </section>
 
-        {/* RIGHT: Allocation treemap */}
-        <section className="pf-card">
-          <div className="pf-card-h">
-            <span className="ttl">Allocation</span>
-            <span className="meta">{allocAll.data.length} assets</span>
-          </div>
-
+        {/* RIGHT: Allocation donut */}
+        <section className="pf-card pf-allocation-card">
           {allocAll.data.length === 0 ? (
             <div className="p-6 text-sm text-slate-400">No holdings yet to display allocation.</div>
           ) : (
             <div className="pf-alloc-body">
-              <div className="pf-treemap">
-                {squarify(
-                  allocAll.data.map((d) => ({
-                    ...d,
-                    realValue: d.value,
-                    /* floor each tile to a minimum area so small holdings stay visible */
-                    value: Math.max(d.value, allocAll.total * 0.075),
-                  }))
-                ).map((t) => {
-                  const pct = allocAll.total > 0 ? (t.realValue / allocAll.total) * 100 : 0
-                  const big = t.w > 24 && t.h > 20
-                  return (
-                    <div
-                      className="pf-tile"
-                      key={t.cid}
-                      style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`, background: t.color }}
-                    >
-                      <div className="pf-tile-in" style={{ color: txtOn(t.color) }}>
-                        <div className="top">
-                          <div className="tk">{t.name}</div>
-                        </div>
-                        <div className="bot">
-                          <div className={`pc${big ? '' : ' sm'}`}>{pct.toFixed(1)}%</div>
-                          {big && <div className="val">{fmtCurrency(t.realValue)}</div>}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="pf-allocation-donut" aria-label="Portfolio allocation donut chart">
+                <AllocationDonut
+                  data={allocAll.data.map((asset) => ({
+                    name: asset.name,
+                    value: asset.value,
+                    color: asset.color,
+                  }))}
+                />
               </div>
             </div>
           )}

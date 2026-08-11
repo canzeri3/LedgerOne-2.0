@@ -11,6 +11,12 @@ import { useEntitlements } from '@/lib/useEntitlements'
 import { useMenuTransition } from '@/lib/useMenuTransition'
 import PlanLimitModal from '@/components/billing/PlanLimitModal'
 import { deletePlannerWithAudit } from '@/lib/plannerAuditClient'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
+import {
+  displayCurrencySymbol,
+  displayToUsd,
+  usdToDisplay,
+} from '@/lib/format'
 
 import type { BuyPlannerRow } from '@/types/db'
 
@@ -34,6 +40,14 @@ function formatWithCommas(raw: string): string {
   const [intPart, decPart] = raw.split('.')
   const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return decPart !== undefined ? `${withCommas}.${decPart}` : withCommas
+}
+
+// Fiat planner inputs are displayed to two decimal places while the stored
+// planner budget remains normalized in USD.
+function formatFiatInput(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  const rounded = value.toFixed(2).replace(/\.?0+$/, '')
+  return formatWithCommas(rounded)
 }
 
 /* ── Risk depth metadata ───────────────────────────────────── */
@@ -250,6 +264,8 @@ type CoinAnchor = {
 export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
   const { user } = useUser()
   const { mutate: mutateGlobal } = useSWRConfig()
+  const { code: displayCode } = useDisplayCurrency()
+  const currencySymbol = displayCurrencySymbol()
 
   // Load latest (current) buy planner for this coin
   const { data: planner, mutate } = useSWR<BuyPlannerRow | null>(
@@ -353,7 +369,8 @@ if (ce.detail.action === 'remove')
 useEffect(() => {
   if (!planner) return
   const b = (planner.budget_usd ?? planner.total_budget) ?? ''
-  setBudget(b === '' ? '' : formatWithCommas(String(b)))
+  const usdBudget = Number(b)
+  setBudget(b === '' || !Number.isFinite(usdBudget) ? '' : formatFiatInput(usdToDisplay(usdBudget)))
 
   const rawDepth = String(planner.ladder_depth)
   if (rawDepth === '90') {
@@ -366,12 +383,12 @@ useEffect(() => {
   }
 
   setGrowth(String(planner.growth_per_level ?? '1.25'))
-}, [planner?.id])
+}, [planner?.id, displayCode])
 
 
   const validate = () => {
     const b = toNum(budget)
-    if (!Number.isFinite(b) || b <= 0) return 'Enter a valid total budget'
+    if (!Number.isFinite(b) || b <= 0) return 'Enter a valid investment amount'
     return null
   }
 
@@ -423,7 +440,7 @@ useEffect(() => {
       return
     }
 
-    const numBudget = toNum(budget)
+    const numBudget = displayToUsd(toNum(budget))
     const growthNum = getGrowthOrDefault()
 
     setBusy(true)
@@ -545,7 +562,7 @@ if (!opts?.confirmed) {
 
 
     const growthNum = getGrowthOrDefault()
-    const budgetNum = toNum(budget)
+    const budgetNum = displayToUsd(toNum(budget))
 
     // Resolve the effective top price for this user/asset using the price-cycle engine.
     // This endpoint applies:
@@ -623,11 +640,11 @@ if (!opts?.confirmed) {
 
       {/* Controls bar — inputs only, no action buttons here */}
       <div className="pl-controls">
-        {/* Total budget */}
+        {/* Investment amount */}
         <div className="field grow">
-          <label htmlFor="buy-total-budget">Total budget</label>
+          <label htmlFor="buy-total-budget">Investment amount</label>
           <div className="num-input">
-            <span className="pre">$</span>
+            <span className="pre">{currencySymbol}</span>
             <input
               id="buy-total-budget"
               type="text"
@@ -638,7 +655,7 @@ if (!opts?.confirmed) {
               onChange={onChangeBudget}
               placeholder="e.g. 10,000"
             />
-            <span className="suf">USD</span>
+            <span className="suf">{displayCode}</span>
           </div>
         </div>
 

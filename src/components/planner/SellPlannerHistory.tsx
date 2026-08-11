@@ -5,10 +5,11 @@ import useSWR from 'swr'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
-import { Layers, Target, Coins, DollarSign, TrendingUp } from 'lucide-react'
+import { Layers, Target, Coins, TrendingUp } from 'lucide-react'
 import { useLivePrice } from '@/lib/useLivePrice'
 import { usePrice } from '@/lib/dataCore'
 import PlannerActionAlert from '@/components/planner/PlannerActionAlert'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import {
   computeSellFills,
   type SellTrade as SellTradeType,
@@ -71,6 +72,7 @@ export default function SellPlannerHistory({
   onAlertStateChange?: (hasAlert: boolean) => void
 }) {
   const { user } = useUser()
+  const { code: displayCode } = useDisplayCurrency()
   useLivePrice(coingeckoId, 15000)
 
   // NEW: live price from NEW data core (for row highlight)
@@ -346,12 +348,12 @@ export default function SellPlannerHistory({
                       </th>
                       <th className="!text-right">
                         <span className="th-l !justify-end">
-                          Planned <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                          Planned <span aria-hidden="true">{displayCode}</span>
                         </span>
                       </th>
                       <th className="!text-right">
                         <span className="th-l !justify-end">
-                          Missing <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                          Missing <span aria-hidden="true">{displayCode}</span>
                         </span>
                       </th>
                       <th className="r">

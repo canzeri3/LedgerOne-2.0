@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { usePrice } from '@/lib/dataCore'
-import { fmtCurrency, displayCurrencySymbol, displayToUsd } from '@/lib/format'
+import { fmtCurrency, displayCurrencySymbol, displayToUsd, usdToDisplay } from '@/lib/format'
 import { useDisplayCurrency } from '@/lib/displayCurrency'
 import { buildBuyLevels, computeBuyFills, computeSellFills, type BuyLevel, type BuyTrade } from '@/lib/planner'
 import { AlertTriangle, LockKeyhole, LockKeyholeOpen, X } from 'lucide-react'
@@ -371,9 +371,11 @@ export default function TradesPanel({ id }: Props) {
   const { user } = useUser()
 
   // Active display currency: the fiat quantity is typed (and labelled) in this
-  // currency, then converted back to USD on submit. Trades stay stored in USD.
+  // currency. All fiat fields convert back to USD on submit so the existing
+  // trade schema, planner math, and reporting calculations remain unchanged.
   const { code: displayCode } = useDisplayCurrency()
-  const fiatLabel = `${displayCode} ${displayCurrencySymbol()}`
+  const currencySymbol = displayCurrencySymbol()
+  const fiatLabel = `${displayCode} ${currencySymbol}`
 
   // form state
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
@@ -404,7 +406,7 @@ const onPriceFocus = () => {
   if (price !== '') return
   const p = livePrice
   if (!(typeof p === 'number' && Number.isFinite(p) && p > 0)) return
-  const formatted = priceToInputString(p)
+  const formatted = priceToInputString(usdToDisplay(p))
   if (!formatted) return
   setPrice(formatted)
   // Select after commit (same rAF pattern as the caret handler) so the first
@@ -1127,12 +1129,12 @@ async function submitTrade() {
 
   const trade_time_iso = toIso(time)
 
-  const p = parseNum(price)
+  const p = displayToUsd(parseNum(price))
   const qEntered = parseNum(qty)
-  const feeNum = parseNum(fee || '0') || 0
+  const feeNum = displayToUsd(parseNum(fee || '0') || 0)
   let quantityTokens = qEntered
   if (qtyMode === 'usd') {
-    if (!(p > 0)) { setErr('Enter a valid Price to convert $ to tokens.'); setSaving(false); return }
+    if (!(p > 0)) { setErr(`Enter a valid ${displayCode} price to convert the amount to tokens.`); setSaving(false); return }
     // Amount is typed in the active display currency; Price is USD, so convert first.
     quantityTokens = displayToUsd(qEntered) / p
   }
@@ -1475,11 +1477,11 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
 
           {/* PRICE */}
           <div className="ct-field grow">
-            <span className="pre">$</span>
+            <span className="pre">{currencySymbol}</span>
             <input
               ref={priceRef}
               className="no-spinner"
-              placeholder="Price"
+              placeholder={`Price (${displayCode})`}
               inputMode="decimal"
               type="text"
               value={price}
@@ -1536,7 +1538,7 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
             <input
               ref={feeRef}
               className="no-spinner"
-              placeholder="Fee (optional)"
+              placeholder={`Fee (${displayCode}, optional)`}
               inputMode="decimal"
               type="text"
               value={fee}

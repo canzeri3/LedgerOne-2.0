@@ -621,16 +621,22 @@
 @media (max-width: 1080px) { .pf .pf-cols { grid-template-columns: 1fr; } }
 .pf .pf-cols .pf-card { display: flex; flex-direction: column; }
 
-/* treemap */
-.pf .pf-alloc-body { padding: 14px; flex: 1; display: flex; }
-.pf .pf-treemap { position: relative; flex: 1; width: 100%; min-height: 320px; }
-.pf .pf-tile { position: absolute; box-sizing: border-box; border: 2px solid var(--pf-surface); border-radius: 3px; overflow: hidden; }
-.pf .pf-tile-in { position: absolute; inset: 0; padding: 9px 11px; display: flex; flex-direction: column; justify-content: space-between; color: rgba(255,255,255,0.95); }
-.pf .pf-tile .tk { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; font-variant-numeric: tabular-nums; }
-.pf .pf-tile .nm { font-size: 11.5px; color: inherit; opacity: 0.74; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pf .pf-tile .pc { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
-.pf .pf-tile .pc.sm { font-size: 13px; }
-.pf .pf-tile .val { font-size: 11px; color: inherit; opacity: 0.74; margin-top: 3px; font-variant-numeric: tabular-nums; }
+/* Allocation donut — intentionally the only content in this desktop card. */
+.pf .pf-allocation-card { min-height: 380px; }
+.pf .pf-alloc-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 332px;
+  padding: 18px;
+}
+.pf .pf-allocation-donut { width: min(100%, 390px); height: 330px; min-width: 0; }
+.pf .pf-donut-center-value,
+.pf .pf-donut-center-label {
+  pointer-events: none;
+  transition: fill 140ms ease;
+}
 
 /* risk */
 .pf .pf-risk-body { padding: 18px 20px 18px; }
@@ -810,7 +816,7 @@
    PORTFOLIO typography — design-system fonts (uploaded skin).
    Sora (display) + IBM Plex Sans (ui/body/numbers, tabular via
    'tnum'). Scoped to .pf (portfolio-only); covers the whole
-   page — cards, summary, treemap, risk, holdings, drill-down.
+   page — cards, summary, allocation, risk, holdings, drill-down.
    Display roles mirror the skin's --font-display usage.
    ============================================================ */
 .pf {
@@ -820,7 +826,6 @@
 .pf :is(h1, h2, h3, h4, h5, h6),
 .pf .pf-card-h .ttl,
 .pf .pf-hero .v,
-.pf .pf-tile .pc,
 .pf .pf-risk-score .big,
 .rk-panel-h .ttl {
   font-family: var(--font-sora), system-ui, sans-serif;

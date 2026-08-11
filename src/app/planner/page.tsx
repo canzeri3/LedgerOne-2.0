@@ -24,6 +24,7 @@ import PlannerHighlightAgent from '@/components/planner/PlannerHighlightAgent'
 import SlotPortal from '@/components/planner/SlotPortal'
 import CoinLogo from '@/components/common/CoinLogo'
 import { fmtCurrency } from '@/lib/format'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import './planner-skin.css'
 
 type Coin = {
@@ -331,6 +332,8 @@ function CoinDropdown({
 }
 
 export default function PlannerPage() {
+  const { code: displayCode } = useDisplayCurrency()
+
   // ── Data: coins list ──────────────────────────────────────────────────────
   const { data: coins } = useSWR<Coin[]>(
     '/api/coins?limit=500&order=marketcap',
@@ -621,7 +624,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
             />
             <div>
               <div className="nm">{selected.name}</div>
-              <div className="tk">{(selected.symbol ?? '').toUpperCase()} · USD</div>
+              <div className="tk">{(selected.symbol ?? '').toUpperCase()} · {displayCode}</div>
             </div>
           </div>
           <div className="pl-tk-div" />
@@ -762,7 +765,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
                 </div>
               </div>
             </div>
-            {/* Controls bar (Total budget + Risk profile + Save New Plan) */}
+            {/* Controls bar (Investment amount + Risk profile + Save New Plan) */}
             <BuyPlannerInputs coingeckoId={coingeckoId} />
 
             {/* Edit Current Plan — rendered into the controls bar next to Risk profile
