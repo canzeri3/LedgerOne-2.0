@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
-import { fmtCurrency, fmtPct } from '@/lib/format'
+import { displayCurrencySymbol, fmtCurrency, fmtPct } from '@/lib/format'
 import { computePnl, type Trade as PnlTrade } from '@/lib/pnl'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -234,6 +234,7 @@ function PLSum({ label, usd, invested }: { label: string; usd: number; invested:
   const accent = kpiAccent(usd)
   const cls = accent === 'pos' ? 'pos' : accent === 'neg' ? 'neg' : ''
   const pct = invested > 0 ? usd / invested : null
+  const currencySymbol = displayCurrencySymbol()
   return (
     <div className="pf-sum">
       <div className="pf-label">{label}</div>
@@ -243,10 +244,10 @@ function PLSum({ label, usd, invested }: { label: string; usd: number; invested:
           type="button"
           className={`pf-sum-pct${showPct ? ' on' : ''}`}
           onClick={() => setShowPct((v) => !v)}
-          aria-label={showPct ? 'Show dollar value' : 'Show percent'}
-          title={showPct ? 'Show $' : 'Show %'}
+          aria-label={showPct ? 'Show currency value' : 'Show percent'}
+          title={showPct ? `Show ${currencySymbol}` : 'Show %'}
         >
-          {showPct ? '$' : '%'}
+          {showPct ? currencySymbol : '%'}
         </button>
       )}
     </div>
@@ -561,6 +562,7 @@ function StatTile({
 
 export default function PortfolioPage() {
   const isMobile = useIsMobile()
+  const currencySymbol = displayCurrencySymbol()
   const { user, loading: userLoading } = useUser()
   const { entitlements, loading: entLoading } = useEntitlements(user?.id)
 
@@ -2323,10 +2325,10 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
                 type="button"
                 onClick={() => setHoldingsPctMode((v) => !v)}
                 className="pf-ctrl"
-                title={holdingsPctMode ? 'Show values and P&L in $' : 'Show values and P&L as %'}
+                title={holdingsPctMode ? `Show values and P&L in ${currencySymbol}` : 'Show values and P&L as %'}
               >
                 <span className="seg-mini">
-                  <span className={!holdingsPctMode ? 'a' : ''}>$</span>
+                  <span className={!holdingsPctMode ? 'a' : ''}>{currencySymbol}</span>
                   <span className="k">/</span>
                   <span className={holdingsPctMode ? 'a' : ''}>%</span>
                 </span>

@@ -5,6 +5,7 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import Select from '@/components/ui/Select'
 import { Trash2 } from 'lucide-react'
 
@@ -134,6 +135,7 @@ if (filters.endDate) {
 
 export default function RecentTradesCard() {
   const { user } = useUser()
+  const { code: displayCode } = useDisplayCurrency()
   const PAGE_SIZE = 8
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -455,7 +457,7 @@ const filters: Filters = useMemo(() => {
         <div>Time</div>
         <div>Coin name</div>
         <div className="text-right">Quantity</div>
-        <div className="text-right">Price (USD)</div>
+        <div className="text-right">Price ({displayCode})</div>
         <div className="text-right">Fee</div>
         <div className="text-right">Total</div>
         <div className="sr-only">Delete</div>

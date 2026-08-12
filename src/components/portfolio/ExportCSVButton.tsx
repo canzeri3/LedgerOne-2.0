@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useUser } from '@/lib/useUser'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 
+const CANONICAL_FIAT_CURRENCY = 'USD' as const
+
 function toCsv(rows: any[]): string {
   if (!rows || rows.length === 0) return ''
   const headers = Object.keys(rows[0])
@@ -62,6 +64,7 @@ export default function ExportCSVButton() {
         coingecko_id: l.coingecko_id,
         level: l.level,
         price: Number(l.price),
+        fiat_currency: CANONICAL_FIAT_CURRENCY,
         rise_pct: l.rise_pct ?? '',
         sell_pct_of_remaining: l.sell_pct_of_remaining,
       }))
@@ -86,6 +89,7 @@ export default function ExportCSVButton() {
         coingecko_id: p.coingecko_id,
         is_active: p.is_active,
         avg_lock_price: p.avg_lock_price ?? '',
+        fiat_currency: CANONICAL_FIAT_CURRENCY,
         created_at: p.created_at,
         frozen_at: p.frozen_at ?? '',
         levels_planned: countByPlanner.get(String(p.id)) ?? 0,
@@ -106,6 +110,7 @@ export default function ExportCSVButton() {
         price: Number(t.price),
         quantity: Number(t.quantity),
         fee: t.fee ?? 0,
+        fiat_currency: CANONICAL_FIAT_CURRENCY,
         trade_time: t.trade_time,
         buy_planner_id: t.buy_planner_id ?? '',
         sell_planner_id: t.sell_planner_id ?? '',

@@ -187,7 +187,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       if (observer) observer.disconnect()
     }
   }, [pathname])
-  // Privacy masking: when amountsHidden is ON, replace any rendered "$..." text with "***"
+  // Privacy masking: when amountsHidden is ON, replace rendered "$..." and "€..." text with "***"
   // This is DOM-level on purpose so it also masks server-rendered text and any SWR/live updates.
   const privacyObserverRef = useRef<MutationObserver | null>(null)
   const originalTextRef = useRef<Map<Text, string>>(new Map())
@@ -208,7 +208,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
 
     const maskMoney = (s: string) => {
-      // matches "$1,234.56", "-$185.71", "$0", "$12.3" etc.
+      // Matches "$1,234.56", "-$185.71", "€1,234.56", "$0", "$12.3", etc.
       return s.replace(/-?[$€][\d,]+(?:\.\d+)?/g, '***')
     }
 
@@ -217,7 +217,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       if (shouldSkipParent(parent)) return
 
       const raw = tn.textContent ?? ''
-      if (!raw.includes('$')) return
+      if (!raw.includes('$') && !raw.includes('€')) return
 
       // store original once so unhide restores correctly
       if (!originals.has(tn)) originals.set(tn, raw)

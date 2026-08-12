@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ChevronDown, DollarSign, Eye, EyeOff, Info, Percent } from 'lucide-react'
-import { fmtCurrency } from '@/lib/format'
+import { ChevronDown, Eye, EyeOff, Info, Percent } from 'lucide-react'
+import { displayCurrencySymbol, fmtCurrency } from '@/lib/format'
 import CoinLogo from '@/components/common/CoinLogo'
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import MobileGrowthChart, { type Point } from '@/components/dashboard/MobileGrowthChart'
@@ -160,6 +160,7 @@ export default function MobileDashboard({
   const [assetsOpen, setAssetsOpen] = useState(true)
   const [performanceUnit, setPerformanceUnit] = useState<'percent' | 'currency'>('percent')
   const [performanceHidden, setPerformanceHidden] = useState(false)
+  const currencySymbol = displayCurrencySymbol()
 
   const [headWhole, headCents] = splitCents(fmtCurrency(liveValue))
   const up = pct >= 0
@@ -283,7 +284,9 @@ export default function MobileDashboard({
                     performanceUnit === 'currency' ? 'bg-[rgba(137,128,213,0.2)] text-[rgb(137,128,213)]' : 'text-slate-400',
                   ].join(' ')}
                 >
-                  <DollarSign className="h-4 w-4" />
+                  <span className="text-[17px] font-medium leading-none" aria-hidden="true">
+                    {currencySymbol}
+                  </span>
                 </button>
               </div>
             </div>

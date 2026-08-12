@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
 import { useMemo } from 'react'
-import { displayCurrencySymbol, usdToDisplay } from '@/lib/format'
+import { displayCurrencySymbol, fmtCurrency, usdToDisplay } from '@/lib/format'
 
 type Point = { t: number; v: number }
 
@@ -114,7 +114,7 @@ function CustomTooltip({
           letterSpacing: 0.2,
         }}
       >
-        ${Number.isFinite(price) ? price.toLocaleString() : '--'}
+        {Number.isFinite(price) ? fmtCurrency(price) : '--'}
       </div>
 
       {/* Bottom: date then time, smaller text */}

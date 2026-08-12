@@ -188,6 +188,9 @@ export default function ImportTrades() {
           <div className="csv-hint">
             Optional <code>fee, buy_planner_id, sell_planner_id</code>
           </div>
+          <div className="csv-hint">
+            Monetary fields <code>price</code> and <code>fee</code> are interpreted as USD.
+          </div>
         </div>
 
         <input

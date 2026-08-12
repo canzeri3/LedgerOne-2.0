@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { TrendingUp, TrendingDown } from 'lucide-react'
-import { fmtCurrency } from '@/lib/format'
+import { displayCurrencySymbol, fmtCurrency } from '@/lib/format'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 
@@ -42,6 +42,7 @@ function PLStat({
   const [showPct, setShowPct] = useState(false)
   const cls = accent === 'pos' ? 'pos' : accent === 'neg' ? 'neg' : ''
   const canPct = pct != null && Number.isFinite(pct)
+  const currencySymbol = displayCurrencySymbol()
   return (
     <div className="ck-cell">
       <div className="l">{label}</div>
@@ -51,10 +52,10 @@ function PLStat({
           type="button"
           className={`ck-pct${showPct ? ' on' : ''}`}
           onClick={() => setShowPct((v) => !v)}
-          aria-label={showPct ? 'Show dollar value' : 'Show percent'}
-          title={showPct ? 'Show $' : 'Show %'}
+          aria-label={showPct ? 'Show currency value' : 'Show percent'}
+          title={showPct ? `Show ${currencySymbol}` : 'Show %'}
         >
-          {showPct ? '$' : '%'}
+          {showPct ? currencySymbol : '%'}
         </button>
       )}
     </div>

@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import { deleteSellPlannerWithAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
+import { fmtCurrency } from '@/lib/format'
 
 type Props = {
   title?: string
@@ -396,7 +397,7 @@ export default function SellPlannerCombinedCardPlanner({
         {/* Optional helper – now also uses the same text color */}
         {hasLivePrice ? (
           <div className="pl-live-context text-xs" style={{ color: TEXT_RGB }}>
-            Live price context: ${Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            Live price context: {fmtCurrency(Number(livePrice), { max: 2 })}
           </div>
         ) : null}
       </div>

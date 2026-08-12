@@ -5,6 +5,7 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { fmtCurrency } from '@/lib/format'
+import { useDisplayCurrency } from '@/lib/displayCurrency'
 import { Trash2 } from 'lucide-react'
 
 type Props = { id: string } // coingecko_id
@@ -33,6 +34,7 @@ const fetchTrades = async (userId: string, coinId: string): Promise<Row[]> => {
 
 export default function TradesList({ id }: Props) {
   const { user } = useUser()
+  const { code: displayCode } = useDisplayCurrency()
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const swrKey = user ? ['coin-trades', user.id, id] : null
@@ -162,7 +164,7 @@ export default function TradesList({ id }: Props) {
               <th style={{ width: 70 }}>Side</th>
               <th>Time</th>
               <th className="num">Quantity</th>
-              <th className="num">Price (USD)</th>
+              <th className="num">Price ({displayCode})</th>
               <th className="num">Fee</th>
               <th className="num">Total</th>
               <th style={{ width: 40 }} aria-label="Delete" />

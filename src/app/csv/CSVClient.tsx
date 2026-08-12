@@ -26,7 +26,10 @@ export default function CSVClient() {
           <span className="st-section-ic"><Download className="h-[18px] w-[18px]" /></span>
           <div>
             <div className="st-section-title">Export</div>
-            <div className="st-section-desc">Pick a scope, then download your CSV files.</div>
+            <div className="st-section-desc">
+              Pick a scope, then download your CSV files. Monetary fields remain in canonical USD
+              and each exported row is labeled <code>fiat_currency=USD</code>.
+            </div>
           </div>
         </div>
         <div className="st-card">
@@ -42,7 +45,7 @@ export default function CSVClient() {
           <span className="st-section-ic"><Upload className="h-[18px] w-[18px]" /></span>
           <div>
             <div className="st-section-title">Import trades</div>
-            <div className="st-section-desc">Upload a CSV to add trades to your ledger.</div>
+            <div className="st-section-desc">Upload a CSV to add trades to your ledger. Price and fee fields must be USD.</div>
           </div>
         </div>
         <div className="st-card">
