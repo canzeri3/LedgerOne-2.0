@@ -186,13 +186,17 @@ export default function SettingsClient() {
   const subStatus: SubscriptionStatus = entitlements?.status ?? 'none'
   const plan = PLAN_META[tier]
   const statusMeta = STATUS_META[subStatus]
-  const isPaid = tier !== 'FREE'
+  const hasPaidAccess = tier !== 'FREE'
+  const hasBillingAccount = Boolean(entitlements?.hasBillingAccount)
+  const displayedStatusMeta = !hasBillingAccount && hasPaidAccess
+    ? { label: 'Complimentary', cls: 'st-pill-ok' }
+    : statusMeta
   const usedAssets = entitlements?.plannedAssetsUsed ?? 0
   // null = unlimited; fall back to the tier's limit when entitlements haven't loaded
   const limitAssets = entitlements ? entitlements.plannedAssetsLimit : plannedLimitForTier(tier)
   const usagePct = limitAssets && limitAssets > 0 ? Math.min(100, Math.round((usedAssets / limitAssets) * 100)) : 0
-  const renewedAt = entitlements?.asOf
-    ? new Date(entitlements.asOf).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  const renewalDate = entitlements?.currentPeriodEnd
+    ? new Date(entitlements.currentPeriodEnd).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
     : null
 
   const [billingBusy, setBillingBusy] = useState<'checkout' | 'portal' | null>(null)
@@ -227,20 +231,22 @@ export default function SettingsClient() {
 
   // Post-checkout: Stripe redirects back to /settings?billing=success.
   const [toast, setToast] = useState<string>('')
+  const [checkoutPending, setCheckoutPending] = useState(false)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     if (params.get('billing') !== 'success') return
 
     setActive('billing')
-    setToast('Payment complete — your plan is now active.')
+    setCheckoutPending(true)
+    setToast('Payment received — activating your plan…')
 
     // The webhook may land a beat after the redirect; refresh entitlements a few times.
     void mutateEntitlements?.()
     const timers: ReturnType<typeof setTimeout>[] = [
       setTimeout(() => void mutateEntitlements?.(), 1500),
       setTimeout(() => void mutateEntitlements?.(), 4000),
-      setTimeout(() => setToast(''), 7000),
+      setTimeout(() => void mutateEntitlements?.(), 8000),
     ]
 
     // Strip the param so a refresh doesn't re-trigger the toast.
@@ -250,6 +256,24 @@ export default function SettingsClient() {
 
     return () => timers.forEach(clearTimeout)
   }, [])
+
+  useEffect(() => {
+    if (!checkoutPending) return
+    if (subStatus !== 'active' && subStatus !== 'trialing') return
+    setCheckoutPending(false)
+    setToast('Payment complete — your plan is now active.')
+    const timer = setTimeout(() => setToast(''), 7000)
+    return () => clearTimeout(timer)
+  }, [checkoutPending, subStatus])
+
+  useEffect(() => {
+    if (!checkoutPending) return
+    const timer = setTimeout(
+      () => setToast('Payment received. Activation is taking longer than expected — please refresh shortly.'),
+      12000
+    )
+    return () => clearTimeout(timer)
+  }, [checkoutPending])
 
   // Deep-link to a section via /settings?section=<id> (e.g. header "Manage Communications").
   useEffect(() => {
@@ -351,8 +375,8 @@ export default function SettingsClient() {
             </div>
           </div>
           <div className="st-plan-side">
-            <span className={`st-pill ${statusMeta.cls}`}>{entLoading ? '…' : statusMeta.label}</span>
-            {isPaid ? (
+            <span className={`st-pill ${displayedStatusMeta.cls}`}>{entLoading ? '…' : displayedStatusMeta.label}</span>
+            {hasBillingAccount ? (
               <button type="button" className="st-btn st-btn-ghost" onClick={onPortal} disabled={billingBusy !== null}>
                 {billingBusy === 'portal' ? 'Opening…' : 'Change plan'} <ArrowUpRight className="h-3.5 w-3.5" />
               </button>
@@ -370,7 +394,7 @@ export default function SettingsClient() {
           desc={
             limitAssets === null
               ? 'Unlimited planners on your current plan.'
-              : isPaid
+              : hasPaidAccess
                 ? `You can build planners for up to ${limitAssets} assets on this plan.`
                 : 'Planners are locked on the free plan. Upgrade to build Buy & Sell ladders.'
           }
@@ -392,23 +416,39 @@ export default function SettingsClient() {
       <Section icon={<CreditCard className="h-4 w-4" />} title="Billing" desc="Payment method, renewal, and invoices.">
         <Row
           title="Payment method"
-          desc={isPaid ? 'The card on file for your subscription.' : 'No payment method is needed on the free plan.'}
+          desc={hasBillingAccount ? 'The payment method on file for your Stripe subscription.' : 'No Stripe payment method is connected to this account.'}
           action={
-            isPaid
+            hasBillingAccount
               ? <button type="button" className="st-btn st-btn-ghost" onClick={onPortal} disabled={billingBusy !== null}>{billingBusy === 'portal' ? 'Opening…' : 'Manage billing'} <ArrowUpRight className="h-3.5 w-3.5" /></button>
               : <span className="st-pill">None on file</span>
           }
         />
         <Row
-          title={isPaid ? 'Next renewal' : 'Billing status'}
-          desc={isPaid ? 'Your subscription renews automatically until canceled.' : 'You’re on the free plan — nothing to bill.'}
-          action={<span className="st-pill st-pill-mono">{renewedAt ? (isPaid ? `As of ${renewedAt}` : 'Free') : 'Free'}</span>}
+          title={hasBillingAccount ? 'Next renewal' : 'Billing status'}
+          desc={
+            hasBillingAccount
+              ? entitlements?.cancelAtPeriodEnd
+                ? <span className="st-billing-cancel-warning">Your subscription is scheduled to cancel at the end of this billing period.</span>
+                : 'Your subscription renews automatically until canceled.'
+              : hasPaidAccess
+                ? 'Your access is complimentary and is not billed through Stripe.'
+                : 'You’re on the free plan — nothing to bill.'
+          }
+          action={
+            <span className={`st-pill st-pill-mono${entitlements?.cancelAtPeriodEnd ? ' st-pill-warn' : ''}`}>
+              {renewalDate
+                ? `${entitlements?.cancelAtPeriodEnd ? 'Access until' : 'Renews'} ${renewalDate}`
+                : hasBillingAccount
+                  ? 'Date unavailable'
+                  : 'Not billed'}
+            </span>
+          }
         />
         <Row
           title="Invoices & receipts"
           desc="Download past invoices and manage your billing details."
           action={
-            isPaid
+            hasBillingAccount
               ? <button type="button" className="st-btn st-btn-ghost" onClick={onPortal} disabled={billingBusy !== null}>{billingBusy === 'portal' ? 'Opening…' : 'Open billing portal'} <ArrowUpRight className="h-3.5 w-3.5" /></button>
               : <span className="st-pill st-pill-mono">No invoices yet</span>
           }

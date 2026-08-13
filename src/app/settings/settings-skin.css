@@ -372,6 +372,7 @@
 .st-pill-mono { font-family: var(--st-mono); font-weight: 500; letter-spacing: 0.02em; }
 .st-pill-warn { color: var(--st-warning, #EFC435); border-color: rgba(239, 196, 53, 0.4); background: rgba(239, 196, 53, 0.08); }
 .st-pill-danger { color: var(--st-danger); border-color: rgba(224, 91, 91, 0.4); background: rgba(224, 91, 91, 0.08); }
+.st-billing-cancel-warning { color: var(--st-warning, #EFC435); }
 
 /* ── Plan card (billing) ─────────────────────────────────────────────── */
 .st-plan {

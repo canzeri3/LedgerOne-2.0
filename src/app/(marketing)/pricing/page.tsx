@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { L1Nightsky, L1Grain, L1Icon, L1ClosingCTA, L1Footer } from '@/components/ledgerone'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
-import { startCheckout } from '@/lib/billing/checkout'
+import { openBillingPortal, startCheckout } from '@/lib/billing/checkout'
 import type { CheckoutTier } from '@/lib/billing/plans'
 
 type TierKey = 'T0' | 'T1' | 'T2' | 'T3' | 'T4'
@@ -128,12 +128,14 @@ function PricingCard({
   isRecommended,
   currentKey,
   hasUser,
+  hasManagedSubscription,
 }: {
   tier: TierCard
   isCurrent: boolean
   isRecommended: boolean
   currentKey: TierKey | null
   hasUser: boolean
+  hasManagedSubscription: boolean
 }) {
   let ctaLabel = tier.cta
   if (hasUser) {
@@ -151,9 +153,9 @@ function PricingCard({
   const ctaHref = !hasUser ? (tier.key === 'T0' ? '/signup' : '/signup') : tier.ctaHref
   const btnClass = 'l1-btn l1-pricing-cta ' + (isRecommended ? 'l1-btn-primary' : 'l1-btn-glass')
 
-  // Signed-in users buying a self-serve paid tier go straight to Stripe Checkout.
+  // New subscribers use Checkout; existing subscribers change plans in the portal.
   const checkoutTier = checkoutTierForKey(tier.key)
-  const canCheckout = hasUser && !isCurrent && checkoutTier !== null
+  const canActOnPaidTier = hasUser && !isCurrent && checkoutTier !== null
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const onBuy = async () => {
@@ -161,7 +163,8 @@ function PricingCard({
     setBusy(true)
     setErr('')
     try {
-      await startCheckout(checkoutTier)
+      if (hasManagedSubscription) await openBillingPortal()
+      else await startCheckout(checkoutTier)
     } catch (e: any) {
       setErr(e?.message || 'Checkout could not start.')
       setBusy(false)
@@ -193,7 +196,7 @@ function PricingCard({
         <div className="l1-btn l1-btn-ghost l1-pricing-cta" style={{ opacity: 0.6, cursor: 'default', pointerEvents: 'none', justifyContent: 'center' }}>
           Current plan
         </div>
-      ) : canCheckout ? (
+      ) : canActOnPaidTier ? (
         <button type="button" className={btnClass} onClick={onBuy} disabled={busy} style={{ justifyContent: 'center' }}>
           {busy ? 'Redirecting…' : ctaLabel} <L1Icon name="arrowRight" size={14} />
         </button>
@@ -263,6 +266,11 @@ export default function PricingPage() {
                 tier={tier}
                 currentKey={currentKey}
                 hasUser={Boolean(user)}
+                hasManagedSubscription={Boolean(
+                  entitlements?.hasSubscription &&
+                  entitlements.status !== 'canceled' &&
+                  entitlements.status !== 'none'
+                )}
                 isCurrent={Boolean(currentKey && tier.key === currentKey)}
                 isRecommended={Boolean(showRecommended && tier.recommended)}
               />

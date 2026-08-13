@@ -6,6 +6,7 @@ import {
   canUsePlannersForTier,
   isPaidStatus,
   normalizeTier,
+  normalizeSubscriptionStatus,
   plannedLimitForTier,
   type Entitlements,
   type Tier,
@@ -54,12 +55,16 @@ export async function GET() {
   )
 
   // Not signed in => FREE
-  const { data: userRes } = await supabase.auth.getUser()
+  const { data: userRes, error: authError } = await supabase.auth.getUser()
   const user = userRes?.user
   if (!user) {
     const out: Entitlements = {
       tier: 'FREE',
       status: 'none',
+      hasBillingAccount: false,
+      hasSubscription: false,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
       canUsePlanners: false,
       plannedAssetsLimit: 0,
       plannedAssetsUsed: 0,
@@ -67,45 +72,54 @@ export async function GET() {
     }
     return NextResponse.json(out, { status: 200 })
   }
+  if (authError) {
+    console.error('[billing] entitlement auth failed', authError)
+    return NextResponse.json({ error: 'authentication_failed' }, { status: 503 })
+  }
 
   // Billing tier/status from user_subscriptions (DB stays the billing source of truth).
   let billedTier: Tier = 'FREE'
-  let billedStatus: any = 'none'
+  let billedStatus = normalizeSubscriptionStatus('none')
+  let hasBillingAccount = false
+  let hasSubscription = false
+  let currentPeriodEnd: string | null = null
+  let cancelAtPeriodEnd = false
 
-  try {
-    const { data: sub } = await supabase
-      .from('user_subscriptions')
-      .select('tier,status')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    billedTier = normalizeTier(sub?.tier)
-    billedStatus = (sub?.status ?? 'none') as any
-  } catch {
-    billedTier = 'FREE'
-    billedStatus = 'none'
+  const { data: sub, error: subscriptionError } = await supabase
+    .from('user_subscriptions')
+    .select('tier,status,stripe_customer_id,stripe_subscription_id,current_period_end,cancel_at_period_end')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (subscriptionError) {
+    console.error('[billing] entitlement subscription lookup failed', subscriptionError)
+    return NextResponse.json({ error: 'billing_store_unavailable' }, { status: 503 })
   }
+
+  billedTier = normalizeTier(sub?.tier)
+  billedStatus = normalizeSubscriptionStatus(sub?.status)
+  hasBillingAccount = Boolean(sub?.stripe_customer_id)
+  hasSubscription = Boolean(sub?.stripe_subscription_id)
+  currentPeriodEnd = sub?.current_period_end ? String(sub.current_period_end) : null
+  cancelAtPeriodEnd = Boolean(sub?.cancel_at_period_end)
 
   // Read admin override (user can read own override via RLS policy).
   let overrideTier: Tier | null = null
   let billedTierAtSet: Tier | null = null
   let billedStatusAtSet: string | null = null
 
-  try {
-    const { data: ovr } = await supabase
-      .from('admin_tier_overrides')
-      .select('tier,billed_tier_at_set,billed_status_at_set')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (ovr?.tier != null) overrideTier = normalizeTier(ovr.tier)
-    if (ovr?.billed_tier_at_set != null) billedTierAtSet = normalizeTier(ovr.billed_tier_at_set)
-    if (ovr?.billed_status_at_set != null) billedStatusAtSet = String(ovr.billed_status_at_set)
-  } catch {
-    overrideTier = null
-    billedTierAtSet = null
-    billedStatusAtSet = null
+  const { data: ovr, error: overrideError } = await supabase
+    .from('admin_tier_overrides')
+    .select('tier,billed_tier_at_set,billed_status_at_set')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (overrideError) {
+    console.error('[billing] entitlement override lookup failed', overrideError)
+    return NextResponse.json({ error: 'billing_store_unavailable' }, { status: 503 })
   }
+
+  if (ovr?.tier != null) overrideTier = normalizeTier(ovr.tier)
+  if (ovr?.billed_tier_at_set != null) billedTierAtSet = normalizeTier(ovr.billed_tier_at_set)
+  if (ovr?.billed_status_at_set != null) billedStatusAtSet = String(ovr.billed_status_at_set)
 
   // (2) Auto-clear override when billing changes:
   // If we have a stored billed snapshot at the time override was set and it differs from current billed tier/status,
@@ -117,10 +131,11 @@ export async function GET() {
     if (billingChanged) {
       const admin = getSupabaseAdminClientOrNull()
       if (admin) {
-        try {
-          await admin.from('admin_tier_overrides').delete().eq('user_id', user.id)
+        const { error: deleteError } = await admin.from('admin_tier_overrides').delete().eq('user_id', user.id)
+        if (!deleteError) {
           overrideTier = null
-        } catch {
+        } else {
+          console.error('[billing] failed to clear stale tier override', deleteError)
           // Fail closed (do not break entitlements endpoint).
           // If deletion fails, override remains in effect for this request.
         }
@@ -157,6 +172,9 @@ export async function GET() {
           .eq('is_active', true),
       ])
 
+      if (buys.error) throw buys.error
+      if (sells.error) throw sells.error
+
       const set = new Set<string>()
       for (const row of (buys.data ?? []) as any[]) set.add(String(row.coingecko_id))
       for (const row of (sells.data ?? []) as any[]) set.add(String(row.coingecko_id))
@@ -169,6 +187,10 @@ export async function GET() {
   const out: Entitlements = {
     tier,              // effective tier (may be override or billed)
     status: billedStatus, // keep billing status visible (unchanged contract)
+    hasBillingAccount,
+    hasSubscription,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
     canUsePlanners,
     plannedAssetsLimit,
     plannedAssetsUsed,
