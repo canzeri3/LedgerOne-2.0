@@ -25,6 +25,7 @@ async function postForUrl(path: string, body?: unknown): Promise<void> {
       no_customer: 'No Stripe billing account is connected to this user.',
       too_many_checkout_attempts: 'Too many checkout attempts. Please wait and try again.',
       too_many_portal_attempts: 'Too many billing portal requests. Please wait and try again.',
+      trial_already_used: 'This account has already used its free trial. You can subscribe immediately instead.',
     }
     const code = String(data?.error ?? '')
     throw new Error(messages[code] || `Billing request failed (${res.status}).`)
@@ -37,9 +38,9 @@ async function postForUrl(path: string, body?: unknown): Promise<void> {
   window.location.assign(destination.toString())
 }
 
-export async function startCheckout(tier: CheckoutTier): Promise<void> {
+export async function startCheckout(tier: CheckoutTier, options?: { trial?: boolean }): Promise<void> {
   const attemptId = crypto.randomUUID()
-  await postForUrl('/api/billing/checkout', { tier, attemptId })
+  await postForUrl('/api/billing/checkout', { tier, attemptId, trial: options?.trial === true })
 }
 
 export async function openBillingPortal(): Promise<void> {

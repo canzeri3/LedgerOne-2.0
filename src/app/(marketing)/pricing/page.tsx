@@ -129,6 +129,7 @@ function PricingCard({
   currentKey,
   hasUser,
   hasManagedSubscription,
+  trialEligible,
 }: {
   tier: TierCard
   isCurrent: boolean
@@ -136,6 +137,7 @@ function PricingCard({
   currentKey: TierKey | null
   hasUser: boolean
   hasManagedSubscription: boolean
+  trialEligible: boolean
 }) {
   let ctaLabel = tier.cta
   if (hasUser) {
@@ -158,13 +160,14 @@ function PricingCard({
   const canActOnPaidTier = hasUser && !isCurrent && checkoutTier !== null
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const onBuy = async () => {
+  const canStartTrial = canActOnPaidTier && trialEligible && !hasManagedSubscription
+  const onBuy = async (trial = false) => {
     if (busy || !checkoutTier) return
     setBusy(true)
     setErr('')
     try {
       if (hasManagedSubscription) await openBillingPortal()
-      else await startCheckout(checkoutTier)
+      else await startCheckout(checkoutTier, { trial })
     } catch (e: any) {
       setErr(e?.message || 'Checkout could not start.')
       setBusy(false)
@@ -197,9 +200,26 @@ function PricingCard({
           Current plan
         </div>
       ) : canActOnPaidTier ? (
-        <button type="button" className={btnClass} onClick={onBuy} disabled={busy} style={{ justifyContent: 'center' }}>
-          {busy ? 'Redirecting…' : ctaLabel} <L1Icon name="arrowRight" size={14} />
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <button type="button" className={btnClass} onClick={() => onBuy(canStartTrial)} disabled={busy} style={{ justifyContent: 'center' }}>
+            {busy ? 'Redirecting…' : canStartTrial ? 'Start 7-day free trial' : ctaLabel} <L1Icon name="arrowRight" size={14} />
+          </button>
+          {canStartTrial && (
+            <>
+              <button
+                type="button"
+                onClick={() => onBuy(false)}
+                disabled={busy}
+                style={{ border: 0, background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 12 }}
+              >
+                Skip trial and subscribe now
+              </button>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 11, lineHeight: 1.45, textAlign: 'center' }}>
+                Card required. Then {tier.price}{tier.period} after 7 days unless cancelled.
+              </div>
+            </>
+          )}
+        </div>
       ) : (
         <Link href={ctaHref} className={btnClass}>
           {ctaLabel} <L1Icon name="arrowRight" size={14} />
@@ -271,6 +291,7 @@ export default function PricingPage() {
                   entitlements.status !== 'canceled' &&
                   entitlements.status !== 'none'
                 )}
+                trialEligible={Boolean(entitlements?.trialEligible)}
                 isCurrent={Boolean(currentKey && tier.key === currentKey)}
                 isRecommended={Boolean(showRecommended && tier.recommended)}
               />

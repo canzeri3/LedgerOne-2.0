@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe } from '@/server/stripe'
 import { getAdminSupabase } from '@/server/billing/supabase'
-import { snapshotFromSubscription } from '@/server/billing/subscription'
+import { snapshotFromSubscription, subscriptionUsedTrial } from '@/server/billing/subscription'
 import { assertStripeKeyMode } from '@/server/billing/guard'
 
 export const runtime = 'nodejs'
@@ -56,7 +56,7 @@ async function processSubscription(
 
   if (!customerId) throw new Error(`Subscription ${sub.id} has no Stripe customer`)
 
-  const { data, error } = await admin.rpc('process_stripe_subscription_event', {
+  const { data, error } = await admin.rpc('process_stripe_subscription_event_v2', {
     p_event_id: event.id,
     p_event_type: event.type,
     p_event_created_at: new Date(event.created * 1000).toISOString(),
@@ -69,6 +69,7 @@ async function processSubscription(
     p_stripe_price_id: snapshot.priceId,
     p_current_period_end: snapshot.currentPeriodEnd,
     p_cancel_at_period_end: snapshot.cancelAtPeriodEnd,
+    p_trial_used: subscriptionUsedTrial(sub),
   })
   if (error) throw error
   return Boolean(data)

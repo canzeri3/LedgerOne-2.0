@@ -235,11 +235,16 @@ export default function SettingsClient() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
-    if (params.get('billing') !== 'success') return
+    const billingResult = params.get('billing')
+    if (billingResult !== 'success' && billingResult !== 'trial') return
 
     setActive('billing')
     setCheckoutPending(true)
-    setToast('Payment received — activating your plan…')
+    setToast(
+      billingResult === 'trial'
+        ? 'Your 7-day trial has started — activating your plan…'
+        : 'Payment received — activating your plan…'
+    )
 
     // The webhook may land a beat after the redirect; refresh entitlements a few times.
     void mutateEntitlements?.()
