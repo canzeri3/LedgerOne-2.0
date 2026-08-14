@@ -63,6 +63,31 @@ const REQUIRED_ENV: EnvVar[] = [
     description: 'Metrics endpoint token — /api/metrics will block all requests (fail-closed) without this',
   },
   {
+    key: 'STRIPE_SECRET_KEY',
+    critical: true,
+    description: 'Stripe secret key — subscription checkout and portal sessions will fail',
+  },
+  {
+    key: 'STRIPE_WEBHOOK_SECRET',
+    critical: true,
+    description: 'Stripe webhook signing secret — paid plans cannot activate safely',
+  },
+  {
+    key: 'STRIPE_PRICE_STANDARD',
+    critical: true,
+    description: 'Stripe recurring price for LedgerOne Standard',
+  },
+  {
+    key: 'STRIPE_PRICE_DIVERSIFIED',
+    critical: true,
+    description: 'Stripe recurring price for LedgerOne Diversified',
+  },
+  {
+    key: 'STRIPE_PRICE_ULTIMATE',
+    critical: true,
+    description: 'Stripe recurring price for LedgerOne Ultimate',
+  },
+  {
     key: 'RESEND_API_KEY',
     critical: false,
     description: 'Resend API key — email notifications will silently fail',

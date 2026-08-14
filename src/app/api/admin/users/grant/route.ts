@@ -153,19 +153,15 @@ export async function POST(req: NextRequest) {
     // Snapshot billed tier/status at time override is set
     let billedTierAtSet: Tier = 'FREE'
     let billedStatusAtSet = 'none'
-    try {
-      const { data: sub } = await supabaseAdmin
-        .from('user_subscriptions')
-        .select('tier,status')
-        .eq('user_id', userId)
-        .maybeSingle()
+    const { data: sub, error: subscriptionError } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('tier,status')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (subscriptionError) throw subscriptionError
 
-      billedTierAtSet = normalizeTier(sub?.tier)
-      billedStatusAtSet = String(sub?.status ?? 'none')
-    } catch {
-      billedTierAtSet = 'FREE'
-      billedStatusAtSet = 'none'
-    }
+    billedTierAtSet = normalizeTier(sub?.tier)
+    billedStatusAtSet = String(sub?.status ?? 'none')
 
     const now = new Date().toISOString()
 

@@ -4,6 +4,10 @@ export type SubscriptionStatus = 'none' | 'active' | 'trialing' | 'inactive' | '
 export type Entitlements = {
   tier: Tier
   status: SubscriptionStatus
+  hasBillingAccount: boolean
+  hasSubscription: boolean
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
   canUsePlanners: boolean
   plannedAssetsLimit: number | null // null = unlimited
   plannedAssetsUsed: number
@@ -12,6 +16,24 @@ export type Entitlements = {
 
 export function isPaidStatus(status: string | null | undefined): status is 'active' | 'trialing' {
   return status === 'active' || status === 'trialing'
+}
+
+export function normalizeSubscriptionStatus(status: unknown): SubscriptionStatus {
+  switch (String(status ?? '').toLowerCase()) {
+    case 'active':
+      return 'active'
+    case 'trialing':
+      return 'trialing'
+    case 'inactive':
+      return 'inactive'
+    case 'canceled':
+      return 'canceled'
+    case 'past_due':
+      return 'past_due'
+    case 'none':
+    default:
+      return 'none'
+  }
 }
 
 export function normalizeTier(tier: any): Tier {
