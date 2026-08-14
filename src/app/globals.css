@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Self-hosted font packages keep production builds independent of Google Fonts.
+   These variables preserve the names consumed throughout the existing skins. */
+:root {
+  --font-inter: "Inter Variable", system-ui, sans-serif;
+  --font-sora: "Sora Variable", system-ui, sans-serif;
+  --font-plex: "IBM Plex Sans Variable", system-ui, sans-serif;
+  --l1-sora: "Sora Variable", system-ui, sans-serif;
+  --l1-dm-sans: "DM Sans Variable", system-ui, sans-serif;
+  --l1-jb-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --ht-sora: "Sora Variable", system-ui, sans-serif;
+  --ht-dmsans: "DM Sans Variable", system-ui, sans-serif;
+  --ht-jbmono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --st-sora: "Sora Variable", system-ui, sans-serif;
+  --st-dmsans: "DM Sans Variable", system-ui, sans-serif;
+  --st-jbmono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
 /* Hard-stop any purple visited links globally */
 a, a:visited, a:hover, a:active {
   color: inherit;
