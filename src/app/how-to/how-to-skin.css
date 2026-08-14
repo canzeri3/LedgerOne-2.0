@@ -1,7 +1,7 @@
 /* ============================================================================
    How-to page — premium documentation skin.
    Scoped entirely under `.ht`. Type system (Sora / JetBrains Mono / DM Sans)
-   is injected via next/font on the .ht wrapper (see page.tsx).
+   is provided by the self-hosted font variables defined in globals.css.
    ========================================================================== */
 
 .ht {

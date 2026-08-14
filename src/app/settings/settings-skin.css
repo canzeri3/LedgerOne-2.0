@@ -1,7 +1,7 @@
 /* ============================================================================
    Settings page — premium skin. Scoped under `.st`.
-   Type system (Sora / JetBrains Mono / DM Sans) injected via next/font on the
-   .st wrapper (see page.tsx). Shares the visual language of the how-to page.
+   Type system (Sora / JetBrains Mono / DM Sans) is provided by self-hosted
+   font variables. Shares the visual language of the how-to page.
    ========================================================================== */
 
 .st {

@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { Sora, DM_Sans, JetBrains_Mono } from 'next/font/google'
 import {
   LayoutDashboard,
   Wallet,
@@ -18,10 +17,6 @@ import {
 } from 'lucide-react'
 import '@/app/planner/planner-skin.css'
 import './how-to-skin.css'
-
-const sora = Sora({ subsets: ['latin'], weight: ['400', '600', '700', '800'], variable: '--ht-sora', display: 'swap' })
-const dmSans = DM_Sans({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--ht-dmsans', display: 'swap' })
-const jbMono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--ht-jbmono', display: 'swap' })
 
 /* ── Live demo: real planner-skin ladder ──────────────────────────────── */
 function DemoLadder() {
@@ -140,7 +135,7 @@ function Faq({ q, children }: { q: string; children: React.ReactNode }) {
 /* ────────────────────────────────────────────────────────────────────── */
 export default function HowToPage() {
   return (
-    <div className={`ht ${sora.variable} ${dmSans.variable} ${jbMono.variable}`}>
+    <div className="ht">
       {/* ── Hero ── */}
       <header className="ht-hero">
         <div className="ht-hero-aurora" aria-hidden="true" />
