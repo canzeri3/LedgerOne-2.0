@@ -18,6 +18,7 @@ function evaluateBillingLogic() {
       isTerminalStripeStatus,
       mapStripeSubscriptionStatus,
       snapshotFromSubscription,
+      subscriptionUsedTrial,
     } = await import('${ROOT}/src/server/billing/subscription.ts')
     const { getBillingSiteOrigin } = await import('${ROOT}/src/server/billing/siteUrl.ts')
 
@@ -51,6 +52,11 @@ function evaluateBillingLogic() {
       }),
       canceledSnapshot: snapshotFromSubscription(subscription('canceled', 'price_unknown')),
       unknownPriceRejected,
+      trialDetection: [
+        subscriptionUsedTrial({ ...subscription('trialing', 'price_standard'), trial_start: 1_800_000_000 }),
+        subscriptionUsedTrial({ ...subscription('canceled', 'price_standard'), metadata: { ledgerone_trial: 'true' } }),
+        subscriptionUsedTrial(subscription('active', 'price_standard')),
+      ],
       siteOrigin: getBillingSiteOrigin(),
     }))
   `
@@ -108,11 +114,19 @@ describe('billing domain logic', () => {
   test('uses only the configured canonical origin for billing redirects', () => {
     expect(result.siteOrigin).toBe('https://ledgerone.example')
   })
+
+  test('detects Stripe trial history from trial timestamps or immutable metadata', () => {
+    expect(result.trialDetection).toEqual([true, true, false])
+  })
 })
 
 describe('billing migration', () => {
   const migration = fs.readFileSync(
     path.join(ROOT, 'db/migrations/20260812_stripe_billing_hardening.sql'),
+    'utf8'
+  )
+  const trialMigration = fs.readFileSync(
+    path.join(ROOT, 'db/migrations/20260814_billing_trials.sql'),
     'utf8'
   )
 
@@ -125,5 +139,13 @@ describe('billing migration', () => {
   test('restricts webhook event data and RPC execution to the service role', () => {
     expect(migration).toContain('revoke all on table public.stripe_webhook_events from public, anon, authenticated')
     expect(migration).toContain('to service_role')
+  })
+
+  test('records one-time trial use atomically and restricts the v2 RPC', () => {
+    expect(trialMigration).toContain('add column if not exists trial_used_at')
+    expect(trialMigration).toContain('process_stripe_subscription_event_v2')
+    expect(trialMigration).toContain('trial_used_at = coalesce')
+    expect(trialMigration).toContain('if p_trial_used then')
+    expect(trialMigration).toContain('to service_role')
   })
 })

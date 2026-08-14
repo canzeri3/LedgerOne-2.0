@@ -33,6 +33,10 @@ export function isTerminalStripeStatus(status: Stripe.Subscription.Status): bool
   return status === 'canceled' || status === 'incomplete_expired'
 }
 
+export function subscriptionUsedTrial(sub: Stripe.Subscription): boolean {
+  return Boolean(sub.trial_start || sub.metadata?.ledgerone_trial === 'true')
+}
+
 export function snapshotFromSubscription(sub: Stripe.Subscription): SubscriptionSnapshot {
   const item = sub.items?.data?.[0]
   const priceId = item?.price?.id ?? null

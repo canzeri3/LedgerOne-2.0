@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type Stripe from 'stripe'
 import { getStripe } from '@/server/stripe'
 import { getServerSupabase, getAdminSupabase } from '@/server/billing/supabase'
 import { isCheckoutTier, priceIdForTier } from '@/lib/billing/plans'
@@ -20,10 +21,12 @@ export async function POST(req: Request) {
 
   let tier: string
   let attemptId: string
+  let trialRequested: boolean
   try {
     const body = await req.json()
     tier = String(body?.tier ?? '')
     attemptId = String(body?.attemptId ?? '')
+    trialRequested = body?.trial === true
   } catch {
     return NextResponse.json({ error: 'invalid_body' }, { status: 400 })
   }
@@ -65,7 +68,7 @@ export async function POST(req: Request) {
   let customerId: string | null = null
   const { data: existing, error: existingError } = await admin
     .from('user_subscriptions')
-    .select('status,stripe_customer_id,stripe_subscription_id')
+    .select('status,stripe_customer_id,stripe_subscription_id,trial_used_at')
     .eq('user_id', user.id)
     .maybeSingle()
   if (existingError) {
@@ -75,6 +78,10 @@ export async function POST(req: Request) {
 
   customerId = (existing?.stripe_customer_id as string | null) ?? null
   const subscriptionId = (existing?.stripe_subscription_id as string | null) ?? null
+
+  if (trialRequested && (existing?.trial_used_at || subscriptionId)) {
+    return NextResponse.json({ error: 'trial_already_used' }, { status: 409 })
+  }
 
   if ((existing?.status === 'active' || existing?.status === 'trialing') && !subscriptionId) {
     console.error('[billing] active database subscription has no Stripe subscription id', { userId: user.id })
@@ -104,10 +111,21 @@ export async function POST(req: Request) {
   }
 
   if (customerId) {
-    const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 10 })
+    const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 100 })
     if (subscriptions.data.some((subscription) => !isTerminalStripeStatus(subscription.status))) {
       console.error('[billing] Stripe has an untracked non-terminal subscription', { userId: user.id, customerId })
       return NextResponse.json({ error: 'subscription_exists' }, { status: 409 })
+    }
+    if (trialRequested && subscriptions.data.length > 0) {
+      const { error: trialBackfillError } = await admin
+        .from('user_subscriptions')
+        .update({ trial_used_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('trial_used_at', null)
+      if (trialBackfillError) {
+        console.error('[billing] failed to backfill prior Stripe trial use', trialBackfillError)
+      }
+      return NextResponse.json({ error: 'trial_already_used' }, { status: 409 })
     }
   }
 
@@ -133,6 +151,20 @@ export async function POST(req: Request) {
   }
 
   const origin = getBillingSiteOrigin()
+  const checkoutMetadata = {
+    supabase_user_id: user.id,
+    ledgerone_tier: tier,
+    ledgerone_trial: trialRequested ? 'true' : 'false',
+  }
+  const subscriptionData: Stripe.Checkout.SessionCreateParams.SubscriptionData = {
+    metadata: checkoutMetadata,
+    ...(trialRequested
+      ? {
+          trial_period_days: 7,
+          trial_settings: { end_behavior: { missing_payment_method: 'cancel' as const } },
+        }
+      : {}),
+  }
   const session = await stripe.checkout.sessions.create(
     {
       mode: 'subscription',
@@ -140,12 +172,17 @@ export async function POST(req: Request) {
       client_reference_id: user.id,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
-      subscription_data: { metadata: { supabase_user_id: user.id, ledgerone_tier: tier } },
-      metadata: { supabase_user_id: user.id, ledgerone_tier: tier },
-      success_url: `${origin}/settings?billing=success`,
+      payment_method_collection: trialRequested ? 'always' : undefined,
+      subscription_data: subscriptionData,
+      metadata: checkoutMetadata,
+      success_url: `${origin}/settings?billing=${trialRequested ? 'trial' : 'success'}`,
       cancel_url: `${origin}/pricing?billing=cancelled`,
     },
-    { idempotencyKey: `checkout-${opaqueKey(user.id, attemptId)}` }
+    {
+      idempotencyKey: trialRequested
+        ? `trial-checkout-${opaqueKey(user.id)}`
+        : `checkout-${opaqueKey(user.id, attemptId)}`,
+    }
   )
 
   return NextResponse.json({ url: session.url })

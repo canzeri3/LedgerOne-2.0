@@ -4,7 +4,11 @@ import type Stripe from 'stripe'
 import { getStripe } from '@/server/stripe'
 import { getAdminSupabase } from '@/server/billing/supabase'
 import { assertStripeKeyMode } from '@/server/billing/guard'
-import { isTerminalStripeStatus, snapshotFromSubscription } from '@/server/billing/subscription'
+import {
+  isTerminalStripeStatus,
+  snapshotFromSubscription,
+  subscriptionUsedTrial,
+} from '@/server/billing/subscription'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -39,7 +43,7 @@ export async function GET(req: NextRequest) {
   const admin = getAdminSupabase()
   const { data: rows, error: rowsError } = await admin
     .from('user_subscriptions')
-    .select('user_id,status,stripe_customer_id,stripe_subscription_id')
+    .select('user_id,status,stripe_customer_id,stripe_subscription_id,trial_used_at')
   if (rowsError) {
     console.error('[billing] reconciliation lookup failed', rowsError)
     return NextResponse.json({ error: 'billing_store_unavailable' }, { status: 503 })
@@ -118,6 +122,11 @@ export async function GET(req: NextRequest) {
           stripe_price_id: snapshot.priceId,
           current_period_end: snapshot.currentPeriodEnd,
           cancel_at_period_end: snapshot.cancelAtPeriodEnd,
+          trial_used_at:
+            row.trial_used_at ??
+            (subscriptionUsedTrial(subscription)
+              ? new Date((subscription.trial_start ?? Math.floor(Date.now() / 1000)) * 1000).toISOString()
+              : null),
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId)

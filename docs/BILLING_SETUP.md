@@ -6,8 +6,11 @@ Stripe webhook events are the authority that changes billed access.
 
 ## 1. Apply the database migration
 
-Apply `db/migrations/20260812_stripe_billing_hardening.sql` to the same Supabase
-project referenced by `NEXT_PUBLIC_SUPABASE_URL`.
+Apply both billing migrations, in filename order, to the same Supabase project
+referenced by `NEXT_PUBLIC_SUPABASE_URL`:
+
+- `db/migrations/20260812_stripe_billing_hardening.sql`
+- `db/migrations/20260814_billing_trials.sql`
 
 If the repository is linked with the Supabase CLI:
 
@@ -132,3 +135,15 @@ The scheduled `/api/billing/reconcile` job runs daily through Vercel. It repairs
 mapped subscription drift and returns HTTP 500 when it detects missing mappings,
 duplicate subscriptions, unknown prices, or identity mismatches. Monitor those
 failures in Vercel logs.
+
+## 8. Trials and private promotion codes
+
+Checkout offers an optional seven-day trial to a signed-in account that has
+never used one. Stripe collects a card up front and automatically charges the
+selected monthly price after seven days unless the customer cancels. Trial use
+is recorded permanently in Supabase and cross-checked against the customer's
+Stripe subscription history.
+
+Private promotion codes are managed only in Stripe. Never place an owner or
+support code in source code or a public environment variable. Checkout already
+allows a customer to enter a valid Stripe promotion code.

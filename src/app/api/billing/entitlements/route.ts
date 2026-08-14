@@ -65,6 +65,7 @@ export async function GET() {
       hasSubscription: false,
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
+      trialEligible: false,
       canUsePlanners: false,
       plannedAssetsLimit: 0,
       plannedAssetsUsed: 0,
@@ -84,10 +85,11 @@ export async function GET() {
   let hasSubscription = false
   let currentPeriodEnd: string | null = null
   let cancelAtPeriodEnd = false
+  let trialEligible = true
 
   const { data: sub, error: subscriptionError } = await supabase
     .from('user_subscriptions')
-    .select('tier,status,stripe_customer_id,stripe_subscription_id,current_period_end,cancel_at_period_end')
+    .select('tier,status,stripe_customer_id,stripe_subscription_id,current_period_end,cancel_at_period_end,trial_used_at')
     .eq('user_id', user.id)
     .maybeSingle()
   if (subscriptionError) {
@@ -101,6 +103,7 @@ export async function GET() {
   hasSubscription = Boolean(sub?.stripe_subscription_id)
   currentPeriodEnd = sub?.current_period_end ? String(sub.current_period_end) : null
   cancelAtPeriodEnd = Boolean(sub?.cancel_at_period_end)
+  trialEligible = !sub?.trial_used_at && !hasSubscription && !isPaidStatus(billedStatus)
 
   // Read admin override (user can read own override via RLS policy).
   let overrideTier: Tier | null = null
@@ -191,6 +194,7 @@ export async function GET() {
     hasSubscription,
     currentPeriodEnd,
     cancelAtPeriodEnd,
+    trialEligible,
     canUsePlanners,
     plannedAssetsLimit,
     plannedAssetsUsed,

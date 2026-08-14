@@ -8,6 +8,7 @@ export type Entitlements = {
   hasSubscription: boolean
   currentPeriodEnd: string | null
   cancelAtPeriodEnd: boolean
+  trialEligible: boolean
   canUsePlanners: boolean
   plannedAssetsLimit: number | null // null = unlimited
   plannedAssetsUsed: number
