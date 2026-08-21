@@ -303,7 +303,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
   const { user } = useUser()
 
-  const { data: activeSell } = useSWR<Planner | null>(
+  const { data: activeSell, mutate: mutateActiveSell } = useSWR<Planner | null>(
     user && coingeckoId ? ['/sell-planner/active-mini', user.id, coingeckoId] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -497,10 +497,6 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       setErr('Not signed in.')
       return
     }
-    if (!activeSell?.id) {
-      setErr('No active Sell planner found.')
-      return
-    }
 
     if (!Number.isFinite(levels) || levels < 1 || levels > 60) {
       setErr('Levels must be between 1 and 60.')
@@ -509,9 +505,65 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
     setBusy(true)
     try {
-      const poolTokens = await getPoolTokens(activeSell.id)
-      const locked = Number(activeSell.avg_lock_price || 0)
-      const liveAvg = await getCurrentBuyPlannerAvgCost()
+      // Re-read before generating. The cached value can still be null immediately
+      // after Save New rotates the Buy/Sell planners.
+      let sellPlanner = await mutateActiveSell()
+      let liveAvg: number | null = null
+
+      // Older/incomplete planner states can have an active Buy planner (and its
+      // trades) without the companion Sell planner. Generate Ladder should repair
+      // that state instead of leaving the user stuck.
+      if (!sellPlanner?.id) {
+        const { data: activeBuy, error: activeBuyError } = await supabaseBrowser
+          .from('buy_planners')
+          .select('id,top_price')
+          .eq('user_id', user.id)
+          .eq('coingecko_id', coingeckoId)
+          .eq('is_active', true)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (activeBuyError) throw activeBuyError
+        if (!activeBuy?.id) {
+          setErr('Create an active Buy planner before generating a Sell ladder.')
+          return
+        }
+
+        liveAvg = await getCurrentBuyPlannerAvgCost()
+        if (!(liveAvg > 0)) {
+          setErr('Enter your 1st buy before creating a sell planner.')
+          return
+        }
+
+        const buyTopPrice = Number(activeBuy.top_price ?? 0)
+        const { data: created, error: createError } = await supabaseBrowser
+          .from('sell_planners')
+          .insert({
+            user_id: user.id,
+            coingecko_id: coingeckoId,
+            top_price: buyTopPrice > 0 ? buyTopPrice : liveAvg,
+            avg_lock_price: null,
+            is_active: true,
+          })
+          .select('id,avg_lock_price,created_at,is_active')
+          .single()
+
+        if (createError) {
+          // If another refresh created it concurrently, use that row. Otherwise
+          // preserve the real database error for diagnosis.
+          sellPlanner = await mutateActiveSell()
+          if (!sellPlanner?.id) throw createError
+        } else {
+          sellPlanner = created as Planner
+          await mutateActiveSell(sellPlanner, { revalidate: false })
+        }
+      }
+
+      const sellPlannerId = sellPlanner.id
+      const poolTokens = await getPoolTokens(sellPlannerId)
+      const locked = Number(sellPlanner.avg_lock_price || 0)
+      liveAvg ??= await getCurrentBuyPlannerAvgCost()
       const avg = locked > 0 ? locked : liveAvg
       const baseAvg = avg > 0 ? avg : 0
       if (!baseAvg) {
@@ -539,13 +591,13 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         .delete()
         .eq('user_id', user.id)
         .eq('coingecko_id', coingeckoId)
-        .eq('sell_planner_id', activeSell.id)
+        .eq('sell_planner_id', sellPlannerId)
 
       // Insert with ALL required NOT-NULL columns
       const rows = plan.map((lv) => ({
         user_id: user.id,
         coingecko_id: coingeckoId,
-        sell_planner_id: activeSell.id,
+        sell_planner_id: sellPlannerId,
         level: lv.level,
         rise_pct: lv.rise_pct,
         price: lv.price,
@@ -562,14 +614,17 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('sellPlannerUpdated', {
-            detail: { coinId: coingeckoId, plannerId: activeSell.id },
+            detail: { coinId: coingeckoId, plannerId: sellPlannerId },
           })
         )
       }
           // Force immediate UI refresh (SWR) so user doesn’t need to reload
-      globalMutate(['/sell-active', user.id, coingeckoId])
-      globalMutate(['/sell-levels', user.id, coingeckoId, activeSell.id])
-      globalMutate(['/sells', user.id, coingeckoId, activeSell.id])
+      await Promise.all([
+        globalMutate(['/sell-active', user.id, coingeckoId]),
+        globalMutate(['/sell-planner/active', user.id, coingeckoId]),
+        globalMutate(['/sell-levels', user.id, coingeckoId, sellPlannerId]),
+        globalMutate(['/sells', user.id, coingeckoId, sellPlannerId]),
+      ])
 
     } catch (e: any) {
       console.error(e)
