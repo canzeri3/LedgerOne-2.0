@@ -390,6 +390,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
               >
                 <Sidebar />
               </div>
+
+              {/* Very narrow headers move secondary tools here so the current
+                  page title remains readable without losing those controls. */}
+              <div className="hidden items-center justify-between border-t border-[rgb(43,44,45)] px-4 py-3 max-[350px]:flex">
+                <span className="text-xs font-medium text-slate-400">Quick settings</span>
+                <div className="flex items-center gap-1">
+                  <ThemeToggle />
+                  <button
+                    type="button"
+                    onClick={toggleAmountsHidden}
+                    aria-label={amountsHidden ? 'Show amounts' : 'Hide amounts'}
+                    title={amountsHidden ? 'Show amounts' : 'Hide amounts'}
+                    className="inline-flex h-9 w-9 items-center justify-center text-slate-200"
+                  >
+                    {amountsHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </>
@@ -621,7 +639,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </div>
 
                   {/* Theme toggle – switch between light and dark mode */}
-                  <ThemeToggle />
+                  <div className="max-[350px]:hidden">
+                    <ThemeToggle />
+                  </div>
 
                   {/* Settings gear – icon only (no circle) */}
                                                       {/* Privacy toggle – mask on-screen currency amounts */}
@@ -630,7 +650,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     onClick={toggleAmountsHidden}
                     aria-label={amountsHidden ? 'Show amounts' : 'Hide amounts'}
                     title={amountsHidden ? 'Show amounts' : 'Hide amounts'}
-                    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors"
+                    className="inline-flex h-9 w-9 items-center justify-center hover:text-slate-50 transition-colors max-[350px]:hidden"
                   >
                     {amountsHidden ? (
                       <EyeOff className="h-4 w-4 text-slate-200" />
@@ -669,7 +689,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     </>
   )}
 
-  {/* Keeps the cover visible until SWR-backed components finish loading for the new route */}
+  {/* Non-blocking progress while the destination's SWR requests settle */}
   <SWRRouteCover />
 </div>
     </DisplayCurrencyProvider>

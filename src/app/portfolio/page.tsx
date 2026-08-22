@@ -17,6 +17,7 @@ import MobileRiskMetricSheet, { type MobileRiskMetricDetail } from '@/components
 import AllocationDonut from '@/components/portfolio/AllocationDonut'
 import { useHistory } from '@/lib/dataCore' // NEW data core hooks only
 import { useIsMobile } from '@/lib/useMediaQuery'
+import RoutePageSkeleton from '@/components/common/RoutePageSkeleton'
 import * as React from 'react'
 
 /* ── SortSelect: wrapper owns the card chrome so shape/color match Search input ──
@@ -1228,8 +1229,7 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     return 75 + clamp(seg(s, BAND_HIGH, BAND_TOP), 0, 1) * 25
   })()
 
-  // Page readiness (the SWRRouteCover full-screen loader stays up until this is
-  // true on first load):
+  // Page readiness for the first local skeleton:
   //  - user auth confirmed (not still checking session)
   //  - trades + coins SWR calls settled
   //  - first price tick received (or portfolio is empty)
@@ -1246,9 +1246,9 @@ const hC7  = useHistory(canViewPortfolioRisk ? corrIds[7] : null, 95, 'daily', '
     if (pageReady) setHasBootstrapped(true)
   }, [pageReady])
 
-  // The full-screen loader is owned solely by SWRRouteCover; render nothing
-  // (the cover is on top) until the first data is ready.
-  if (!hasBootstrapped && !pageReady) return null
+  if (!hasBootstrapped && !pageReady) {
+    return <RoutePageSkeleton label="portfolio" />
+  }
 
   if (isMobile) {
     const riskFactors: MobileRiskMetricDetail[] = [

@@ -50,7 +50,7 @@ export default function MobileCoinWorkspace({ id }: { id: string }) {
       <div
         role="tablist"
         aria-label="Coin actions"
-        className="grid grid-cols-3 border-b border-[rgb(41,42,45)] px-3"
+        className="mobile-coin-action-tabs grid grid-cols-3 border-b border-[rgb(41,42,45)] px-3"
       >
         {TABS.map(({ id: tabId, label, icon: Icon }) => {
           const active = activeTab === tabId
@@ -75,7 +75,7 @@ export default function MobileCoinWorkspace({ id }: { id: string }) {
                 hasAlert
                   ? 'text-[rgb(230,165,60)]'
                   : active
-                    ? 'text-[rgb(163,152,242)]'
+                    ? 'bg-[rgba(136,128,213,0.07)] text-[rgb(190,184,245)]'
                     : 'text-slate-500',
               ].join(' ')}
             >

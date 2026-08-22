@@ -186,19 +186,19 @@ export default function Sidebar() {
     </li>
 
     <li>
+      <NavLink
+        href="/portfolio"
+        label="Portfolio"
+        icon={<Wallet className="h-4 w-4 opacity-80" />}
+      />
+    </li>
+
+    <li>
 <NavLink
   href={plannerHref}
   label="Planner"
   icon={<Target className="h-4 w-4 opacity-80" />}
 />
-    </li>
-
-    <li>
-      <NavLink
-        href="/portfolio"
-        label="Portfolio "
-        icon={<Wallet className="h-4 w-4 opacity-80" />}
-      />
     </li>
 
     <li>
@@ -260,14 +260,16 @@ export default function Sidebar() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => setCoinsOpen(true)}
+                aria-label="Search coins"
+                autoComplete="off"
                 className={[
-                  'w-full rounded-md pl-7 pr-2 py-1 text-[13px] text-slate-200 placeholder:text-slate-500',
+                  'w-full rounded-md pl-7 pr-2 py-1 text-base text-slate-200 placeholder:text-slate-500 md:text-[13px]',
                   'bg-[rgb(32,33,35)]',                 // subtle fill that blends with the sidebar
                   'border border-[rgb(41,42,45)]',      // faint border
                   'focus:outline-none focus:border-[rgb(58,59,63)]', // subtle focus, no bright ring
                   'transition-colors',
                 ].join(' ')}
-                placeholder="Search..."
+                placeholder="Search coins…"
               />
             </div>
           </div>
@@ -323,7 +325,7 @@ export default function Sidebar() {
                   )
                 })}
                 {filteredCoins.length === 0 && (
-                  <li className="text-xs text-slate-400 px-2 py-1.5">No matches.</li>
+                  <li className="px-2 py-1.5 text-xs text-slate-400">No coins match that search.</li>
                 )}
               </ul>
             </div>

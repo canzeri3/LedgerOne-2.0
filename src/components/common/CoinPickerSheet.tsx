@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -20,6 +20,8 @@ type Props = {
   onClose: () => void
 }
 
+const COIN_PICKER_BATCH_SIZE = 60
+
 /**
  * Phone coin picker that pops out of the bottom tab bar's Coins tab.
  *
@@ -33,8 +35,11 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const loadMoreLockedRef = useRef(false)
+  const [visibleCount, setVisibleCount] = useState(COIN_PICKER_BATCH_SIZE)
 
-  const { data: coins } = useSWR<Coin[]>(
+  const { data: coins, error, mutate } = useSWR<Coin[]>(
     open ? '/api/coins?limit=500&order=marketcap' : null,
     async (url: string) => {
       const r = await fetch(url, { cache: 'no-store' })
@@ -64,10 +69,42 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
     return searchable.filter(({ searchText }) => searchText.includes(q)).map(({ coin }) => coin)
   }, [deferredQuery, searchable, list])
 
+  const visibleCoins = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
+  )
+  const hasMore = visibleCoins.length < filtered.length
+
   // Reset the query each time it opens so it never reopens pre-filtered.
   useEffect(() => {
-    if (open) setQuery('')
+    if (!open) return
+    setQuery('')
+    setVisibleCount(COIN_PICKER_BATCH_SIZE)
+    loadMoreLockedRef.current = false
+    requestAnimationFrame(() => listRef.current?.scrollTo({ top: 0 }))
   }, [open])
+
+  // A new search always starts at its most relevant results and at the top.
+  useEffect(() => {
+    setVisibleCount(COIN_PICKER_BATCH_SIZE)
+    loadMoreLockedRef.current = false
+    listRef.current?.scrollTo({ top: 0 })
+  }, [deferredQuery])
+
+  // Render another batch only when the user nears the end of the current one.
+  const onListScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (!hasMore) return
+    const el = event.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 180) {
+      loadMoreLockedRef.current = false
+      return
+    }
+    if (loadMoreLockedRef.current) return
+    loadMoreLockedRef.current = true
+    setVisibleCount((count) =>
+      Math.min(filtered.length, count + COIN_PICKER_BATCH_SIZE)
+    )
+  }
 
   // Escape to dismiss, and lock the page behind the sheet while it's up.
   useEffect(() => {
@@ -120,54 +157,72 @@ export default function CoinPickerSheet({ open, onClose }: Props) {
           </button>
         </div>
 
-        <div className="l1-coinsheet-list">
-          {filtered.length === 0 ? (
+        <div className="l1-coinsheet-list" ref={listRef} onScroll={onListScroll}>
+          {!coins && !error ? (
+            <div className="l1-coinsheet-skeleton" role="status" aria-label="Loading coins">
+              {Array.from({ length: 7 }, (_, i) => <span key={i} />)}
+            </div>
+          ) : error ? (
+            <div className="l1-coinsheet-empty" role="alert">
+              <p>Coins couldn&apos;t be loaded.</p>
+              <button type="button" onClick={() => void mutate()}>Try again</button>
+            </div>
+          ) : filtered.length === 0 ? (
             <p className="l1-coinsheet-empty">
-              {coins ? 'No coins match that search.' : 'Loading coins…'}
+              No coins match that search.
+              <button type="button" onClick={() => setQuery('')}>Clear search</button>
             </p>
           ) : (
-            filtered.map((c, i) => {
-              const href = `/coins/${c.coingecko_id}`
-              const active = pathname === href
-              return (
-                <Link
-                  key={c.coingecko_id}
-                  href={href}
-                  onClick={(event) => {
-                    // Closing the animated sheet during Next's own Link click
-                    // can interrupt the client-side navigation on mobile. Own
-                    // the plain-tap navigation so the selected coin id is the
-                    // route that commits; preserve modified clicks as links.
-                    if (
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    ) {
-                      return
-                    }
+            <>
+              {visibleCoins.map((c, i) => {
+                const href = `/coins/${c.coingecko_id}`
+                const active = pathname === href
+                return (
+                  <Link
+                    key={c.coingecko_id}
+                    href={href}
+                    prefetch={false}
+                    onClick={(event) => {
+                      // Closing the animated sheet during Next's own Link click
+                      // can interrupt the client-side navigation on mobile. Own
+                      // the plain-tap navigation so the selected coin id is the
+                      // route that commits; preserve modified clicks as links.
+                      if (
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      ) {
+                        return
+                      }
 
-                    event.preventDefault()
-                    router.push(href)
-                    onClose()
-                  }}
-                  className={active ? 'is-active' : undefined}
-                  aria-current={active ? 'page' : undefined}
-                  // Drives the staggered entrance. Capped so rows far down the
-                  // list aren't still waiting to appear when you scroll to them.
-                  style={{ ['--i' as string]: Math.min(i, 10) }}
-                >
-                  <CoinLogo
-                    symbol={c.symbol || c.coingecko_id}
-                    name={c.name}
-                    className="h-7 w-7 flex-none"
-                  />
-                  <span className="tk">{(c.symbol || c.coingecko_id).toUpperCase()}</span>
-                  <span className="nm">{c.name}</span>
-                  {c.market_cap_rank ? <span className="rk">#{c.market_cap_rank}</span> : null}
-                </Link>
-              )
-            })
+                      event.preventDefault()
+                      router.push(href)
+                      onClose()
+                    }}
+                    className={active ? 'is-active' : undefined}
+                    aria-current={active ? 'page' : undefined}
+                    style={{ ['--i' as string]: Math.min(i, 7) }}
+                  >
+                    <CoinLogo
+                      symbol={c.symbol || c.coingecko_id}
+                      name={c.name}
+                      className="h-7 w-7 flex-none"
+                      loading="lazy"
+                    />
+                    <span className="tk">{(c.symbol || c.coingecko_id).toUpperCase()}</span>
+                    <span className="nm">{c.name}</span>
+                    {c.market_cap_rank ? <span className="rk">#{c.market_cap_rank}</span> : null}
+                  </Link>
+                )
+              })}
+
+              <div className="l1-coinsheet-more" role="status">
+                {hasMore
+                  ? `Showing ${visibleCoins.length} of ${filtered.length} coins`
+                  : `${filtered.length} ${filtered.length === 1 ? 'coin' : 'coins'}`}
+              </div>
+            </>
           )}
         </div>
       </div>

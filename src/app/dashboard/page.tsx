@@ -12,6 +12,7 @@ import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTabl
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
 import MobileDashboard from '@/components/dashboard/MobileDashboard'
+import RoutePageSkeleton from '@/components/common/RoutePageSkeleton'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import './dashboard-mobile.css'
 
@@ -866,9 +867,8 @@ const { delta, pct } = useMemo(() => {
   const pctAbsText = Math.abs(pct).toFixed(2)
   const deltaDigitsOnly = Math.abs(delta).toFixed(2)
 
-  // Hold the full-screen loader only for the initial page bootstrap.
-  // After the first successful chart load, timeframe switches should stay scoped
-  // to the chart area and must not bounce the entire dashboard through a page loader.
+  // Hold the local page skeleton only for the initial page bootstrap. After the
+  // first successful chart load, timeframe switches stay scoped to the chart.
   const initialPageReady =
     !authLoading &&
     !tradesLoading &&
@@ -880,9 +880,9 @@ const { delta, pct } = useMemo(() => {
     if (initialPageReady) setHasBootstrapped(true)
   }, [initialPageReady])
 
-  // The full-screen loader is owned solely by SWRRouteCover; render nothing
-  // (the cover is on top) until the first data is ready, then never blank again.
-  if (!hasBootstrapped && !initialPageReady) return null
+  if (!hasBootstrapped && !initialPageReady) {
+    return <RoutePageSkeleton label="dashboard" />
+  }
 
   const chartRefreshing = coinIds.length > 0 && !!historiesMap && historiesValidating
 

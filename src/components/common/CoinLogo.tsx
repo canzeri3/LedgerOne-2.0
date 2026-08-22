@@ -7,10 +7,17 @@ type Props = {
   name?: string
   /** Keep your existing sizing by passing the same classes your circle used (e.g., "h-8 w-8 md:h-10 md:w-10") */
   className?: string
+  /** Pickers and long lists should lazy-load; prominent logos remain eager by default. */
+  loading?: 'eager' | 'lazy'
 }
 
 /** Ultra-robust, UI-only logo loader with graceful fallbacks + HiDPI. */
-export default function CoinLogo({ symbol, name, className = 'h-8 w-8 md:h-10 md:w-10' }: Props) {
+export default function CoinLogo({
+  symbol,
+  name,
+  className = 'h-8 w-8 md:h-10 md:w-10',
+  loading = 'eager',
+}: Props) {
   const sym0 = (symbol || '').toLowerCase().trim()
   const alias = (s: string) => {
     if (s === 'xbt') return 'btc'
@@ -63,10 +70,9 @@ export default function CoinLogo({ symbol, name, className = 'h-8 w-8 md:h-10 md
         if (idx < sources.length - 1) setIdx(idx + 1)
         else setHidden(true)
       }}
-      loading="eager"
+      loading={loading}
       decoding="async"
       referrerPolicy="no-referrer"
     />
   )
 }
-

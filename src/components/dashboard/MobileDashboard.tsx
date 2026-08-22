@@ -22,7 +22,7 @@ const TF_LABEL: Record<Timeframe, string> = {
   '90d': '3M',
   '1y': '1Y',
   'YTD': 'YTD',
-  'Max': 'ALL',
+  'Max': 'Max',
 }
 
 const POS = 'rgb(116,170,98)'

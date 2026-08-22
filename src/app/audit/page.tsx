@@ -1,7 +1,7 @@
 'use client'
 
-import useSWR, { mutate as mutateGlobal } from 'swr'
-import { Fragment, useMemo, useState } from 'react'
+import useSWR from 'swr'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Search } from 'lucide-react'
 import './audit-skin.css'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -18,6 +18,7 @@ type LogRow = {
 }
 
 const ENTITIES: Array<LogRow['entity']> = ['buy_planner', 'sell_planner', 'sell_level', 'trade', 'system']
+const AUDIT_PAGE_SIZE = 40
 
 function fmtTime(ts: string) {
   const d = new Date(ts)
@@ -121,14 +122,14 @@ function summarizeDetails(details: any): string {
   for (const k of preferredKeys) {
     if ((details as any)[k] == null) continue
     const v = (details as any)[k]
-    if (typeof v === 'string' && v.trim()) return `${k}: ${v}`
-    if (typeof v === 'number' || typeof v === 'boolean') return `${k}: ${String(v)}`
+    if (typeof v === 'string' && v.trim()) return `${labelize(k)}: ${v}`
+    if (typeof v === 'number' || typeof v === 'boolean') return `${labelize(k)}: ${String(v)}`
   }
 
   const keys = Object.keys(details)
   if (keys.length === 0) return '—'
-  const first = keys.slice(0, 3).map((k) => `${k}`)
-  return first.length ? `fields: ${first.join(', ')}${keys.length > 3 ? '…' : ''}` : '—'
+  const first = keys.slice(0, 3).map(labelize)
+  return first.length ? `Fields: ${first.join(', ')}${keys.length > 3 ? '…' : ''}` : '—'
 }
 
 type RestoreTarget = {
@@ -276,6 +277,8 @@ export default function AuditPage() {
   const [entity, setEntity] = useState<'all' | LogRow['entity']>('all')
   const [coin, setCoin] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [visibleCount, setVisibleCount] = useState(AUDIT_PAGE_SIZE)
+  const [pendingRestoreId, setPendingRestoreId] = useState<string | null>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null)
   const [restoreErr, setRestoreErr] = useState<string | null>(null)
@@ -303,10 +306,21 @@ export default function AuditPage() {
     })
   }, [data, q, entity, coin])
 
+  useEffect(() => {
+    setVisibleCount(AUDIT_PAGE_SIZE)
+    setExpanded(new Set())
+    setPendingRestoreId(null)
+  }, [q, entity, coin])
+
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
+  )
+
   // Visual-only grouping: by local day, preserving order (newest first)
   const groups = useMemo(() => {
     const out: Array<{ key: string; heading: string; items: LogRow[] }> = []
-    for (const r of filtered) {
+    for (const r of visibleFiltered) {
       const key = dayKeyOf(r.created_at)
       let g = out.find((x) => x.key === key)
       if (!g) {
@@ -316,7 +330,7 @@ export default function AuditPage() {
       g.items.push(r)
     }
     return out
-  }, [filtered])
+  }, [visibleFiltered])
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
@@ -325,6 +339,12 @@ export default function AuditPage() {
       else next.add(id)
       return next
     })
+  }
+
+  const clearFilters = () => {
+    setQ('')
+    setEntity('all')
+    setCoin('')
   }
 
   const restorePlannerFromLog = async (row: LogRow) => {
@@ -418,9 +438,35 @@ export default function AuditPage() {
     }
   }
 
-  // Aliases used in JSX — map old names to the actual state/function above
-  const restoreBusyId = restoringId
-  const onRestore = restorePlannerFromLog
+  const restoreSellSnapshotFromLog = async (row: LogRow) => {
+    if (!user) {
+      setRestoreErr('Not signed in.')
+      return
+    }
+
+    setRestoreErr(null)
+    setRestoreMsg(null)
+    setRestoringId(row.id)
+
+    try {
+      await restoreSellPlannerFromAudit(row.id)
+      setRestoreMsg('Sell planner restored.')
+      await mutate()
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('sellPlannerUpdated', {
+            detail: { coinId: row.coingecko_id },
+          })
+        )
+      }
+    } catch (e: any) {
+      setRestoreErr(e?.message ?? 'Restore failed.')
+    } finally {
+      setRestoringId(null)
+    }
+  }
+
   const restoreStatus: { type: 'success' | 'error'; text: string } | null =
     restoreMsg ? { type: 'success', text: restoreMsg } :
     restoreErr ? { type: 'error', text: restoreErr } :
@@ -428,7 +474,11 @@ export default function AuditPage() {
 
   const total = data?.length ?? 0
 
-  const shown = filtered.length
+  const shown = visibleFiltered.length
+  const matching = filtered.length
+  const remaining = Math.max(0, matching - shown)
+  const activeFilterCount = Number(Boolean(q.trim())) + Number(entity !== 'all') + Number(Boolean(coin.trim()))
+  const hasActiveFilters = activeFilterCount > 0
 
   return (
     <div className="au px-3 sm:px-4 md:px-8 lg:px-10 py-5 md:py-8 max-w-screen-2xl mx-auto" data-audit-page>
@@ -443,7 +493,8 @@ export default function AuditPage() {
 
         <div className="au-head-meta">
           <span className="au-count">
-            Showing <b>{shown}</b> of <b>{total}</b>
+            Showing <b>{shown}</b> of <b>{matching}</b>
+            {matching !== total ? ' matches' : ''}
           </span>
           <span className="au-pill">Last 200 entries</span>
         </div>
@@ -457,16 +508,19 @@ export default function AuditPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by action, planner, or coin…"
+            aria-label="Search audit activity"
+            autoComplete="off"
           />
         </label>
 
-        <div className="au-tb-group">
+        <div className="au-tb-group" role="group" aria-label="Filter by entity">
           <span className="au-tb-label">Entity</span>
           <div className="seg">
             <button
               type="button"
               className={entity === 'all' ? 'cur accent' : ''}
               onClick={() => setEntity('all')}
+              aria-pressed={entity === 'all'}
             >
               All
             </button>
@@ -476,6 +530,7 @@ export default function AuditPage() {
                 type="button"
                 className={entity === e ? 'cur accent' : ''}
                 onClick={() => setEntity(e)}
+                aria-pressed={entity === e}
               >
                 {prettyEntity(e).replace(' Planner', '').replace('Sell Level', 'Levels')}
               </button>
@@ -490,24 +545,51 @@ export default function AuditPage() {
               value={coin}
               onChange={(e) => setCoin(e.target.value)}
               placeholder="e.g., bitcoin"
+              aria-label="Filter by coin"
+              autoComplete="off"
             />
           </label>
         </div>
+
+        {hasActiveFilters ? (
+          <button type="button" className="au-clear" onClick={clearFilters}>
+            Clear filters
+            <span aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>
+          </button>
+        ) : null}
       </div>
 
       {/* Status notes */}
-      {restoreErr ? <div className="au-note err">{restoreErr}</div> : null}
-      {restoreMsg ? <div className="au-note ok">{restoreMsg}</div> : null}
       {error && <div className="au-note err">Error loading logs.</div>}
       {restoreStatus && (
-        <div className={restoreStatus.type === 'success' ? 'au-note ok' : 'au-note err'}>
-          {restoreStatus.text}
+        <div
+          className={restoreStatus.type === 'success' ? 'au-note ok' : 'au-note err'}
+          role={restoreStatus.type === 'error' ? 'alert' : 'status'}
+        >
+          <span>{restoreStatus.text}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setRestoreMsg(null)
+              setRestoreErr(null)
+            }}
+            aria-label="Dismiss restore message"
+          >
+            Dismiss
+          </button>
         </div>
       )}
-      {!data && !error && <div className="au-note plain">Loading…</div>}
+      {!data && !error && <div className="au-note plain" role="status">Loading activity…</div>}
 
       {data && filtered.length === 0 && (
-        <div className="au-empty">No matching activity. Try a different search or filter.</div>
+        <div className="au-empty">
+          <p>No matching activity. Try a different search or filter.</p>
+          {hasActiveFilters ? (
+            <button type="button" className="au-clear-empty" onClick={clearFilters}>
+              Clear all filters
+            </button>
+          ) : null}
+        </div>
       )}
 
       {/* Day groups */}
@@ -525,6 +607,8 @@ export default function AuditPage() {
               const isOpen = expanded.has(row.id)
               const safeDetails = sanitizeAuditDetails(row.details ?? {})
               const restoreTarget = getRestoreTarget(row)
+              const canRestore = Boolean(restoreTarget) || canRestoreFromAudit(row)
+              const isConfirmingRestore = pendingRestoreId === row.id
               const detailEntries =
                 safeDetails && typeof safeDetails === 'object' && !Array.isArray(safeDetails)
                   ? Object.entries(safeDetails)
@@ -537,15 +621,30 @@ export default function AuditPage() {
                   className={`au-row${isOpen ? ' open' : ''}${hasDetail ? '' : ' au-noexp'}`}
                   onClick={hasDetail ? () => toggleExpanded(row.id) : undefined}
                 >
-                  <span className="au-tog" aria-hidden="true">
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </span>
+                  {hasDetail ? (
+                    <button
+                      type="button"
+                      className="au-tog"
+                      aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${labelize(row.action)} ${prettyEntity(row.entity)} details`}
+                      aria-expanded={isOpen}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        toggleExpanded(row.id)
+                      }}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <span className="au-tog" aria-hidden="true" />
+                  )}
 
-                  <span className="au-time">{timeOf(row.created_at)}</span>
+                  <time className="au-time" dateTime={row.created_at} title={fmtTime(row.created_at)}>
+                    {timeOf(row.created_at)}
+                  </time>
 
                   <div className="au-main">
                     <div className="au-line">
-                      <span className="au-action">{row.action}</span>
+                      <span className="au-action">{labelize(row.action)}</span>
                       <span className="au-chip">{prettyEntity(row.entity)}</span>
                       {row.coingecko_id ? (
                         <span className="au-chip">
@@ -571,27 +670,38 @@ export default function AuditPage() {
                   </div>
 
                   <div className="au-right" onClick={(ev) => ev.stopPropagation()}>
-                    {restoreTarget ? (
+                    {canRestore && isConfirmingRestore ? (
+                      <div className="au-restore-confirm" role="group" aria-label="Confirm planner restore">
+                        <span>Restore this planner?</span>
+                        <button
+                          type="button"
+                          className="confirm"
+                          onClick={() => {
+                            setPendingRestoreId(null)
+                            if (restoreTarget) void restorePlannerFromLog(row)
+                            else void restoreSellSnapshotFromLog(row)
+                          }}
+                        >
+                          Confirm
+                        </button>
+                        <button type="button" onClick={() => setPendingRestoreId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : canRestore ? (
                       <button
                         type="button"
                         className="au-restore"
-                        onClick={() => restorePlannerFromLog(row)}
+                        onClick={() => {
+                          setRestoreMsg(null)
+                          setRestoreErr(null)
+                          setPendingRestoreId(row.id)
+                        }}
                         disabled={restoringId === row.id}
                       >
                         {restoringId === row.id ? 'Restoring…' : 'Restore'}
                       </button>
                     ) : null}
-
-                    {canRestoreFromAudit(row) && (
-                      <button
-                        type="button"
-                        className="au-restore"
-                        onClick={() => onRestore(row)}
-                        disabled={restoreBusyId === row.id}
-                      >
-                        {restoreBusyId === row.id ? 'Restoring…' : 'Restore'}
-                      </button>
-                    )}
 
                     <span className={`au-badge ${badgeCls(row.action)}`}>
                       <span className="bd" aria-hidden="true" />
@@ -604,6 +714,19 @@ export default function AuditPage() {
           </div>
         </div>
       ))}
+
+      {remaining > 0 ? (
+        <div className="au-more-wrap">
+          <button
+            type="button"
+            className="au-more"
+            onClick={() => setVisibleCount((count) => count + AUDIT_PAGE_SIZE)}
+          >
+            Show {Math.min(AUDIT_PAGE_SIZE, remaining)} more
+          </button>
+          <span>{remaining} entries remaining</span>
+        </div>
+      ) : null}
 
       <p className="mt-4 text-[12px] text-[rgb(120,120,121)]">
         Edits, freezes, deletes, and restoration events are logged automatically. Only you can see your own logs (RLS owner-only).

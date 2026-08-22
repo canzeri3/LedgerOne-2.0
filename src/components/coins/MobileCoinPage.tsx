@@ -1,10 +1,10 @@
 'use client'
 
-import { ReactNode, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Activity, ArrowLeft, BellPlus, Star } from 'lucide-react'
+import { Activity, ArrowLeft, BellPlus, ChevronLeft, ChevronRight, Star } from 'lucide-react'
 import CoinLogo from '@/components/common/CoinLogo'
 import MobileGrowthChart, { type Point } from '@/components/dashboard/MobileGrowthChart'
 import { useHistory, usePrice, usePrices } from '@/lib/dataCore'
@@ -27,7 +27,7 @@ const TF_LABEL: Record<TfKey, string> = {
   '90d': '3M',
   '1y': '1Y',
   ytd: 'YTD',
-  max: 'ALL',
+  max: 'Max',
 }
 const TF_ORDER: TfKey[] = ['24h', '7d', '30d', '90d', '1y', 'ytd', 'max']
 
@@ -177,6 +177,8 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
   const { user } = useUser()
   const { isFavorite, toggle, isLoading: favLoading } = useFavorites()
   const [tf, setTf] = useState<TfKey>('24h')
+  const timeframeScrollRef = useRef<HTMLDivElement | null>(null)
+  const [timeframeEdges, setTimeframeEdges] = useState({ left: false, right: false })
 
   const days = daysFor(tf)
   const { row } = usePrice(id)
@@ -274,6 +276,29 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
 
   const fav = isFavorite(id)
 
+  useEffect(() => {
+    const scroller = timeframeScrollRef.current
+    if (!scroller) return
+
+    const updateEdges = () => {
+      const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth)
+      setTimeframeEdges({
+        left: scroller.scrollLeft > 4,
+        right: scroller.scrollLeft < maxScroll - 4,
+      })
+    }
+
+    updateEdges()
+    scroller.addEventListener('scroll', updateEdges, { passive: true })
+    const observer = new ResizeObserver(updateEdges)
+    observer.observe(scroller)
+
+    return () => {
+      scroller.removeEventListener('scroll', updateEdges)
+      observer.disconnect()
+    }
+  }, [])
+
   return (
     <div data-coin-mobile className="pb-2">
       {/* ── Coin header ──────────────────────────────────────── */}
@@ -304,9 +329,12 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
 
       {/* ── Headline: value of this holding ──────────────────── */}
       <div className="px-5 pt-4">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">
+          Your position value
+        </div>
         {/* Same type scale as the desktop dashboard hero. */}
         <div
-          className="mb-2 mt-1.5 font-display text-4xl font-bold tracking-tight text-slate-100"
+          className="mb-2 mt-1 font-display text-4xl font-bold tracking-tight text-slate-100"
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {headWhole}
@@ -348,28 +376,45 @@ export default function MobileCoinPage({ id, name, symbol, children }: Props) {
       </div>
 
       {/* ── Timeframe pills ──────────────────────────────────── */}
-      <div className="scrollbar-auto-hide mt-3 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-        <div className="flex w-max items-center gap-2 px-5 pb-1">
-          {TF_ORDER.map(opt => {
-            const active = tf === opt
-            return (
-              <button
-                key={opt}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setTf(opt)}
-                className={[
-                  'select-none rounded-full border px-4 py-2 text-[12px] font-medium uppercase tracking-wide transition-colors focus:outline-none',
-                  active
-                    ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)]'
-                    : 'border-[rgb(58,59,63)] text-slate-400',
-                ].join(' ')}
-              >
-                {TF_LABEL[opt]}
-              </button>
-            )
-          })}
+      <div className="relative mt-3">
+        <div
+          ref={timeframeScrollRef}
+          className="scrollbar-auto-hide overflow-x-auto [-webkit-overflow-scrolling:touch]"
+          aria-label="Performance timeframes; swipe horizontally for more options"
+        >
+          <div className="flex w-max items-center gap-2 px-5 pb-1">
+            {TF_ORDER.map(opt => {
+              const active = tf === opt
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTf(opt)}
+                  className={[
+                    'select-none rounded-full border px-4 py-2 text-[12px] font-medium uppercase tracking-wide transition-colors focus:outline-none',
+                    active
+                      ? 'border-[rgb(137,128,213)] text-[rgb(137,128,213)]'
+                      : 'border-[rgb(58,59,63)] text-slate-400',
+                  ].join(' ')}
+                >
+                  {TF_LABEL[opt]}
+                </button>
+              )
+            })}
+          </div>
         </div>
+
+        {timeframeEdges.left ? (
+          <span className="coin-timeframe-cue left pointer-events-none absolute inset-y-0 left-0 flex w-9 items-center justify-start pl-1 text-slate-500">
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          </span>
+        ) : null}
+        {timeframeEdges.right ? (
+          <span className="coin-timeframe-cue right pointer-events-none absolute inset-y-0 right-0 flex w-9 items-center justify-end pr-1 text-slate-400">
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </span>
+        ) : null}
       </div>
 
       {/* ── Performance ──────────────────────────────────────── */}

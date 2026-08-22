@@ -463,33 +463,142 @@ body {
 .lg1-loader-overlay { background: #0D0E14; }
 html[data-theme="light"] .lg1-loader-overlay { background: #f5f6f8; }
 
-/* Route cover fade-out — the loader lifts smoothly once the page is ready.
-   Duration is mirrored by FADE_MS in SWRRouteCover.tsx. */
-.lg1-cover-fade {
-  opacity: 1;
-  transition: opacity 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.lg1-cover-fade.leaving {
-  opacity: 0;
+/* Route feedback stays above the shell but never covers or intercepts it. */
+.lg1-route-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   pointer-events: none;
 }
-
-/* Coordinated page entrance — content animates in exactly as the cover lifts,
-   so the page feels loaded and ready rather than popping in. The class is
-   added on <html> by SWRRouteCover the moment it starts hiding.
-   Duration is mirrored by ENTER_MS in SWRRouteCover.tsx. */
-@keyframes lg1-page-enter {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
+.lg1-route-progress {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  overflow: hidden;
+  opacity: 1;
+  background: rgba(136, 128, 213, 0.12);
+  transition: opacity 180ms ease-out;
 }
-html.lg1-route-enter #l1-app-main {
-  animation: lg1-page-enter 500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  will-change: opacity, transform;
+.lg1-route-progress-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0.08);
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgb(109, 93, 186), rgb(170, 160, 246));
+  box-shadow: 0 0 12px rgba(136, 128, 213, 0.7);
+  animation: lg1-route-progress-grow 8s cubic-bezier(0.15, 0.65, 0.2, 1) forwards;
+  will-change: transform;
+}
+.lg1-route-loading.leaving .lg1-route-progress {
+  opacity: 0;
+}
+.lg1-route-loading.leaving .lg1-route-progress-bar {
+  animation: none;
+  transform: scaleX(1);
+  transition: transform 120ms ease-out;
+}
+
+.lg1-route-loader-mark {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: lg1-route-mark-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: opacity 150ms ease-out, transform 180ms ease-out;
+}
+.lg1-route-loader-mark svg {
+  width: 50px;
+  height: 50px;
+  animation: lg1-spin 1.15s linear infinite;
+  filter: drop-shadow(0 4px 10px rgba(126, 111, 255, 0.48));
+}
+.lg1-route-loading.leaving .lg1-route-loader-mark {
+  opacity: 0;
+  transform: translateY(5px) scale(0.9);
+}
+
+@keyframes lg1-route-mark-in {
+  from { opacity: 0; transform: translateY(7px) scale(0.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes lg1-route-progress-grow {
+  0% { transform: scaleX(0.08); }
+  18% { transform: scaleX(0.42); }
+  48% { transform: scaleX(0.68); }
+  78% { transform: scaleX(0.84); }
+  100% { transform: scaleX(0.94); }
+}
+
+/* Destination-page placeholder: keeps the shell useful after route commit
+   while first-load data resolves, without covering navigation or controls. */
+.lg1-page-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  padding: 12px 0 24px;
+}
+.lg1-page-skeleton-head span,
+.lg1-page-skeleton-stats span,
+.lg1-page-skeleton-grid span {
+  display: block;
+  border: 1px solid var(--sh-border-scroll, rgb(43, 44, 45));
+  background: var(--sh-sidebar-bg, rgb(31, 32, 33));
+}
+.lg1-page-skeleton-head { display: flex; flex-direction: column; gap: 9px; }
+.lg1-page-skeleton-head .wide { width: min(280px, 66%); height: 28px; border-radius: 6px; }
+.lg1-page-skeleton-head .short { width: min(430px, 86%); height: 14px; border-radius: 5px; opacity: 0.7; }
+.lg1-page-skeleton-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.lg1-page-skeleton-stats span { min-height: 92px; border-radius: 8px; }
+.lg1-page-skeleton-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  gap: 14px;
+}
+.lg1-page-skeleton-grid span { min-height: 320px; border-radius: 8px; }
+
+@media (max-width: 767.98px) {
+  .lg1-route-loader-mark {
+    right: 14px;
+    bottom: calc(94px + env(safe-area-inset-bottom));
+    width: 52px;
+    height: 52px;
+  }
+  .lg1-route-loader-mark svg {
+    width: 38px;
+    height: 38px;
+  }
+
+  .lg1-page-skeleton { gap: 14px; padding-top: 4px; }
+  .lg1-page-skeleton-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .lg1-page-skeleton-stats span { min-height: 78px; }
+  .lg1-page-skeleton-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .lg1-page-skeleton-grid .primary { min-height: 260px; }
+  .lg1-page-skeleton-grid .secondary { min-height: 180px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lg1-cover-fade { transition: none; }
-  html.lg1-route-enter #l1-app-main { animation: none; }
+  .lg1-route-progress { transition: none; }
+  .lg1-route-progress-bar { animation: none; transform: scaleX(0.7); }
+  .lg1-route-loading.leaving .lg1-route-progress-bar { transform: scaleX(1); }
+  .lg1-route-loader-mark { animation: none; }
+  .lg1-route-loader-mark svg { animation: none; }
 }
 
 /* ── Header popovers (alerts / currency / profile): island-style expand —
@@ -3166,6 +3275,7 @@ html[data-standalone='1'] body {
 
 .l1-bottomnav a,
 .l1-bottomnav button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3211,12 +3321,27 @@ html[data-standalone='1'] body {
   font-weight: 600;
   line-height: 1;
   margin-top: 3px;
+  white-space: nowrap;
 }
 
 .l1-bottomnav a.active,
 .l1-bottomnav button.active {
   background: rgba(237, 237, 237, 0.2);
   color: rgb(163, 152, 242);
+  box-shadow: inset 0 0 0 1px rgba(190, 184, 245, 0.18);
+}
+.l1-bottomnav a.active::after,
+.l1-bottomnav button.active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(190, 184, 245);
+  box-shadow: 0 0 7px rgba(190, 184, 245, 0.75);
+  transform: translateX(-50%);
 }
 
 .l1-bottomnav a:active,
@@ -3330,7 +3455,7 @@ html[data-standalone='1'] body {
   }
 }
 
-.l1-coinsheet.is-open .l1-coinsheet-list > * {
+.l1-coinsheet.is-open .l1-coinsheet-list > a:nth-child(-n + 8) {
   animation: l1-coinrow-in 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.04) backwards;
   animation-delay: calc(90ms + var(--i, 0) * 26ms);
 }
@@ -3341,7 +3466,7 @@ html[data-standalone='1'] body {
     transition: opacity 0.15s linear;
     transform: translateX(-50%);
   }
-  .l1-coinsheet.is-open .l1-coinsheet-list > * {
+  .l1-coinsheet.is-open .l1-coinsheet-list > a:nth-child(-n + 8) {
     animation: none;
   }
 }
@@ -3401,6 +3526,15 @@ html[data-standalone='1'] body {
   background: rgba(255, 255, 255, 0.14);
 }
 
+/* iOS zooms the viewport when a focused form control renders below 16px.
+   Keep the phone coin picker stable while its keyboard is open; desktop keeps
+   the original compact type scale. */
+@media (max-width: 767.98px) {
+  .l1-coinsheet-head input {
+    font-size: 16px;
+  }
+}
+
 .l1-coinsheet-head button {
   flex: none;
   display: inline-flex;
@@ -3440,6 +3574,8 @@ html[data-standalone='1'] body {
   text-decoration: none;
   color: rgb(226, 232, 240);
   -webkit-tap-highlight-color: transparent;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 46px;
 }
 
 .l1-coinsheet-list a:active {
@@ -3476,6 +3612,48 @@ html[data-standalone='1'] body {
   text-align: center;
   font-size: 0.86rem;
   color: rgba(226, 232, 240, 0.65);
+}
+.l1-coinsheet-empty p { margin: 0; }
+.l1-coinsheet-empty button {
+  display: block;
+  min-height: 40px;
+  margin: 12px auto 0;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(240, 242, 248, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.l1-coinsheet-more {
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 6px 10px;
+  color: rgba(226, 232, 240, 0.52);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.l1-coinsheet-skeleton {
+  display: grid;
+  gap: 4px;
+  padding: 2px;
+}
+.l1-coinsheet-skeleton span {
+  display: block;
+  height: 43px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: l1-coinsheet-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes l1-coinsheet-pulse {
+  from { opacity: 0.5; }
+  to { opacity: 0.95; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .l1-coinsheet-skeleton span { animation: none; }
 }
 
 @media (min-width: 768px) {
@@ -3514,6 +3692,17 @@ html[data-standalone='1'] body {
   margin-top: calc(4px * (1 - var(--tb-p)));
   opacity: calc(1 - 1.6 * var(--tb-p));
   overflow: hidden;
+}
+
+@media (max-width: 350px) {
+  .l1-bottomnav {
+    width: calc(100% - 12px - 45px * var(--tb-p));
+    gap: 4px;
+  }
+  .l1-bottomnav a,
+  .l1-bottomnav button {
+    padding-inline: 3px;
+  }
 }
 
 /* Nothing here animates on a timer, so reduced-motion just pins it full size. */

@@ -30,6 +30,12 @@
   border: 1px solid var(--cn-border);
   border-radius: var(--cn-r);
 }
+.coin .coin-timeframe-cue.left {
+  background: linear-gradient(to right, var(--cn-bg) 28%, color-mix(in srgb, var(--cn-bg) 88%, transparent) 62%, transparent);
+}
+.coin .coin-timeframe-cue.right {
+  background: linear-gradient(to left, var(--cn-bg) 28%, color-mix(in srgb, var(--cn-bg) 88%, transparent) 62%, transparent);
+}
 
 /* Recharts' accessibility layer makes the chart wrapper/surface focusable, so
    clicking anywhere in a chart shows the browser's default focus outline (the
@@ -57,6 +63,19 @@
 /* Mobile-only coin workspace. The desktop trade card and planner panels keep
    their original chrome; phones use full-width tab panels with no outer card. */
 @media (max-width: 767.98px) {
+  [data-mobile-coin-actions] .mobile-coin-action-tabs {
+    position: sticky;
+    top: 61px;
+    z-index: 30;
+    background: color-mix(in srgb, var(--cn-bg) 94%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  html[data-standalone='1'] [data-mobile-coin-actions] .mobile-coin-action-tabs {
+    top: calc(61px + env(safe-area-inset-top));
+  }
+
   [data-mobile-coin-actions] .mobile-coin-action-panel[hidden] {
     display: none !important;
   }
@@ -547,4 +566,15 @@
 /* ticker under the coin name stays in the ui/numeric face (skin: --font-mono) */
 .coin .ch-id .nm .tk {
   font-family: var(--font-plex), system-ui, sans-serif;
+}
+
+/* Prevent iOS Safari's automatic focus zoom in the mobile Add Trade workflow.
+   This is deliberately scoped to the phone workspace so desktop input sizing
+   remains unchanged. */
+@media (max-width: 767.98px) {
+  .coin [data-mobile-coin-actions] .ct-field input,
+  .coin [data-mobile-coin-actions] .ct-field select,
+  .coin [data-mobile-coin-actions] .ct-field textarea {
+    font-size: 16px;
+  }
 }

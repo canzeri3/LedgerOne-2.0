@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 
-import FullScreenPageLoader from '@/components/common/FullScreenPageLoader'
 import { beginRouteLoad, useSWRInFlight } from '@/lib/swrLoadingStore'
 
 function isExcludedRoute(pathname: string) {
@@ -33,25 +32,19 @@ const NO_SWR_HIDE_MS = 220
 // After SWR drains, wait this long before hiding so sequential fetches (fetch B
 // that starts once fetch A resolves) don't cause a premature hide.
 const SETTLE_DEBOUNCE_MS = 90
-// Cover fade-out duration; must match .lg1-cover-fade transition in globals.css.
-const FADE_MS = 300
-// Page entrance duration; must match lg1-page-enter animation in globals.css.
-const ENTER_MS = 520
-// Absolute ceiling so the cover can never get stuck if something goes wrong.
+// Progress indicator fade-out; must match .lg1-route-progress in globals.css.
+const FADE_MS = 180
+// Absolute ceiling so the indicator can never get stuck if something goes wrong.
 const SAFETY_MS = 9000
 
-const ENTER_CLASS = 'lg1-route-enter'
-
 /**
- * Full-screen cover that appears the instant an in-app navigation link is
- * clicked and stays until the destination route is fully loaded and painted.
- * It then fades out smoothly while the page content plays a coordinated
- * entrance animation, so the reveal feels intentional and "ready to go".
+ * Non-blocking route progress that appears when an in-app navigation begins
+ * and completes once the destination's SWR work has settled. The existing page
+ * and app chrome remain visible and interactive throughout the transition.
  *
  * The click interceptor (capture phase, before Next's Link handler) is what
  * makes it feel instant: `usePathname()` only updates once navigation commits,
- * which is too late. This is the app's single loading indicator — it renders
- * the L1 spinner (FullScreenPageLoader).
+ * which is too late for immediate navigation feedback.
  */
 export default function SWRRouteCover() {
   const pathname = usePathname() || ''
@@ -64,7 +57,6 @@ export default function SWRRouteCover() {
   const noSwrTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const drainTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const safetyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gatingRef = useRef(false)
 
@@ -74,14 +66,9 @@ export default function SWRRouteCover() {
     }
   }
   const clearLeaveTimers = () => {
-    for (const t of [leaveTimer, enterTimer]) {
-      if (t.current) { clearTimeout(t.current); t.current = null }
-    }
-  }
-
-  const removeEnterClass = () => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.remove(ENTER_CLASS)
+    if (leaveTimer.current) {
+      clearTimeout(leaveTimer.current)
+      leaveTimer.current = null
     }
   }
 
@@ -89,7 +76,6 @@ export default function SWRRouteCover() {
   const hideNow = () => {
     clearWaitTimers()
     clearLeaveTimers()
-    removeEnterClass()
     gatingRef.current = false
     armedDestRef.current = null
     sawInFlightRef.current = false
@@ -100,13 +86,12 @@ export default function SWRRouteCover() {
   // Cancel an in-progress reveal (e.g. the user clicked again mid-fade).
   const cancelLeave = () => {
     clearLeaveTimers()
-    removeEnterClass()
     gatingRef.current = false
     setLeaving(false)
   }
 
-  // Smooth exit: wait for the committed content to paint, then fade the cover
-  // out while the page content plays its entrance animation.
+  // Smooth exit: wait for the committed content to paint, complete the bar,
+  // then fade it away without delaying or animating the page itself.
   const beginHide = () => {
     if (gatingRef.current || leaving) return
     gatingRef.current = true
@@ -130,16 +115,11 @@ export default function SWRRouteCover() {
   const startLeave = () => {
     clearWaitTimers()
     clearLeaveTimers()
-    if (typeof document !== 'undefined') {
-      // Kick the page content's entrance animation exactly as the cover lifts.
-      document.documentElement.classList.add(ENTER_CLASS)
-    }
     setLeaving(true)
     leaveTimer.current = setTimeout(() => {
       setActive(false)
       setLeaving(false)
     }, FADE_MS)
-    enterTimer.current = setTimeout(removeEnterClass, ENTER_MS)
   }
 
   // Show the cover for a fresh navigation generation.
@@ -152,7 +132,7 @@ export default function SWRRouteCover() {
     safetyTimer.current = setTimeout(hideNow, SAFETY_MS)
   }
 
-  // ── Instant: show the loader the moment an in-app nav link is clicked ──
+  // ── Instant: show progress the moment an in-app nav link is clicked ──
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (e.defaultPrevented) return
@@ -238,8 +218,32 @@ export default function SWRRouteCover() {
 
   if (!active && !leaving) return null
   return (
-    <div className={`lg1-cover-fade${leaving ? ' leaving' : ''}`}>
-      <FullScreenPageLoader />
+    <div
+      className={`lg1-route-loading${leaving ? ' leaving' : ''}`}
+      role="status"
+      aria-label="Loading page"
+      aria-live="polite"
+    >
+      <span className="lg1-route-progress" aria-hidden="true">
+        <span className="lg1-route-progress-bar" />
+      </span>
+
+      <span className="lg1-route-loader-mark" aria-hidden="true">
+        <svg viewBox="8 7.5 24 24" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="lg1-route-mark-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#9b93ff" />
+              <stop offset="1" stopColor="#6559c7" />
+            </linearGradient>
+          </defs>
+          <g fill="url(#lg1-route-mark-grad)">
+            <rect x="8" y="8" width="7" height="23" rx="1" />
+            <rect x="8" y="25" width="13" height="6" rx="1" />
+            <rect x="26" y="8" width="6" height="23" rx="1" />
+            <rect x="19" y="8" width="13" height="6" rx="1" />
+          </g>
+        </svg>
+      </span>
     </div>
   )
 }
