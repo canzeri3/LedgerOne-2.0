@@ -301,7 +301,7 @@ function SellDropdown({
 }// Main Sell planner inputs
 export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string }) {
 
-  const { user } = useUser()
+  const { user, loading: userLoading } = useUser()
 
   const { data: activeSell, mutate: mutateActiveSell } = useSWR<Planner | null>(
     user && coingeckoId ? ['/sell-planner/active-mini', user.id, coingeckoId] : null,
@@ -493,6 +493,9 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   const onGenerate = async () => {
     setErr(null)
     setMsg(null)
+    // Desktop exposes these controls as soon as the page renders. Do not turn
+    // a click during auth hydration into a misleading "Not signed in" no-op.
+    if (userLoading) return
     if (!user) {
       setErr('Not signed in.')
       return
@@ -697,10 +700,11 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         <button
           type="button"
           onClick={onGenerate}
-          disabled={busy}
+          disabled={busy || userLoading}
+          aria-busy={busy || undefined}
           className="btn disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Edit Planner
+          {busy ? 'Updating…' : userLoading ? 'Loading…' : 'Edit Planner'}
         </button>
       </div>
 
@@ -710,15 +714,21 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         <button
           type="button"
           onClick={onGenerate}
-          disabled={busy}
+          disabled={busy || userLoading}
+          aria-busy={busy || undefined}
           className="btn btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Generate Ladder
+          {busy ? 'Generating…' : userLoading ? 'Loading…' : 'Generate Ladder'}
         </button>
       </SlotPortal>
 
       {(help || err || msg) && (
-        <div className="field" style={{ justifyContent: 'flex-end' }}>
+        <div
+          className="field"
+          style={{ justifyContent: 'flex-end' }}
+          role={err ? 'alert' : 'status'}
+          aria-live="polite"
+        >
           {help && <div className="field-hint">{help}</div>}
           {err && <div className="text-xs text-red-300">{err}</div>}
           {msg && <div className="text-xs text-green-300">{msg}</div>}

@@ -1,15 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase =
-  typeof window !== 'undefined'
-    ? createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-      )
-    : (null as any)
+import { supabaseBrowser } from '@/lib/supabaseClient'
 
 /**
  * Listens for auth changes (login, logout, token refresh) and
@@ -18,13 +10,11 @@ const supabase =
  */
 export default function AuthListener() {
   useEffect(() => {
-    if (!supabase) return
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-  async (_event: any, session: any) => {
-    try {
-      await fetch('/auth/callback', {
-        method: 'POST',
-
+    const { data: subscription } = supabaseBrowser.auth.onAuthStateChange(
+      async (_event: any, session: any) => {
+        try {
+          await fetch('/auth/callback', {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ event: _event, session }),
             keepalive: true,
@@ -41,4 +31,3 @@ export default function AuthListener() {
 
   return null
 }
-
