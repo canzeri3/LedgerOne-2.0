@@ -1,7 +1,8 @@
 'use client'
 
 import useSWR from 'swr'
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronRight, Search } from 'lucide-react'
 import './audit-skin.css'
 import { supabaseBrowser } from '@/lib/supabaseClient'
@@ -282,6 +283,14 @@ export default function AuditPage() {
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null)
   const [restoreErr, setRestoreErr] = useState<string | null>(null)
+  const [portalReady, setPortalReady] = useState(false)
+  const restoreDialogRef = useRef<HTMLDivElement | null>(null)
+  const restoreCancelRef = useRef<HTMLButtonElement | null>(null)
+  const restoreTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
 
   const filtered = useMemo(() => {
     const rows = data ?? []
@@ -312,9 +321,65 @@ export default function AuditPage() {
     setPendingRestoreId(null)
   }, [q, entity, coin])
 
+  useEffect(() => {
+    if (!pendingRestoreId) return
+
+    const trigger = restoreTriggerRef.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusTimer = window.setTimeout(() => restoreCancelRef.current?.focus(), 0)
+
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.body.style.overflow = previousOverflow
+      window.setTimeout(() => trigger?.focus(), 0)
+    }
+  }, [pendingRestoreId])
+
+  useEffect(() => {
+    if (!pendingRestoreId) return
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (restoringId === pendingRestoreId) return
+        event.preventDefault()
+        setPendingRestoreId(null)
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const focusable = Array.from(
+        restoreDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      )
+      if (focusable.length === 0) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleDialogKeyDown)
+    return () => document.removeEventListener('keydown', handleDialogKeyDown)
+  }, [pendingRestoreId, restoringId])
+
   const visibleFiltered = useMemo(
     () => filtered.slice(0, visibleCount),
     [filtered, visibleCount]
+  )
+
+  const pendingRestoreRow = useMemo(
+    () => (data ?? []).find((row) => row.id === pendingRestoreId) ?? null,
+    [data, pendingRestoreId]
   )
 
   // Visual-only grouping: by local day, preserving order (newest first)
@@ -467,6 +532,16 @@ export default function AuditPage() {
     }
   }
 
+  const confirmRestore = async () => {
+    if (!pendingRestoreRow || restoringId) return
+
+    const target = getRestoreTarget(pendingRestoreRow)
+    if (target) await restorePlannerFromLog(pendingRestoreRow)
+    else await restoreSellSnapshotFromLog(pendingRestoreRow)
+
+    setPendingRestoreId(null)
+  }
+
   const restoreStatus: { type: 'success' | 'error'; text: string } | null =
     restoreMsg ? { type: 'success', text: restoreMsg } :
     restoreErr ? { type: 'error', text: restoreErr } :
@@ -608,7 +683,6 @@ export default function AuditPage() {
               const safeDetails = sanitizeAuditDetails(row.details ?? {})
               const restoreTarget = getRestoreTarget(row)
               const canRestore = Boolean(restoreTarget) || canRestoreFromAudit(row)
-              const isConfirmingRestore = pendingRestoreId === row.id
               const detailEntries =
                 safeDetails && typeof safeDetails === 'object' && !Array.isArray(safeDetails)
                   ? Object.entries(safeDetails)
@@ -670,29 +744,15 @@ export default function AuditPage() {
                   </div>
 
                   <div className="au-right" onClick={(ev) => ev.stopPropagation()}>
-                    {canRestore && isConfirmingRestore ? (
-                      <div className="au-restore-confirm" role="group" aria-label="Confirm planner restore">
-                        <span>Restore this planner?</span>
-                        <button
-                          type="button"
-                          className="confirm"
-                          onClick={() => {
-                            setPendingRestoreId(null)
-                            if (restoreTarget) void restorePlannerFromLog(row)
-                            else void restoreSellSnapshotFromLog(row)
-                          }}
-                        >
-                          Confirm
-                        </button>
-                        <button type="button" onClick={() => setPendingRestoreId(null)}>
-                          Cancel
-                        </button>
-                      </div>
-                    ) : canRestore ? (
+                    {canRestore ? (
                       <button
                         type="button"
                         className="au-restore"
-                        onClick={() => {
+                        ref={pendingRestoreId === row.id ? restoreTriggerRef : undefined}
+                        aria-haspopup="dialog"
+                        aria-expanded={pendingRestoreId === row.id}
+                        onClick={(event) => {
+                          restoreTriggerRef.current = event.currentTarget
                           setRestoreMsg(null)
                           setRestoreErr(null)
                           setPendingRestoreId(row.id)
@@ -731,6 +791,76 @@ export default function AuditPage() {
       <p className="mt-4 text-[12px] text-[rgb(120,120,121)]">
         Edits, freezes, deletes, and restoration events are logged automatically. Only you can see your own logs (RLS owner-only).
       </p>
+
+      {portalReady && pendingRestoreRow
+        ? createPortal(
+            <div
+              className="au au-restore-layer"
+              data-restore-confirm-backdrop
+              onMouseDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                if (restoringId === pendingRestoreRow.id) return
+                setPendingRestoreId(null)
+              }}
+            >
+              <div
+                ref={restoreDialogRef}
+                className="au-restore-dialog"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="restore-dialog-title"
+                aria-describedby="restore-dialog-description"
+                aria-busy={restoringId === pendingRestoreRow.id}
+              >
+                <div className="au-restore-dialog-eyebrow">Confirm restoration</div>
+                <h2 id="restore-dialog-title">Restore this planner?</h2>
+                <p id="restore-dialog-description">
+                  This will reactivate the deleted planner and return it to your active planners.
+                </p>
+
+                <dl className="au-restore-summary">
+                  <div>
+                    <dt>Planner</dt>
+                    <dd>{prettyEntity(pendingRestoreRow.entity)}</dd>
+                  </div>
+                  <div>
+                    <dt>Coin</dt>
+                    <dd>{pendingRestoreRow.coingecko_id ?? 'Not specified'}</dd>
+                  </div>
+                  <div>
+                    <dt>Deleted</dt>
+                    <dd>{fmtTime(pendingRestoreRow.created_at)}</dd>
+                  </div>
+                </dl>
+
+                <p className="au-restore-dialog-note">
+                  If another planner for this coin is already active, restoration will be safely blocked.
+                </p>
+
+                <div className="au-restore-dialog-actions">
+                  <button
+                    ref={restoreCancelRef}
+                    type="button"
+                    className="cancel"
+                    onClick={() => setPendingRestoreId(null)}
+                    disabled={restoringId === pendingRestoreRow.id}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="confirm"
+                    onClick={() => void confirmRestore()}
+                    disabled={restoringId === pendingRestoreRow.id}
+                  >
+                    {restoringId === pendingRestoreRow.id ? 'Restoring…' : 'Restore planner'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }

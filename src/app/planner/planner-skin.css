@@ -1523,12 +1523,7 @@
     margin-left: auto;
   }
 
-  .pl .pl-phead-right .group:focus-within > div:last-child {
-    pointer-events: auto;
-    opacity: 1;
-  }
-
-  .pl .pl-phead-right .group > div:last-child {
+  .pl .pl-phead-right [role='tooltip'] {
     width: min(18rem, calc(100vw - 40px));
   }
 

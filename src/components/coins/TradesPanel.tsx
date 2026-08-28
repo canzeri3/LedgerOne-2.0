@@ -1613,7 +1613,6 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
             <span
               data-pin-toggle-slot
               className="inline-flex items-center"
-              aria-hidden="true"
             />
 
             <button

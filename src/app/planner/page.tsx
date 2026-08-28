@@ -1,6 +1,13 @@
 'use client'
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import useSWR from 'swr'
 
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -43,6 +50,8 @@ type TopPriceMeta = {
   topPrice: number | null
   source?: string | null
 }
+
+type MobilePlannerView = 'buy' | 'sell'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -331,6 +340,94 @@ function CoinDropdown({
   )
 }
 
+function SellPlannerHelp() {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    function closeWhenOutside(event: PointerEvent | FocusEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeWhenOutside)
+    document.addEventListener('focusin', closeWhenOutside)
+    document.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.removeEventListener('pointerdown', closeWhenOutside)
+      document.removeEventListener('focusin', closeWhenOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative inline-flex items-center"
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse') setOpen(true)
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === 'mouse') setOpen(false)
+      }}
+    >
+      <button
+        type="button"
+        aria-label="How the Sell Planner works"
+        aria-expanded={open}
+        aria-controls="sell-planner-help"
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          setOpen(current => !current)
+        }}
+        onPointerUp={(event) => {
+          if (event.pointerType !== 'mouse') setOpen(current => !current)
+        }}
+        onClick={(event) => {
+          // Keyboard activation produces a click with detail 0. Pointer input is
+          // handled above so touch taps do not toggle twice.
+          if (event.detail === 0) setOpen(current => !current)
+        }}
+        className="inline-flex h-5 w-5 cursor-pointer select-none items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:bg-[rgb(50,51,55)] hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(136,128,213)]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(28,29,31)]"
+      >
+        i
+      </button>
+
+      <div
+        id="sell-planner-help"
+        role="tooltip"
+        aria-hidden={!open}
+        className={`pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 shadow-xl transition-opacity duration-150 ease-out ${
+          open ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
+
+        <p className="text-slate-300">
+          The Sell Planner is a structured distribution plan. Choose{' '}
+          <span className="font-medium">Coin Volatility</span> and{' '}
+          <span className="font-medium">Sell Intensity</span>, then click{' '}
+          <span className="font-medium">Generate Ladder</span> to create a repeatable scale-out
+          ladder.
+        </p>
+
+        <p className="mt-2 text-slate-300">
+          When a row turns <span className="font-medium">yellow</span>, it’s time to sell. Execute at
+          your exchange/broker, then record the sell under{' '}
+          <span className="font-medium">Add Trade</span> (attach it to the correct ladder row).
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function PlannerPage() {
   const { code: displayCode } = useDisplayCurrency()
 
@@ -343,8 +440,43 @@ export default function PlannerPage() {
 
   // ── Local state: selected coin id ─────────────────────────────────────────
   const [coingeckoId, setCoingeckoId] = useState<string>('')
-  const [mobilePlannerView, setMobilePlannerView] = useState<'buy' | 'sell'>('buy')
+  const [mobilePlannerView, setMobilePlannerView] = useState<MobilePlannerView>('buy')
+  const mobileBuyTabRef = useRef<HTMLButtonElement | null>(null)
+  const mobileSellTabRef = useRef<HTMLButtonElement | null>(null)
 
+  function focusMobilePlannerTab(view: MobilePlannerView) {
+    setMobilePlannerView(view)
+    const tab = view === 'buy' ? mobileBuyTabRef.current : mobileSellTabRef.current
+    tab?.focus()
+  }
+
+  function handleMobilePlannerTabKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    view: MobilePlannerView
+  ) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setMobilePlannerView(view)
+      return
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusMobilePlannerTab('buy')
+      return
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusMobilePlannerTab('sell')
+      return
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      focusMobilePlannerTab(view === 'buy' ? 'sell' : 'buy')
+    }
+  }
 
   // ── UI state: confirm “Save New” (Buy Planner) ──────────────────────────
   const [confirmSaveNewOpen, setConfirmSaveNewOpen] = useState<boolean>(false)
@@ -651,14 +783,23 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
 
       {/* Mobile planner navigation. Both planners stay mounted so their data,
           portals, and draft inputs are preserved while switching views. */}
-      <div className="pl-mobile-switch" role="tablist" aria-label="Planner type">
+      <div
+        className="pl-mobile-switch"
+        role="tablist"
+        aria-label="Planner type"
+        aria-orientation="horizontal"
+      >
         <button
+          ref={mobileBuyTabRef}
+          id="planner-tab-buy"
           type="button"
           role="tab"
           aria-selected={mobilePlannerView === 'buy'}
           aria-controls="mobile-buy-planner"
+          tabIndex={mobilePlannerView === 'buy' ? 0 : -1}
           className={mobilePlannerView === 'buy' ? 'is-active buy' : 'buy'}
           onClick={() => setMobilePlannerView('buy')}
+          onKeyDown={(event) => handleMobilePlannerTabKeyDown(event, 'buy')}
         >
           <span className="pl-mobile-switch-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -671,12 +812,16 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
           </span>
         </button>
         <button
+          ref={mobileSellTabRef}
+          id="planner-tab-sell"
           type="button"
           role="tab"
           aria-selected={mobilePlannerView === 'sell'}
           aria-controls="mobile-sell-planner"
+          tabIndex={mobilePlannerView === 'sell' ? 0 : -1}
           className={mobilePlannerView === 'sell' ? 'is-active sell' : 'sell'}
           onClick={() => setMobilePlannerView('sell')}
+          onKeyDown={(event) => handleMobilePlannerTabKeyDown(event, 'sell')}
         >
           <span className="pl-mobile-switch-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -854,35 +999,7 @@ if (user && !entLoading && entitlements && !entitlements.canUsePlanners) {
               </div>
               <div className="pl-phead-right">
                 {/* Info tooltip – left of Active & History */}
-                <div className="relative inline-flex items-center group">
-                  <button
-                    type="button"
-                    aria-label="How the Sell Planner works"
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[rgb(74,75,79)] bg-[rgb(40,41,44)] text-[11px] font-medium text-[rgb(177,178,182)] hover:border-[rgb(136,128,213)]/80 hover:text-slate-100 hover:bg-[rgb(50,51,55)] focus:outline-none cursor-default select-none"
-                  >
-                    i
-                  </button>
-
-                  {/* Right-anchored tooltip so it behaves correctly */}
-                  <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-72 rounded-md border border-[rgb(60,61,65)] bg-[rgb(28,29,31)] px-3 py-2 text-[11px] leading-relaxed text-slate-200 opacity-0 shadow-xl transition-opacity duration-150 ease-out group-hover:opacity-100">
-                    <p className="mb-1 font-semibold text-slate-100">How this planner works</p>
-
-                    <p className="text-slate-300">
-                      The Sell Planner is a structured distribution plan. Choose{' '}
-                      <span className="font-medium">Coin Volatility</span> and{' '}
-                      <span className="font-medium">Sell Intensity</span>, then click{' '}
-                      <span className="font-medium">Generate Ladder</span> to create a repeatable
-                      scale-out ladder.
-                    </p>
-
-                    <p className="mt-2 text-slate-300">
-                      When a row turns <span className="font-medium">yellow</span>, it’s time to
-                      sell. Execute at your exchange/broker, then record the sell under{' '}
-                      <span className="font-medium">Add Trade</span> (attach it to the correct ladder
-                      row).
-                    </p>
-                  </div>
-                </div>
+                <SellPlannerHelp />
 
                 {/* Sold / If-all-hit stat pills (filled by SellPlannerLadder via portal) */}
                 <div id="sell-phead-stats" className="contents" />

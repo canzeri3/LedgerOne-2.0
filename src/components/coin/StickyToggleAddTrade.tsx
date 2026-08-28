@@ -56,24 +56,34 @@ export default function StickyToggleAddTrade({ id }: Props) {
   const switcher =
     typeof document !== 'undefined' && slotEl
       ? createPortal(
-          <label
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label="Pin Add Trade under header"
             title={enabled ? 'Pinned under header' : 'Not pinned'}
-            className="inline-flex items-center gap-2 text-[12px] font-medium text-slate-200 select-none cursor-pointer"
+            onClick={() => setEnabled(current => !current)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              setEnabled(current => !current)
+            }}
+            className="inline-flex cursor-pointer select-none items-center gap-2 border-0 bg-transparent p-0 text-[12px] font-medium text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(136,128,213)]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(28,29,31)]"
           >
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-              className="peer sr-only"
-            />
             <span
-              className="switch-track relative inline-block h-4 w-8 rounded-full bg-slate-600 peer-checked:bg-emerald-500/70 transition-colors"
+              className={`switch-track relative inline-block h-4 w-8 rounded-full transition-colors ${
+                enabled ? 'bg-emerald-500/70' : 'bg-slate-600'
+              }`}
               aria-hidden="true"
             >
-              <span className="switch-knob absolute top-0.5 left-0.5 inline-block h-3 w-3 rounded-full bg-white transition-transform will-change-transform" />
+              <span
+                className={`switch-knob absolute left-0.5 top-0.5 inline-block h-3 w-3 rounded-full bg-white transition-transform will-change-transform ${
+                  enabled ? 'translate-x-4' : ''
+                }`}
+              />
             </span>
             <span>Pin</span>
-          </label>,
+          </button>,
           slotEl
         )
       : null
