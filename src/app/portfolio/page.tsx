@@ -156,7 +156,6 @@ type TradeRow = {
   sell_planner_id: string | null
 }
 type CoinMeta = { coingecko_id: string; symbol: string; name: string }
-type FrozenPlanner = { id: string; coingecko_id: string; avg_lock_price: number | null }
 type Accent = 'pos' | 'neg' | 'neutral'
 
 // ── FIX: pure utility functions at module level — allocated once, never re-created on render ──
@@ -616,54 +615,6 @@ export default function PortfolioPage() {
   const coinIds = useMemo(() => Array.from(tradesByCoin.keys()), [tradesByCoin])
   const coinKey = useMemo(() => [...coinIds].sort().join(','), [coinIds])
 
-  const [frozen, setFrozen] = useState<FrozenPlanner[]>([])
-  const [frozenSells, setFrozenSells] = useState<TradeRow[]>([])
-
-  // Single combined effect: eliminates the serial waterfall (2 effects → 1 effect, 2 DB round-trips
-  // remain sequential by necessity but we save one full React render cycle between them)
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (!user || coinIds.length === 0) { setFrozen([]); setFrozenSells([]); return }
-
-      const { data: planners } = await supabaseBrowser
-        .from('sell_planners')
-        .select('id,coingecko_id,avg_lock_price,is_active')
-        .eq('user_id', user.id)
-        .in('coingecko_id', coinIds)
-        .eq('is_active', false)
-      if (cancelled) return
-
-      const x = (planners ?? []).map(p => ({
-        id: p.id,
-        coingecko_id: p.coingecko_id,
-        avg_lock_price: p.avg_lock_price,
-      }))
-      setFrozen(x)
-
-      if (x.length === 0) { setFrozenSells([]); return }
-
-      const { data } = await supabaseBrowser
-        .from('trades')
-        .select('coingecko_id,side,price,quantity,fee,trade_time,sell_planner_id')
-        .eq('user_id', user.id)
-        .eq('side', 'sell')
-        .in('sell_planner_id', x.map(f => f.id))
-      if (cancelled) return
-
-      setFrozenSells((data ?? []).map(t => ({
-        coingecko_id: t.coingecko_id,
-        side: t.side,
-        price: Number(t.price),
-        quantity: Number(t.quantity),
-        fee: t.fee ?? 0,
-        trade_time: t.trade_time,
-        sell_planner_id: t.sell_planner_id ?? null,
-      })))
-    })()
-    return () => { cancelled = true }
-  }, [user, coinKey])
-
   // Live snapshot pricing (new data core) for KPIs/table
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [chg24hPctMap, setChg24hPctMap] = useState<Record<string, number | null>>({})
@@ -736,20 +687,6 @@ export default function PortfolioPage() {
   )
 
   const rows = useMemo(() => {
-    // FIX: pre-build lookup maps for frozen data — O(1) access replaces nested .filter() O(N²)
-    const frozenByCoin = new Map<string, FrozenPlanner[]>()
-    for (const f of frozen) {
-      if (!frozenByCoin.has(f.coingecko_id)) frozenByCoin.set(f.coingecko_id, [])
-      frozenByCoin.get(f.coingecko_id)!.push(f)
-    }
-    const frozenSellsById = new Map<string, TradeRow[]>()
-    for (const s of frozenSells) {
-      if (s.sell_planner_id) {
-        if (!frozenSellsById.has(s.sell_planner_id)) frozenSellsById.set(s.sell_planner_id, [])
-        frozenSellsById.get(s.sell_planner_id)!.push(s)
-      }
-    }
-
     return coinIds.map(cid => {
       const t = tradesByCoin.get(cid) ?? []
       const pnl = computePnl(t.map(x => ({
@@ -762,14 +699,7 @@ export default function PortfolioPage() {
       const costBasisRemaining = qty * avg
       const unrealUsd = value - costBasisRemaining
 
-      const frozenForCoin = frozenByCoin.get(cid) ?? []
-      const realizedUsd = frozenForCoin.reduce((acc, fp) => {
-        const sells = frozenSellsById.get(fp.id) ?? []
-        const locked = fp.avg_lock_price ?? 0
-        const got = sells.reduce((a, s) => a + (s.quantity * s.price - (s.fee ?? 0)), 0)
-        const spent = sells.reduce((a, s) => a + (s.quantity * locked), 0)
-        return acc + (got - spent)
-      }, 0)
+      const realizedUsd = pnl.realizedPnl
 
       const chgPct = chg24hPctMap[cid] ?? null
       let delta24Usd = 0
@@ -798,7 +728,7 @@ export default function PortfolioPage() {
         delta24Pct,
       }
     }).sort((a,b) => b.value - a.value)
-  }, [coinIds, tradesByCoin, prices, coinMetaMap, frozen, frozenSells, chg24hPctMap])
+  }, [coinIds, tradesByCoin, prices, coinMetaMap, chg24hPctMap])
 
   const totals = useMemo(() => {
     const value = rows.reduce((a, r) => a + r.value, 0)

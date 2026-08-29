@@ -4,6 +4,7 @@ import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
+import { useEntitlements } from '@/lib/useEntitlements'
 import { usePrice } from '@/lib/dataCore'
 import { fmtCurrency, displayCurrencySymbol, displayToUsd, usdToDisplay } from '@/lib/format'
 import { useDisplayCurrency } from '@/lib/displayCurrency'
@@ -369,6 +370,11 @@ type Props = { id: string }
 
 export default function TradesPanel({ id }: Props) {
   const { user } = useUser()
+  const {
+    entitlements,
+    loading: entitlementsLoading,
+    error: entitlementsError,
+  } = useEntitlements(user?.id)
 
   // Active display currency: the fiat quantity is typed (and labelled) in this
   // currency. All fiat fields convert back to USD on submit so the existing
@@ -387,6 +393,8 @@ export default function TradesPanel({ id }: Props) {
 const [fee, setFee] = useState<string>('') // keep empty so placeholder shows
 const [time, setTime] = useState<string>(() => new Date().toISOString().slice(0, 16))
 const [ledgerOnly, setLedgerOnly] = useState<boolean>(false)
+const canUpdatePlanner = entitlements?.canUsePlanners === true
+const effectiveLedgerOnly = ledgerOnly || !canUpdatePlanner
 
   // input refs (for caret restoration)
   const priceRef = useRef<HTMLInputElement>(null)
@@ -738,18 +746,18 @@ setLoading(false)  }
   }, [user, id, side, selectedSellPlannerId, activeSell?.id])// When user changes side or changes selected Sell Planner, recompute planned remaining
 useEffect(() => {
   if (!user) { setPlannerRemainingTokens(0); return }
-  if (side !== 'sell' || ledgerOnly) { setPlannerRemainingTokens(0); return }
+  if (side !== 'sell' || effectiveLedgerOnly) { setPlannerRemainingTokens(0); return }
   const spid = selectedSellPlannerId || activeSell?.id || ''
   if (!spid) { setPlannerRemainingTokens(0); return }
   void refreshPlannerRemainingTokens(spid)
-}, [user, id, side, ledgerOnly, selectedSellPlannerId, activeSell?.id])
+}, [user, id, side, effectiveLedgerOnly, selectedSellPlannerId, activeSell?.id])
 
 
 // Keep overall holdings synced for ledger-only sells
 useEffect(() => {
   if (side !== 'sell') { setHoldingsTokens(0); return }
   void refreshHoldingsTokens()
-}, [side, ledgerOnly, selectedSellPlannerId])
+}, [side, effectiveLedgerOnly, selectedSellPlannerId])
 
 // NEW: whenever side changes, force canonical mode + re-lock
 useEffect(() => {
@@ -758,15 +766,16 @@ useEffect(() => {
 }, [side])
 
 const canSubmit = useMemo(() => {
+  if (entitlementsLoading) return false
   const p = parseNum(price)
   const q = parseNum(qty)
   if (!(q > 0)) return false
   if (qtyMode === 'usd' && !(p > 0)) return false
   if (!user) return false
-  if (side === 'buy') return ledgerOnly ? true : !!activeBuy
-  if (side === 'sell') return ledgerOnly ? true : !!(selectedSellPlannerId || activeSell?.id)
+  if (side === 'buy') return effectiveLedgerOnly ? true : !!activeBuy
+  if (side === 'sell') return effectiveLedgerOnly ? true : !!(selectedSellPlannerId || activeSell?.id)
   return false
-}, [user, side, price, qty, qtyMode, ledgerOnly, activeBuy, activeSell?.id, selectedSellPlannerId])
+}, [user, side, price, qty, qtyMode, entitlementsLoading, effectiveLedgerOnly, activeBuy, activeSell?.id, selectedSellPlannerId])
   // ─────────────────────────────────────────────────────────
   // NEW: helpers to REGENERATE active sell ladder after a BUY
   // ─────────────────────────────────────────────────────────
@@ -1125,6 +1134,10 @@ const canSubmit = useMemo(() => {
   }
 async function submitTrade() {
   if (!user) return
+  if (entitlementsLoading) {
+    setErr('Checking your plan. Please try again in a moment.')
+    return
+  }
   setSaving(true); setErr(null); setOk(null)
 
   const trade_time_iso = toIso(time)
@@ -1140,7 +1153,7 @@ async function submitTrade() {
   }
 
   if (side === 'buy') {
-    if (ledgerOnly) {
+    if (effectiveLedgerOnly) {
       const payload = {
         user_id: user.id,
         coingecko_id: id,
@@ -1213,13 +1226,13 @@ async function submitTrade() {
     refreshHoldingsTokens()
     resetAfterSubmit()
   } else {
-    const chosen = ledgerOnly ? null : (selectedSellPlannerId || activeSell?.id || null)
-    if (!ledgerOnly && !chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
+    const chosen = effectiveLedgerOnly ? null : (selectedSellPlannerId || activeSell?.id || null)
+    if (!effectiveLedgerOnly && !chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
     const chosenPlannerId = chosen as PlannerId | null
 
     // NEW: client-side precheck (DB trigger is the hard enforcement)
     try {
-      const available = await fetchHoldingsTokensNow(ledgerOnly ? undefined : { sellPlannerId: chosenPlannerId })
+      const available = await fetchHoldingsTokensNow(effectiveLedgerOnly ? undefined : { sellPlannerId: chosenPlannerId })
       if (quantityTokens > available + 1e-12) {
         setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
         setSaving(false)
@@ -1229,7 +1242,7 @@ async function submitTrade() {
       // If this fails, allow DB trigger to enforce.
     }
 
-    if (ledgerOnly) {
+    if (effectiveLedgerOnly) {
       const payload = {
         user_id: user.id,
         coingecko_id: id,
@@ -1562,16 +1575,26 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
           <div className="ct-toggles">
             <button
               type="button"
-              className={`ct-switch${!ledgerOnly ? ' on' : ''}`}
-              aria-pressed={!ledgerOnly}
-              onClick={() => setLedgerOnly(!ledgerOnly)}
+              className={`ct-switch${!effectiveLedgerOnly ? ' on' : ''}${!canUpdatePlanner ? ' opacity-50 cursor-not-allowed' : ''}`}
+              aria-pressed={!effectiveLedgerOnly}
+              disabled={!canUpdatePlanner}
+              title={
+                canUpdatePlanner
+                  ? 'Choose whether this trade updates your planner'
+                  : entitlementsLoading
+                    ? 'Checking planner access…'
+                    : 'Upgrade to update planners from recorded trades'
+              }
+              onClick={() => {
+                if (canUpdatePlanner) setLedgerOnly(v => !v)
+              }}
             >
               <span className="sw" aria-hidden="true" />
               Update planner
             </button>
 
             {/* Sell planner selector */}
-            {side === 'sell' && !ledgerOnly ? (
+            {side === 'sell' && !effectiveLedgerOnly ? (
               <div className="w-full md:w-[240px] md:shrink-0">
                 <SellPlannerSelector
                   value={selectedSellPlannerId}
@@ -1584,7 +1607,15 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
 
             {/* Helper text */}
             <div className="text-[11px] text-slate-400 leading-snug min-w-0">
-              {ledgerOnly ? (
+              {!canUpdatePlanner ? (
+                <div>
+                  {entitlementsLoading
+                    ? 'Checking planner access…'
+                    : entitlementsError
+                      ? 'Planner access unavailable; this trade will update the ledger only.'
+                      : 'Free plan: records to your portfolio only; planners stay unchanged.'}
+                </div>
+              ) : effectiveLedgerOnly ? (
                 <div>
                   Records to portfolio, won&apos;t touch your ladders.
                   {side === 'sell' && user ? (

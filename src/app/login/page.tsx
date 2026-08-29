@@ -6,6 +6,18 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { L1Nightsky, L1Grain } from '@/components/ledgerone'
 import './login-skin.css'
 
+function safeReturnPath(raw: string | null): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
+
+  try {
+    const url = new URL(raw, window.location.origin)
+    if (url.origin !== window.location.origin) return '/dashboard'
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return '/dashboard'
+  }
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,7 +30,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabaseBrowser.auth.signInWithPassword({
+      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
         email,
         password,
       })
@@ -27,10 +39,24 @@ export default function LoginPage() {
         throw error
       }
 
-       // Success → redirect; session handling is done globally via useUser/AuthListener
-      if (typeof window !== 'undefined') {
-        window.location.href = '/dashboard'
+      if (!data.session) throw new Error('Sign-in succeeded, but no session was returned.')
+
+      // Persist the browser session into server cookies before navigating. Without
+      // awaiting this handshake, middleware can receive the next request before
+      // AuthListener finishes and incorrectly treat the user as signed out.
+      const sessionResponse = await fetch('/auth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'SIGNED_IN', session: data.session }),
+      })
+      if (!sessionResponse.ok) {
+        throw new Error('Your session could not be started. Please try signing in again.')
       }
+
+      const destination = safeReturnPath(
+        new URLSearchParams(window.location.search).get('next')
+      )
+      window.location.assign(destination)
 
     } catch (err: any) {
       setError(err?.message || 'Sign-in failed. Please check your credentials.')
