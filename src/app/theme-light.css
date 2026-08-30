@@ -409,8 +409,9 @@ html[data-theme="light"] .add-trade-card .radio-button__label:hover .radio-butto
 
 /* Native pickers follow the light scheme */
 html[data-theme="light"] .add-trade-card input[type="datetime-local"],
-html[data-theme="light"] .transactions-card input[type="date"] {
-  color-scheme: light;
+html[data-theme="light"] .transactions-card input[type="date"],
+html[data-theme="light"] [data-dashboard-activation] input[type="datetime-local"] {
+  color-scheme: light !important;
 }
 html[data-theme="light"] .add-trade-card input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 html[data-theme="light"] .transactions-card input[type="date"]::-webkit-calendar-picker-indicator {

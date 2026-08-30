@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import useSWR from 'swr'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
@@ -11,8 +12,11 @@ import PortfolioHoldingsTable from '@/components/dashboard/PortfolioHoldingsTabl
 import { AlertsTooltip } from '@/components/common/AlertsTooltip'
 import RecentTradesCard from '@/components/dashboard/RecentTradesCard'
 import MobileDashboard from '@/components/dashboard/MobileDashboard'
+import DashboardActivation, { type FirstTrade } from '@/components/dashboard/DashboardActivation'
+import PlannerActivation, { type ActivePlannerSummary } from '@/components/dashboard/PlannerActivation'
 import RoutePageSkeleton from '@/components/common/RoutePageSkeleton'
 import { useIsMobile } from '@/lib/useMediaQuery'
+import { useEntitlements } from '@/lib/useEntitlements'
 import './dashboard-mobile.css'
 
 import {
@@ -534,6 +538,8 @@ export default function Page() {
   const [tf, setTf] = useState<Timeframe>('30d')
   const STORAGE_KEY_TOTAL_PL = 'lg1.dashboard.showTotalPL'
   const [showTotalPL, setShowTotalPL] = useState(false)
+  const [activationComplete, setActivationComplete] = useState(false)
+  const [paidUserChoseLedger, setPaidUserChoseLedger] = useState(false)
 
 
   // On mount: load saved preference
@@ -556,8 +562,14 @@ export default function Page() {
     }
   }, [showTotalPL])
 
-  // Trades (all-time) — fail-soft + consistent options
-  const { data: trades, isLoading: tradesLoading } = useSWR<TradeLite[]>(
+  // Trades (all-time). Fetch failures stay distinct from a genuinely empty
+  // ledger so the activation UI never appears because of a network problem.
+  const {
+    data: trades,
+    error: tradesError,
+    isLoading: tradesLoading,
+    mutate: mutateTrades,
+  } = useSWR<TradeLite[]>(
     user ? ['/dashboard/trades-lite', user.id] : null,
     async () => {
       try {
@@ -575,8 +587,8 @@ export default function Page() {
           trade_time: String(t.trade_time),
         })) as TradeLite[]
 
-      } catch {
-        return []
+      } catch (error) {
+        throw error
       }
     },
     {
@@ -592,6 +604,45 @@ export default function Page() {
   const coinIds = useMemo(
     () => Array.from(new Set((trades ?? []).map(t => t.coingecko_id))).sort(), // sorted for stable keys below
     [trades]
+  )
+
+  // Activation routing is needed only for a genuinely empty ledger. Waiting
+  // for entitlements prevents paid users from briefly seeing the Free path.
+  const activationUserId = user && trades?.length === 0 ? user.id : undefined
+  const {
+    entitlements: activationEntitlements,
+    loading: activationEntitlementsLoading,
+    error: activationEntitlementsError,
+    mutate: retryActivationEntitlements,
+  } = useEntitlements(activationUserId)
+  const activationCanUsePlanners = activationEntitlements?.canUsePlanners === true
+
+  const {
+    data: activeActivationPlanner,
+    error: activeActivationPlannerError,
+    isLoading: activeActivationPlannerLoading,
+    mutate: retryActiveActivationPlanner,
+  } = useSWR<ActivePlannerSummary | null>(
+    activationUserId && activationCanUsePlanners
+      ? ['/dashboard/active-buy-planner', activationUserId]
+      : null,
+    async () => {
+      const { data, error } = await supabaseBrowser
+        .from('buy_planners')
+        .select('id,coingecko_id')
+        .eq('user_id', activationUserId!)
+        .eq('is_active', true)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) return null
+      return {
+        id: String(data.id),
+        coingecko_id: String(data.coingecko_id),
+      }
+    },
+    { revalidateOnFocus: true, dedupingInterval: 10_000 }
   )
 
   // coins meta for tooltip labels — fail-soft
@@ -877,13 +928,126 @@ const { delta, pct } = useMemo(() => {
     return <RoutePageSkeleton label="dashboard" />
   }
 
+  if (user && tradesError && !trades) {
+    return (
+      <section className="mx-auto w-full max-w-[720px] rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] px-6 py-10 text-center">
+        <h2 className="font-display text-xl font-semibold text-slate-100">Portfolio data couldn&apos;t be loaded</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+          Check your connection and try again. Your ledger has not been changed.
+        </p>
+        <button
+          type="button"
+          onClick={() => void mutateTrades()}
+          className="mt-5 min-h-11 rounded-lg border border-[rgb(58,59,63)] bg-[rgb(32,33,35)] px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-[rgb(38,39,42)]"
+        >
+          Try again
+        </button>
+      </section>
+    )
+  }
+
+  if (
+    activationUserId &&
+    (activationEntitlementsLoading ||
+      (!activationEntitlements && !activationEntitlementsError) ||
+      (activationCanUsePlanners && activeActivationPlannerLoading))
+  ) {
+    return <RoutePageSkeleton label="dashboard" />
+  }
+
+  if (activationUserId && activationEntitlementsError && !activationEntitlements) {
+    return (
+      <section className="mx-auto w-full max-w-[720px] rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] px-6 py-10 text-center">
+        <h2 className="font-display text-xl font-semibold text-slate-100">Account access couldn&apos;t be verified</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+          Try again before setting up your portfolio. Nothing has been changed.
+        </p>
+        <button
+          type="button"
+          onClick={() => void retryActivationEntitlements()}
+          className="mt-5 min-h-11 rounded-lg border border-[rgb(58,59,63)] bg-[rgb(32,33,35)] px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-[rgb(38,39,42)]"
+        >
+          Try again
+        </button>
+      </section>
+    )
+  }
+
+  if (
+    activationUserId &&
+    activationCanUsePlanners &&
+    activeActivationPlannerError &&
+    activeActivationPlanner === undefined
+  ) {
+    return (
+      <section className="mx-auto w-full max-w-[720px] rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] px-6 py-10 text-center">
+        <h2 className="font-display text-xl font-semibold text-slate-100">Planner status couldn&apos;t be loaded</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+          Try again so LedgerOne can continue from the correct setup step.
+        </p>
+        <button
+          type="button"
+          onClick={() => void retryActiveActivationPlanner()}
+          className="mt-5 min-h-11 rounded-lg border border-[rgb(58,59,63)] bg-[rgb(32,33,35)] px-4 text-sm font-medium text-slate-200 transition-colors hover:bg-[rgb(38,39,42)]"
+        >
+          Try again
+        </button>
+      </section>
+    )
+  }
+
+  if (user && trades?.length === 0) {
+    if (activationCanUsePlanners && !paidUserChoseLedger) {
+      return (
+        <PlannerActivation
+          activePlanner={activeActivationPlanner ?? null}
+          onUseLedger={() => setPaidUserChoseLedger(true)}
+        />
+      )
+    }
+
+    return (
+      <DashboardActivation
+        userId={user.id}
+        startAtDetails={activationCanUsePlanners && paidUserChoseLedger}
+        onExit={
+          activationCanUsePlanners
+            ? () => setPaidUserChoseLedger(false)
+            : undefined
+        }
+        onTradeAdded={async (trade: FirstTrade) => {
+          setActivationComplete(true)
+          await mutateTrades(
+            (current) => [...(current ?? []), trade],
+            { revalidate: false }
+          )
+        }}
+      />
+    )
+  }
+
   const chartRefreshing = coinIds.length > 0 && !!historiesMap && historiesValidating
+
+  const activationBanner = activationComplete ? (
+    <div role="status" className="mx-4 rounded-md border border-[rgba(116,170,98,0.3)] bg-[rgba(116,170,98,0.08)] px-4 py-3 md:mx-6 lg:mx-8">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[13px] font-semibold text-[rgb(116,170,98)]">Your portfolio is ready.</p>
+          <p className="mt-0.5 text-[12px] leading-5 text-slate-400">Add the rest of your transaction history for more accurate performance.</p>
+        </div>
+        <Link href="/csv#trade-import" className="shrink-0 text-[12px] font-semibold text-[rgb(137,128,213)] hover:text-slate-200">
+          Import remaining history
+        </Link>
+      </div>
+    </div>
+  ) : null
 
   // Phones get the dedicated mobile layout. Every number below is already computed
   // above, so the mobile view fetches nothing extra and stays in lockstep with desktop.
   if (isMobile) {
     return (
-      <div data-dashboard-page className="-mx-4">
+      <div data-dashboard-page className="-mx-4 space-y-4">
+        {activationBanner}
         <MobileDashboard
           tf={tf}
           onTfChange={setTf}
@@ -910,6 +1074,8 @@ const { delta, pct } = useMemo(() => {
 
 return (
     <div data-dashboard-page className="space-y-6">
+
+      {activationBanner}
 
       {/* Chart card with consolidated hero band (value + delta + stat strip + alerts) */}
       <div className="rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] mx-4 md:mx-6 lg:mx-8">

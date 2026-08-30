@@ -40,7 +40,7 @@ export default function CSVClient() {
       </section>
 
       {/* Import */}
-      <section className="st-section mt-6">
+      <section id="trade-import" className="st-section mt-6 scroll-mt-24">
         <div className="st-section-head">
           <span className="st-section-ic"><Upload className="h-[18px] w-[18px]" /></span>
           <div>
