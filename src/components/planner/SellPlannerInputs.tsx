@@ -7,6 +7,10 @@ import { supabaseBrowser } from '@/lib/supabaseClient'
 import { fmtCurrency } from '@/lib/format'
 import { useMenuTransition } from '@/lib/useMenuTransition'
 import SlotPortal from '@/components/planner/SlotPortal'
+import DraftNotice from '@/components/common/DraftNotice'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { isSellDraft, type SellDraft } from '@/lib/formDraft'
+import { atomicPlannerWorkflowsEnabled, atomicWorkflowError } from '@/lib/atomicPlannerWorkflows'
 
 
 /* ── shared UI tokens matched to BuyPlannerInputs ─────────── */
@@ -95,6 +99,7 @@ type SellDropdownProps = {
   onChange: (v: number) => void
   ariaLabel: string
   getMeta: (v: number) => SellMeta
+  disabled?: boolean
 }
 
 // Coin Volatility meta (chip shows only 50% / 100% / 150% step)
@@ -189,6 +194,7 @@ function SellDropdown({
   onChange,
   ariaLabel,
   getMeta,
+  disabled = false,
 }: SellDropdownProps) {
   const [open, setOpen] = useState(false)
   const { mounted, shown } = useMenuTransition(open)
@@ -219,6 +225,7 @@ function SellDropdown({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -277,6 +284,7 @@ function SellDropdown({
                 key={opt}
                 type="button"
                 role="option"
+                disabled={disabled}
                 aria-selected={selected}
                 onClick={() => {
                   onChange(opt)
@@ -321,19 +329,12 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     { revalidateOnFocus: false, dedupingInterval: 15000 }
   )
 
-  // Card 2: Coin Volatility (step size per level)
-  // Default when there is NO active sell planner: Low (50% step)
-  const [step, setStep] = useState<number>(50)
-
-  // Card 1: Sell Intensity (% of remaining each level)
-  // Default when there is NO active sell planner: Balanced Trim (15% per level)
-  const [sellPct, setSellPct] = useState<number>(15)
-
   // Always use 12 levels for the ladder (no user control)
   const levels = 12
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const generatingRef = useRef(false)
 
   // Clear transient messages when coin or active planner changes
   useEffect(() => {
@@ -341,69 +342,40 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
     setErr(null)
   }, [coingeckoId, activeSell?.id])
 
-  // When an active sell planner exists, infer presets from its ladder;
-  // otherwise default to Low volatility + Balanced Trim.
-  useEffect(() => {
-    if (!user || !coingeckoId) return
-
-    const plannerId = activeSell?.id
-    // No active planner -> explicit defaults: Low + Balanced Trim
-    if (!plannerId) {
-      setStep(50)
-      setSellPct(15)
-      return
+  // Server presets and unsaved controls stay separate. A delayed load or an
+  // automatic ladder refresh must never apply an unsubmitted draft.
+  const readPresets = async (plannerId?: string): Promise<SellDraft> => {
+    if (!plannerId || !user) return { step: 50, sellPct: 15 }
+    const { data, error } = await supabaseBrowser
+      .from('sell_levels')
+      .select('rise_pct,sell_pct_of_remaining')
+      .eq('user_id', user.id)
+      .eq('coingecko_id', coingeckoId)
+      .eq('sell_planner_id', plannerId)
+      .order('level', { ascending: true })
+      .limit(1)
+    if (error) throw error
+    if (!data?.length) return { step: 50, sellPct: 15 }
+    const rawStep = Number(data[0].rise_pct ?? 0)
+    const rawPct = Number(data[0].sell_pct_of_remaining ?? 0) * 100
+    return {
+      step: stepOptions.includes(rawStep) ? rawStep : 50,
+      sellPct: sellPctOptions.reduce((best, opt) => Math.abs(opt - rawPct) < Math.abs(best - rawPct) ? opt : best, sellPctOptions[0]),
     }
-
-    let cancelled = false
-
-    const run = async () => {
-      try {
-        const { data, error } = await supabaseBrowser
-          .from('sell_levels')
-          .select('rise_pct,sell_pct_of_remaining')
-          .eq('user_id', user.id)
-          .eq('coingecko_id', coingeckoId)
-          .eq('sell_planner_id', plannerId)
-          .order('level', { ascending: true })
-
-        if (cancelled) return
-
-        if (error || !data || !data.length) {
-          // If we can't read the ladder, fall back to defaults.
-          setStep(50)
-          setSellPct(15)
-          return
-        }
-
-        const first = data[0] as any
-
-        const rawStep = Number(first.rise_pct ?? 0)
-        // We generate rise_pct = step * level (level 1 → rise_pct = step),
-        // so the first level’s rise_pct is the step size in %.
-        const stepCandidate = stepOptions.includes(rawStep) ? rawStep : 50
-
-        const rawPct = Number(first.sell_pct_of_remaining ?? 0) * 100
-        // Snap to the closest of our allowed options (10, 15, 20, 25)
-        const closestSellPct = sellPctOptions.reduce((best, opt) => {
-          return Math.abs(opt - rawPct) < Math.abs(best - rawPct) ? opt : best
-        }, sellPctOptions[0])
-
-        setStep(stepCandidate)
-        setSellPct(closestSellPct)
-      } catch {
-        if (cancelled) return
-        // On any error, fall back to defaults
-        setStep(50)
-        setSellPct(15)
-      }
-    }
-
-    run()
-
-    return () => {
-      cancelled = true
-    }
-  }, [user?.id, coingeckoId, activeSell?.id])
+  }
+  const { data: presets, error: presetsError, mutate: mutatePresets } = useSWR<SellDraft>(
+    user && activeSell !== undefined ? ['/sell-planner/input-presets', user.id, coingeckoId, activeSell?.id ?? 'new'] : null,
+    () => readPresets(activeSell?.id),
+    { revalidateOnFocus: false },
+  )
+  const draft = useFormDraft({
+    scope: user ? { userId: user.id, form: 'sell-planner', asset: coingeckoId, revision: activeSell?.id ?? 'new' } : null,
+    defaults: presets ?? { step: 50, sellPct: 15 }, validate: isSellDraft,
+    ready: activeSell !== undefined && presets !== undefined,
+  })
+  const { step, sellPct } = draft.values
+  const setStep = (value: number) => draft.setField('step', value)
+  const setSellPct = (value: number) => draft.setField('sellPct', value)
 
   const help = useMemo(() => {
     const a = activeSell?.avg_lock_price
@@ -490,7 +462,8 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   // see getCurrentBuyPlannerAvgCost() + onGenerate().
 
 
-  const onGenerate = async () => {
+  const onGenerate = async (options?: { automatic?: boolean }) => {
+    if (generatingRef.current || (!options?.automatic && !draft.ready)) return
     setErr(null)
     setMsg(null)
     // Desktop exposes these controls as soon as the page renders. Do not turn
@@ -506,8 +479,37 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       return
     }
 
+    generatingRef.current = true
     setBusy(true)
     try {
+      if (atomicPlannerWorkflowsEnabled) {
+        // Trades already rebuild their ladder in the same database transaction.
+        // A browser refresh/event must never start another financial write.
+        if (options?.automatic) { await mutateActiveSell(); return }
+        const { data: plannerId, error } = await supabaseBrowser.rpc('ledgerone_generate_sell_ladder_v1', {
+          p_coin: coingeckoId, p_expected: activeSell?.id ?? null, p_step: step, p_sell_pct: sellPct,
+        })
+        if (error) throw new Error(atomicWorkflowError(error))
+        draft.markSaved()
+        setMsg('Level generation complete.')
+        // A refresh failure after commit is not a failed save. Never invite the
+        // user to submit again merely because a cache refresh failed.
+        try {
+          await Promise.all([
+            mutateActiveSell(), mutatePresets({ step, sellPct }, { revalidate: false }),
+            globalMutate(['/sell-active', user.id, coingeckoId]),
+            globalMutate(['/sell-planner/active', user.id, coingeckoId]),
+            globalMutate(['/sell-levels', user.id, coingeckoId, plannerId]),
+            globalMutate(['/sells', user.id, coingeckoId, plannerId]),
+          ])
+          if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('sellPlannerUpdated', {
+            detail: { coinId: coingeckoId, plannerId },
+          }))
+        } catch {
+          setMsg('Ladder saved. Reload to see the latest levels.')
+        }
+        return
+      }
       // Re-read before generating. The cached value can still be null immediately
       // after Save New rotates the Buy/Sell planners.
       let sellPlanner = await mutateActiveSell()
@@ -564,6 +566,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       }
 
       const sellPlannerId = sellPlanner.id
+      const settings = options?.automatic ? await readPresets(sellPlannerId) : { step, sellPct }
       const poolTokens = await getPoolTokens(sellPlannerId)
       const locked = Number(sellPlanner.avg_lock_price || 0)
       liveAvg ??= await getCurrentBuyPlannerAvgCost()
@@ -574,13 +577,13 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         return
       }
 
-      const stepFrac = step / 100
-      const pctOfRemaining = sellPct / 100
+      const stepFrac = settings.step / 100
+      const pctOfRemaining = settings.sellPct / 100
 
       let remaining = poolTokens
       const plan = Array.from({ length: levels }, (_, i) => {
         const level = i + 1
-        const rise_pct = step * level // 50, 100, 150...
+        const rise_pct = settings.step * level // 50, 100, 150...
         const price = baseAvg * (1 + stepFrac * level)
         const sell_tokens = i === levels - 1 ? remaining : Math.max(0, remaining * pctOfRemaining)
         const sell_pct_of_remaining = pctOfRemaining
@@ -610,6 +613,10 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
 
       const { error: eIns } = await supabaseBrowser.from('sell_levels').insert(rows)
       if (eIns) throw eIns
+      if (!options?.automatic) {
+        draft.markSaved()
+        await mutatePresets(settings, { revalidate: false })
+      }
 
     setMsg('Level generation complete.')
 
@@ -633,6 +640,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       console.error(e)
       setErr(e?.message || 'Failed to generate ladder.')
     } finally {
+      generatingRef.current = false
       setBusy(false)
     }
   }
@@ -640,6 +648,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   // NEW: listen for BUY-related updates and auto-generate if UNLOCKED
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (atomicPlannerWorkflowsEnabled) return
     let running = false
     const handler = async (e: any) => {
       if (running) return
@@ -650,7 +659,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       if (!user || !activeSell?.id) return
       running = true
       try {
-        await onGenerate()
+        await onGenerate({ automatic: true })
       } finally {
         running = false
       }
@@ -661,6 +670,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
   }, [user?.id, coingeckoId, activeSell?.id, activeSell?.avg_lock_price]) // rebind if lock state/id changes
 
   return (
+    <>
     <div className="pl-controls">
       {/* Active plan switcher slot — the Active/History control renders here
           (portal target used by SellPlannerCombinedCard.Planner) */}
@@ -674,6 +684,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         <label>Coin volatility</label>
         <SellDropdown
           value={step}
+          disabled={busy || !draft.ready}
           options={stepOptions}
           onChange={setStep}
           ariaLabel="Select coin volatility"
@@ -686,6 +697,7 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         <label>Sell intensity</label>
         <SellDropdown
           value={sellPct}
+          disabled={busy || !draft.ready}
           options={sellPctOptions}
           onChange={setSellPct}
           ariaLabel="Select sell intensity"
@@ -699,8 +711,8 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         <label aria-hidden="true">&nbsp;</label>
         <button
           type="button"
-          onClick={onGenerate}
-          disabled={busy || userLoading}
+          onClick={() => void onGenerate()}
+          disabled={busy || userLoading || !draft.ready}
           aria-busy={busy || undefined}
           className="btn disabled:opacity-60 disabled:cursor-not-allowed"
         >
@@ -713,8 +725,8 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
       <SlotPortal slotId="sell-generate-slot">
         <button
           type="button"
-          onClick={onGenerate}
-          disabled={busy || userLoading}
+          onClick={() => void onGenerate()}
+          disabled={busy || userLoading || !draft.ready}
           aria-busy={busy || undefined}
           className="btn btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
         >
@@ -735,5 +747,8 @@ export default function SellPlannerInputs({ coingeckoId }: { coingeckoId: string
         </div>
       )}
     </div>
+    {presetsError && <p role="alert" className="text-xs text-red-300">Could not load your saved Sell settings. <button type="button" className="underline min-h-11" onClick={() => void mutatePresets()}>Try again</button></p>}
+    <DraftNotice draft={draft} onDiscard={() => { draft.reset(); setErr(null); setMsg(null) }} disabled={busy} />
+    </>
   )
 }

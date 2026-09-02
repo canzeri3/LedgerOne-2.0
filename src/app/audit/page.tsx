@@ -6,8 +6,9 @@ import { createPortal } from 'react-dom'
 import { ChevronRight, Search } from 'lucide-react'
 import './audit-skin.css'
 import { supabaseBrowser } from '@/lib/supabaseClient'
-import { restoreSellPlannerFromAudit } from '@/lib/plannerAuditClient'
+import { restorePlannerFromAudit, restoreSellPlannerFromAudit } from '@/lib/plannerAuditClient'
 import { useUser } from '@/lib/useUser'
+import { atomicPlannerWorkflowsEnabled } from '@/lib/atomicPlannerWorkflows'
 
 type LogRow = {
   id: string
@@ -429,6 +430,16 @@ export default function AuditPage() {
     setRestoringId(row.id)
 
     try {
+      if (atomicPlannerWorkflowsEnabled) {
+        await restorePlannerFromAudit(row.id)
+        setRestoreMsg(`${target.entity === 'buy_planner' ? 'Buy' : 'Sell'} planner restored.`)
+        try { await mutate() } catch { setRestoreMsg('Planner restored. Reload to see the latest audit log.') }
+        if (typeof window !== 'undefined' && target.coinId) window.dispatchEvent(new CustomEvent(
+          target.entity === 'buy_planner' ? 'buyPlannerUpdated' : 'sellPlannerUpdated',
+          { detail: { coinId: target.coinId } },
+        ))
+        return
+      }
       const { data: plannerRow, error: plannerError } = await supabaseBrowser
         .from(table)
         .select('id,coingecko_id,is_active')

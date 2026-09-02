@@ -42,9 +42,12 @@ export async function deletePlannerWithAudit({
   return postPlannerAudit({ op: 'delete', entity, plannerId })
 }
 
-export async function restoreSellPlannerFromAudit(logId: string) {
+export async function restorePlannerFromAudit(logId: string) {
   return postPlannerAudit({
     op: 'restore',
     logId,
   })
 }
+
+// Backward-compatible name for the existing Sell snapshot caller.
+export const restoreSellPlannerFromAudit = restorePlannerFromAudit

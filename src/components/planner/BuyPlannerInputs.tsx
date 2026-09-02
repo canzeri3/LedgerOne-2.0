@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type React from 'react'
 import useSWR, { useSWRConfig } from 'swr'
@@ -10,6 +10,9 @@ import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
 import { useMenuTransition } from '@/lib/useMenuTransition'
 import PlanLimitModal from '@/components/billing/PlanLimitModal'
+import DraftNotice from '@/components/common/DraftNotice'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { isBuyDraft, type BuyDraft } from '@/lib/formDraft'
 import { deletePlannerWithAudit } from '@/lib/plannerAuditClient'
 import { useDisplayCurrency } from '@/lib/displayCurrency'
 import {
@@ -95,9 +98,11 @@ function DepthMeta(opt: RiskDepth) {
 function LadderDepthDropdown({
   value,
   onChange,
+  disabled = false,
 }: {
   value: RiskDepth
   onChange: (v: RiskDepth) => void
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const { mounted, shown } = useMenuTransition(open)
@@ -137,6 +142,7 @@ function LadderDepthDropdown({
     const btn = buttonRef.current
     if (!btn) return
     const onKey = (e: KeyboardEvent) => {
+      if (disabled) return
       if ((e.key === 'Enter' || e.key === ' ') && !open) {
         e.preventDefault()
         setOpen(true)
@@ -150,7 +156,7 @@ function LadderDepthDropdown({
     }
     btn.addEventListener('keydown', onKey)
     return () => btn.removeEventListener('keydown', onKey)
-  }, [open])
+  }, [open, disabled])
 
   // Position portal menu under the button (updates on scroll/resize)
   useEffect(() => {
@@ -181,6 +187,7 @@ function LadderDepthDropdown({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls="ladder-depth-listbox"
@@ -227,6 +234,7 @@ function LadderDepthDropdown({
                     key={opt}
                     type="button"
                     role="option"
+                    disabled={disabled}
                     aria-selected={selected}
                     onClick={() => {
                       onChange(opt)
@@ -268,7 +276,7 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
   const currencySymbol = displayCurrencySymbol()
 
   // Load latest (current) buy planner for this coin
-  const { data: planner, mutate } = useSWR<BuyPlannerRow | null>(
+  const { data: planner, error: plannerError, mutate } = useSWR<BuyPlannerRow | null>(
     user && coingeckoId ? ['/buy-planner/latest', user.id, coingeckoId] : null,
     async () => {
       const { data, error } = await supabaseBrowser
@@ -337,11 +345,23 @@ export default function BuyPlannerInputs({ coingeckoId }: { coingeckoId: string 
     { revalidateOnFocus: false, dedupingInterval: 60000 }
   )
 
-  // Form state
-  const [budget, setBudget] = useState<string>('') // formatted with commas
-  const [depth, setDepth] = useState<RiskDepth>('70')
-  const [growth, setGrowth] = useState<string>('1.25') // internal only (no UI field)
-  const [isDepthOpen, setIsDepthOpen] = useState(false)
+  // Wait for saved settings before restoring, so a late fetch cannot erase typing.
+  const draftDefaults = useMemo<BuyDraft>(() => {
+    const b = planner?.budget_usd ?? planner?.total_budget ?? ''
+    const rawDepth = String(planner?.ladder_depth)
+    return {
+      budget: b === '' || !Number.isFinite(Number(b)) ? '' : formatFiatInput(usdToDisplay(Number(b))),
+      depth: rawDepth === '90' || rawDepth === '75' ? rawDepth : '70',
+      growth: String(planner?.growth_per_level ?? '1.25'),
+    }
+  }, [planner?.id, planner?.budget_usd, planner?.total_budget, planner?.ladder_depth, planner?.growth_per_level, displayCode])
+  const draft = useFormDraft({
+    scope: user ? { userId: user.id, form: 'buy-planner', asset: coingeckoId, currency: displayCode, revision: planner?.id ?? 'new' } : null,
+    defaults: draftDefaults, validate: isBuyDraft, ready: planner !== undefined,
+  })
+  const { budget, depth, growth } = draft.values
+  const setBudget = (value: string) => draft.setField('budget', value)
+  const setDepth = (value: RiskDepth) => draft.setField('depth', value)
 
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -362,28 +382,7 @@ if (ce.detail.action === 'remove')
     window.addEventListener('buyplanner:action', onAction as EventListener)
     return () =>
       window.removeEventListener('buyplanner:action', onAction as EventListener)
-  }, [budget, depth, growth, planner?.id, user?.id, anchor?.anchor_top_price])
-
-
- // Prefill from existing planner (top price stays in DB, no longer user-editable)
-useEffect(() => {
-  if (!planner) return
-  const b = (planner.budget_usd ?? planner.total_budget) ?? ''
-  const usdBudget = Number(b)
-  setBudget(b === '' || !Number.isFinite(usdBudget) ? '' : formatFiatInput(usdToDisplay(usdBudget)))
-
-  const rawDepth = String(planner.ladder_depth)
-  if (rawDepth === '90') {
-    setDepth('90')
-  } else if (rawDepth === '75') {
-    setDepth('75')
-  } else {
-    // default / legacy rows
-    setDepth('70')
-  }
-
-  setGrowth(String(planner.growth_per_level ?? '1.25'))
-}, [planner?.id, displayCode])
+  }, [budget, depth, growth, planner?.id, user?.id, coingeckoId, displayCode, anchor?.anchor_top_price, draft.ready, busy, blockNewPlannedCoin])
 
 
   const validate = () => {
@@ -424,6 +423,7 @@ useEffect(() => {
 
   // Edit current buy planner
   const onEdit = async () => {
+    if (!draft.ready || busy) return
     setErr(null)
     setMsg(null)
     const v = validate()
@@ -461,6 +461,7 @@ useEffect(() => {
         .eq('user_id', user.id)
 
       if (e1) throw e1
+      draft.markSaved()
 
       setMsg('Updated current Buy planner settings using the latest anchor-linked top price.')
             await mutate()
@@ -521,6 +522,7 @@ if (!opts?.confirmed) {
         entity: 'buy_planner',
         plannerId: planner.id,
       })
+      draft.reset()
 
       setMsg('Removed current Buy planner for this coin. You can restore it from Audit Log.')
       await mutate()
@@ -538,6 +540,7 @@ if (!opts?.confirmed) {
 
   // Save New via atomic RPC (uses per-user top price from price-cycle logic)
   const onSaveNew = async () => {
+    if (!draft.ready || busy) return
     setErr(null)
     setMsg(null)
     const v = validate()
@@ -570,7 +573,7 @@ if (!opts?.confirmed) {
     //   - admin overrides (anchor_top_price) when configured
     //   - safe fallbacks when no pump cycle is found
     let topForNew: number | null = null
-
+    setBusy(true)
     try {
       topForNew = await resolveTopPriceForPlanner()
     } catch (e: any) {
@@ -578,9 +581,9 @@ if (!opts?.confirmed) {
         e?.message ??
           'Unable to resolve the current price cycle. Please try again later.'
       )
+      setBusy(false)
       return
     }
-    setBusy(true)
     try {
       const { error } = await supabaseBrowser.rpc('rotate_buy_sell_planners', {
         p_coingecko_id: coingeckoId,
@@ -591,6 +594,7 @@ if (!opts?.confirmed) {
       })
 
       if (error) throw error
+      draft.markSaved()
       setMsg('Saved new Buy planner and rotated Sell planner.')
       await mutate()
 
@@ -650,7 +654,7 @@ if (!opts?.confirmed) {
               type="text"
               inputMode="decimal"
               autoComplete="off"
-              disabled={busy}
+              disabled={busy || !draft.ready}
               value={budget}
               onChange={onChangeBudget}
               placeholder="e.g. 10,000"
@@ -662,7 +666,7 @@ if (!opts?.confirmed) {
         {/* Risk profile — maps to ladder depth & levels under the hood */}
         <div className="field">
           <label>Risk profile</label>
-          <LadderDepthDropdown value={depth} onChange={v => setDepth(v)} />
+          <LadderDepthDropdown value={depth} onChange={v => setDepth(v)} disabled={busy || !draft.ready} />
         </div>
 
         {/* Save New Plan — button rendered by the page via portal (confirm flow lives there) */}
@@ -678,6 +682,8 @@ if (!opts?.confirmed) {
           </div>
         )}
       </div>
+      {plannerError && <p role="alert" className="text-xs text-red-300">Could not load your saved Buy settings. <button type="button" className="underline min-h-11" onClick={() => void mutate()}>Try again</button></p>}
+      <DraftNotice draft={draft} onDiscard={() => { draft.reset(); setErr(null); setMsg(null) }} disabled={busy} />
     </>
   )
 }

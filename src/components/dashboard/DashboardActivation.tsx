@@ -25,7 +25,12 @@ import {
   WalletCards,
 } from 'lucide-react'
 import CoinLogo from '@/components/common/CoinLogo'
-import { supabaseBrowser } from '@/lib/supabaseClient'
+import { useTradeSave } from '@/lib/useTradeSave'
+import { withTradeDeadline, type TradeAttempt } from '@/lib/tradeSave'
+import TradeSaveFeedback from '@/components/common/TradeSaveFeedback'
+import DraftNotice from '@/components/common/DraftNotice'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { isPurchaseDraft, type PurchaseDraft } from '@/lib/formDraft'
 import { useDisplayCurrency } from '@/lib/displayCurrency'
 import { displayCurrencySymbol, displayToUsd } from '@/lib/format'
 
@@ -162,19 +167,33 @@ export default function DashboardActivation({
   startAtDetails = false,
   onExit,
 }: Props) {
+  const tradeSave = useTradeSave(userId)
+  const saveActionRef = useRef(false)
+  const handledSaveRef = useRef<string | null>(null)
+  const finishingSaveRef = useRef(false)
+  const currentUserRef = useRef(userId)
+  currentUserRef.current = userId
   const { code: displayCode } = useDisplayCurrency()
   const currencySymbol = displayCurrencySymbol()
   const [stage, setStage] = useState<Stage>(startAtDetails ? 'details' : 'intro')
-  const [coinQuery, setCoinQuery] = useState('')
+  const draftDefaults = useMemo<PurchaseDraft>(() => ({
+    selectedCoin: null, coinQuery: '', quantity: '', price: '', tradeTime: nowForDateTimeInput(), fee: '', moreOpen: false,
+  }), [userId, displayCode])
+  const draft = useFormDraft({
+    scope: { userId, form: 'first-purchase', asset: 'portfolio', currency: displayCode },
+    defaults: draftDefaults, validate: isPurchaseDraft,
+  })
+  const { coinQuery, selectedCoin, quantity, price, tradeTime, fee, moreOpen } = draft.values
+  const setCoinQuery = (value: string) => draft.setField('coinQuery', value)
+  const setSelectedCoin = (value: Coin | null) => draft.setField('selectedCoin', value)
+  const setQuantity = (value: string) => draft.setField('quantity', value)
+  const setPrice = (value: string) => draft.setField('price', value)
+  const setTradeTime = (value: string) => draft.setField('tradeTime', value)
+  const setFee = (value: string) => draft.setField('fee', value)
+  const setMoreOpen = (value: boolean | ((previous: boolean) => boolean)) => draft.setField('moreOpen', value)
   const deferredCoinQuery = useDeferredValue(coinQuery)
-  const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null)
   const [coinMenuOpen, setCoinMenuOpen] = useState(false)
   const [activeCoinIndex, setActiveCoinIndex] = useState(0)
-  const [quantity, setQuantity] = useState('')
-  const [price, setPrice] = useState('')
-  const [tradeTime, setTradeTime] = useState(nowForDateTimeInput)
-  const [fee, setFee] = useState('')
-  const [moreOpen, setMoreOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const coinFieldRef = useRef<HTMLDivElement | null>(null)
@@ -185,6 +204,15 @@ export default function DashboardActivation({
   const priceInputId = `${fieldId}-price`
   const timeInputId = `${fieldId}-time`
   const feeInputId = `${fieldId}-fee`
+  useEffect(() => {
+    if (draft.restored) setStage('details')
+  }, [draft.restored])
+  const discardDraft = () => {
+    draft.reset()
+    setCoinMenuOpen(false)
+    setError(null)
+    setStage('details')
+  }
 
   const { data: coins, error: coinsError, isLoading: coinsLoading, mutate: retryCoins } = useSWR<Coin[]>(
     stage === 'details' ? '/api/coins?limit=500&order=marketcap' : null,
@@ -292,7 +320,7 @@ export default function DashboardActivation({
   }
 
   const savePurchase = async () => {
-    if (saving) return
+    if (saveActionRef.current || tradeSave.attempt) return
     const validationError = validateDetails()
     if (validationError || !selectedCoin || quantityNumber == null || priceNumber == null || feeNumber == null) {
       setError(validationError ?? 'Review the purchase details and try again.')
@@ -310,33 +338,76 @@ export default function DashboardActivation({
       trade_time: tradeTimeIso,
     }
 
+    saveActionRef.current = true
     setSaving(true)
     setError(null)
     try {
-      const { error: insertError } = await supabaseBrowser.from('trades').insert({
+      const saved = await tradeSave.save({
         user_id: userId,
         ...trade,
         buy_planner_id: null,
         sell_planner_id: null,
       })
-      if (insertError) throw insertError
+      if (saved) await finishSavedPurchase(saved)
     } catch (caught) {
       const message =
         caught && typeof caught === 'object' && 'message' in caught
           ? String(caught.message)
           : 'The purchase could not be saved. Please try again.'
       setError(message)
+    } finally {
+      saveActionRef.current = false
       setSaving(false)
+    }
+  }
+
+  const finishSavedPurchase = async (saved: TradeAttempt) => {
+    if (currentUserRef.current !== saved.user_id) return
+    if (handledSaveRef.current === saved.id) {
+      if (!finishingSaveRef.current) tradeSave.acknowledge(saved.id)
       return
     }
-
+    handledSaveRef.current = saved.id
+    finishingSaveRef.current = true
+    setSaving(true)
+    // A confirmed save must not leave a resubmittable review behind, even if
+    // refreshing the Dashboard fails or navigation is delayed.
+    draft.reset()
+    setStage('intro')
     try {
-      await onTradeAdded(trade)
+      if (saved.side !== 'buy') {
+        tradeSave.acknowledge(saved.id)
+        window.location.reload()
+        return
+      }
+      await withTradeDeadline(() => Promise.resolve(onTradeAdded({
+        coingecko_id: saved.coingecko_id,
+        side: 'buy',
+        price: saved.price,
+        quantity: saved.quantity,
+        fee: saved.fee,
+        trade_time: saved.trade_time,
+      })))
+      tradeSave.acknowledge(saved.id)
     } catch {
       // The insert already succeeded. Reloading fetches the saved ledger rather
       // than leaving the form enabled and risking a duplicate submission.
+      tradeSave.acknowledge(saved.id)
       window.location.reload()
+    } finally {
+      finishingSaveRef.current = false
+      setSaving(false)
     }
+  }
+
+  if (tradeSave.attempt && stage !== 'review') {
+    return (
+      <section data-dashboard-activation className="mx-auto w-full max-w-[760px] rounded-md border border-[rgb(41,42,45)] bg-[rgb(28,29,31)] px-5 py-6 sm:px-7">
+        <h2 className="font-display text-xl font-semibold text-slate-100">Finish your previous trade</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-400">Check its save status before recording another purchase.</p>
+        <TradeSaveFeedback save={{ ...tradeSave, busy: tradeSave.busy || saving }} onSaved={finishSavedPurchase} />
+      </section>
+    )
   }
 
   if (stage === 'intro') {
@@ -402,6 +473,7 @@ export default function DashboardActivation({
           <button
             type="button"
             onClick={() => { setError(null); setStage('details') }}
+            disabled={saving || !!tradeSave.attempt}
             className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-400 hover:text-slate-200"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -456,6 +528,8 @@ export default function DashboardActivation({
             </dl>
           </div>
 
+          <TradeSaveFeedback save={{ ...tradeSave, busy: tradeSave.busy || saving }} onSaved={finishSavedPurchase} />
+          <DraftNotice draft={draft} onDiscard={discardDraft} disabled={saving || !!tradeSave.attempt} />
           {error ? (
             <div role="alert" className="mt-4 rounded-lg border border-rose-500/25 bg-rose-500/8 px-3.5 py-3 text-[12px] leading-5 text-rose-300">
               {error}
@@ -470,7 +544,7 @@ export default function DashboardActivation({
             <button
               type="button"
               onClick={() => { setError(null); setStage('details') }}
-              disabled={saving}
+              disabled={saving || !!tradeSave.attempt}
               className="min-h-11 rounded-lg border border-[rgb(58,59,63)] px-4 text-[13px] font-medium text-slate-300 transition-colors hover:bg-white/[0.04] disabled:opacity-50"
             >
               Edit
@@ -478,7 +552,7 @@ export default function DashboardActivation({
             <button
               type="button"
               onClick={() => void savePurchase()}
-              disabled={saving}
+              disabled={saving || !!tradeSave.attempt}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[rgb(137,128,213)] bg-[rgb(91,84,145)] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-[rgb(103,95,164)] focus:outline-none focus:ring-2 focus:ring-[rgba(137,128,213,0.5)] disabled:cursor-wait disabled:opacity-60"
             >
               {saving ? (
@@ -531,6 +605,8 @@ export default function DashboardActivation({
       </div>
 
       <form onSubmit={reviewPurchase} className="px-5 py-6 sm:px-7 sm:py-7">
+        <DraftNotice draft={draft} onDiscard={discardDraft} disabled={saving || !!tradeSave.attempt} />
+        <fieldset disabled={!draft.ready || saving || !!tradeSave.attempt} className="m-0 min-w-0 border-0 p-0">
         <div className="grid gap-5 sm:grid-cols-2">
           <div ref={coinFieldRef} className="relative sm:col-span-2">
             <FieldLabel htmlFor={coinInputId}>Crypto asset</FieldLabel>
@@ -699,6 +775,7 @@ export default function DashboardActivation({
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
+        </fieldset>
       </form>
     </section>
   )

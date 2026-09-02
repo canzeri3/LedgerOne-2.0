@@ -5,6 +5,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseClient'
 import { useUser } from '@/lib/useUser'
 import { useEntitlements } from '@/lib/useEntitlements'
+import { useTradeSave } from '@/lib/useTradeSave'
+import { withTradeDeadline, type TradeAttempt, type TradePayload } from '@/lib/tradeSave'
+import TradeSaveFeedback from '@/components/common/TradeSaveFeedback'
+import DraftNotice from '@/components/common/DraftNotice'
+import { useFormDraft } from '@/lib/useFormDraft'
+import { atomicPlannerWorkflowsEnabled } from '@/lib/atomicPlannerWorkflows'
+import { isTradeDraft, type TradeDraft } from '@/lib/formDraft'
 import { usePrice } from '@/lib/dataCore'
 import { fmtCurrency, displayCurrencySymbol, displayToUsd, usdToDisplay } from '@/lib/format'
 import { useDisplayCurrency } from '@/lib/displayCurrency'
@@ -370,6 +377,16 @@ type Props = { id: string }
 
 export default function TradesPanel({ id }: Props) {
   const { user } = useUser()
+  const tradeSave = useTradeSave(user?.id)
+  const saveActionRef = useRef(false)
+  const handledSaveRef = useRef<string | null>(null)
+  const finishingSaveRef = useRef(false)
+  const saveContextRef = useRef({ userId: user?.id, coinId: id })
+  saveContextRef.current = { userId: user?.id, coinId: id }
+  useEffect(() => {
+    saveContextRef.current = { userId: user?.id, coinId: id }
+    return () => { saveContextRef.current = { userId: undefined, coinId: '' } }
+  }, [user?.id, id])
   const {
     entitlements,
     loading: entitlementsLoading,
@@ -382,23 +399,34 @@ export default function TradesPanel({ id }: Props) {
   const { code: displayCode } = useDisplayCurrency()
   const currencySymbol = displayCurrencySymbol()
   const fiatLabel = `${displayCode} ${currencySymbol}`
+  const canUpdatePlanner = entitlements?.canUsePlanners === true
 
-  // form state
-  const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [price, setPrice] = useState<string>('')
-  const [qty, setQty] = useState<string>('') // tokens or USD based on qtyMode
-  const [qtyMode, setQtyMode] = useState<'tokens' | 'usd'>('tokens')
-  // NEW: lock the quantity mode to side (Buy=USD, Sell=Tokens) unless user unlocks
-  const [qtyLocked, setQtyLocked] = useState<boolean>(true)
-const [fee, setFee] = useState<string>('') // keep empty so placeholder shows
-const [time, setTime] = useState<string>(() => new Date().toISOString().slice(0, 16))
-const [ledgerOnly, setLedgerOnly] = useState<boolean>(false)
-const canUpdatePlanner = entitlements?.canUsePlanners === true
+  const draftDefaults = useMemo<TradeDraft>(() => ({
+    side: 'buy', price: '', qty: '', qtyMode: 'usd', qtyLocked: true,
+    fee: '', time: new Date().toISOString().slice(0, 16), ledgerOnly: !canUpdatePlanner, selectedSellPlannerId: '',
+  }), [id, displayCode, user?.id, canUpdatePlanner])
+  const draft = useFormDraft({
+    scope: user ? { userId: user.id, form: 'trade', asset: id, currency: displayCode } : null,
+    defaults: draftDefaults, validate: isTradeDraft,
+  })
+  const { side, price, qty, qtyMode, qtyLocked, fee, time, ledgerOnly, selectedSellPlannerId } = draft.values
+  const setSide = (value: 'buy' | 'sell') => {
+    if (value !== side) draft.patch({ side: value, qtyMode: value === 'buy' ? 'usd' : 'tokens', qtyLocked: true })
+  }
+  const setPrice = (value: string) => draft.setField('price', value)
+  const setQty = (value: string) => draft.setField('qty', value)
+  const setQtyMode = (value: 'tokens' | 'usd') => draft.setField('qtyMode', value)
+  const setQtyLocked = (value: boolean | ((previous: boolean) => boolean)) => draft.setField('qtyLocked', value)
+  const setFee = (value: string) => draft.setField('fee', value)
+  const setTime = (value: string) => draft.setField('time', value)
+  const setLedgerOnly = (value: boolean | ((previous: boolean) => boolean)) => draft.setField('ledgerOnly', value)
+  const setSelectedSellPlannerId = (value: string) => draft.setField('selectedSellPlannerId', value)
 const effectiveLedgerOnly = ledgerOnly || !canUpdatePlanner
 
   // input refs (for caret restoration)
   const priceRef = useRef<HTMLInputElement>(null)
   const qtyRef = useRef<HTMLInputElement>(null)
+  const qtyPrefillRequestRef = useRef(0)
   const feeRef = useRef<HTMLInputElement>(null)
 
 // live-format handlers
@@ -426,8 +454,46 @@ const onPriceFocus = () => {
 }
 const onQtyChange = makeLiveNumericChangeHandler(
   qtyRef as React.RefObject<HTMLInputElement>,
-  setQty,
+  (value) => {
+    qtyPrefillRequestRef.current += 1
+    setQty(value)
+  },
 )
+// Like Price, suggest a value only when the empty field receives focus. Read
+// current fills so already-bought allocations are excluded from the alert Qty.
+const onQtyFocus = async () => {
+  if (qty !== '' || side !== 'buy' || effectiveLedgerOnly || loading || !user || !activeBuy) return
+  if (activeBuy.user_id !== user.id || activeBuy.coingecko_id !== id) return
+  if (!(typeof livePrice === 'number' && Number.isFinite(livePrice) && livePrice > 0)) return
+
+  const node = qtyRef.current
+  if (!node) return
+  const request = ++qtyPrefillRequestRef.current
+
+  try {
+    const { allowedUsd } = await computeBuyAlertAllowance(activeBuy, livePrice)
+    const enteredPrice = displayToUsd(parseNum(price))
+    const tokenPrice = Number.isFinite(enteredPrice) && enteredPrice > 0 ? enteredPrice : livePrice
+    const amount = qtyMode === 'usd' ? usdToDisplay(allowedUsd) : allowedUsd / tokenPrice
+    if (!Number.isFinite(amount) || amount <= 0) return
+    const rounded = amount.toFixed(qtyMode === 'usd' ? 2 : 8)
+    if (!(Number(rounded) > 0)) return
+    const formatted = formatGrouped(rounded.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, ''))
+
+    // A slow response must not overwrite typing or follow the user into a
+    // different field, coin, planner, currency, or trade side.
+    if (request !== qtyPrefillRequestRef.current || qtyRef.current !== node ||
+        document.activeElement !== node || node.value !== '') return
+    setQty(formatted)
+    requestAnimationFrame(() => {
+      if (request === qtyPrefillRequestRef.current && document.activeElement === node) {
+        try { node.select() } catch {}
+      }
+    })
+  } catch {
+    // Optional suggestion only; manual trade entry remains available.
+  }
+}
 const onFeeChange = makeLiveNumericChangeHandler(
   feeRef as React.RefObject<HTMLInputElement>,
   setFee,
@@ -435,9 +501,12 @@ const onFeeChange = makeLiveNumericChangeHandler(
 
   // planners
   const [activeBuy, setActiveBuy] = useState<BuyPlanner | null>(null)
+  useEffect(() => {
+    qtyPrefillRequestRef.current += 1
+    return () => { qtyPrefillRequestRef.current += 1 }
+  }, [user?.id, id, side, qtyMode, displayCode, effectiveLedgerOnly, activeBuy])
   const [activeSell, setActiveSell] = useState<SellPlanner | null>(null)
   const [sellPlanners, setSellPlanners] = useState<SellPlanner[]>([])
-  const [selectedSellPlannerId, setSelectedSellPlannerId] = useState<PlannerId>('')
   // Keep latest selection accessible to event handlers (prevents stale-closure bugs)
   const selectedSellPlannerIdRef = useRef<PlannerId>('')
   useEffect(() => {
@@ -674,7 +743,7 @@ function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId:
 
 
 
-  async function loadPlanners() {
+  async function loadPlanners({ preserveFeedback = false }: { preserveFeedback?: boolean } = {}) {
     if (!user) {
       setActiveBuy(null)
       setActiveSell(null)
@@ -683,7 +752,8 @@ function refreshUiAfterTrade(opts: { buyPlannerId: string | null; sellPlannerId:
       setLoading(false)
       return
     }
-    setLoading(true); setErr(null); setOk(null)
+    setLoading(true)
+    if (!preserveFeedback) { setErr(null); setOk(null) }
 
     const [{ data: bp, error: e1 }, { data: spAll, error: e2 }] = await Promise.all([
       supabaseBrowser
@@ -725,6 +795,8 @@ setLoading(false)  }
     const bump = (e: any) => {
       const detailCoin = e?.detail?.coinId
       if (detailCoin && detailCoin !== id) return
+      qtyPrefillRequestRef.current += 1
+      void loadPlanners({ preserveFeedback: true })
       refreshHoldingsTokens()
       refreshPlannerRemainingTokens()
     }
@@ -759,14 +831,11 @@ useEffect(() => {
   void refreshHoldingsTokens()
 }, [side, effectiveLedgerOnly, selectedSellPlannerId])
 
-// NEW: whenever side changes, force canonical mode + re-lock
-useEffect(() => {
-  setQtyMode(side === 'buy' ? 'usd' : 'tokens')
-  setQtyLocked(true)
-}, [side])
+// Side clicks set the canonical mode directly. An effect here would overwrite
+// the user's restored, explicitly unlocked quantity mode.
 
 const canSubmit = useMemo(() => {
-  if (entitlementsLoading) return false
+  if (entitlementsLoading || !draft.ready) return false
   const p = parseNum(price)
   const q = parseNum(qty)
   if (!(q > 0)) return false
@@ -775,7 +844,7 @@ const canSubmit = useMemo(() => {
   if (side === 'buy') return effectiveLedgerOnly ? true : !!activeBuy
   if (side === 'sell') return effectiveLedgerOnly ? true : !!(selectedSellPlannerId || activeSell?.id)
   return false
-}, [user, side, price, qty, qtyMode, entitlementsLoading, effectiveLedgerOnly, activeBuy, activeSell?.id, selectedSellPlannerId])
+}, [user, side, price, qty, qtyMode, entitlementsLoading, effectiveLedgerOnly, activeBuy, activeSell?.id, selectedSellPlannerId, draft.ready])
   // ─────────────────────────────────────────────────────────
   // NEW: helpers to REGENERATE active sell ladder after a BUY
   // ─────────────────────────────────────────────────────────
@@ -1091,6 +1160,7 @@ const canSubmit = useMemo(() => {
   }
 
   async function confirmOffPlanProceed() {
+    if (saveActionRef.current || tradeSave.attempt) return
     const sell = pendingSell
     const buy = pendingBuy
     if (!sell && !buy) { closeConfirmOffPlan(); return }
@@ -1098,47 +1168,34 @@ const canSubmit = useMemo(() => {
     // Capture pending payload before closing (close clears pending state)
     closeConfirmOffPlan()
 
+    saveActionRef.current = true
     setSaving(true); setErr(null); setOk(null)
     try {
       if (buy) {
-        const { error } = await supabaseBrowser.from('trades').insert(buy.payload as any)
-        if (error) throw error
-
-        // Keep existing behavior: after any BUY, regenerate the ACTIVE sell ladder
-        try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
-
-        setOk('Buy recorded.')
-        broadcast()
-        refreshUiAfterTrade({ buyPlannerId: buy.buyPlannerId, sellPlannerId: buy.sellPlannerId })
-        refreshHoldingsTokens()
-        resetAfterSubmit()
+        await recordTrade(buy.payload)
         return
       }
 
       if (sell) {
-        const { error } = await supabaseBrowser.from('trades').insert(sell.payload as any)
-        if (error) throw error
-
-        setOk('Sell recorded.')
-        broadcast()
-        refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: sell.chosenId })
-        refreshHoldingsTokens()
-        resetAfterSubmit()
+        await recordTrade(sell.payload)
         return
       }
     } catch (e: any) {
       setErr(e?.message || String(e))
     } finally {
+      saveActionRef.current = false
       setSaving(false)
     }
   }
 async function submitTrade() {
-  if (!user) return
+  if (!user || saveActionRef.current || tradeSave.attempt) return
   if (entitlementsLoading) {
     setErr('Checking your plan. Please try again in a moment.')
     return
   }
+  saveActionRef.current = true
   setSaving(true); setErr(null); setOk(null)
+  try {
 
   const trade_time_iso = toIso(time)
 
@@ -1166,14 +1223,7 @@ async function submitTrade() {
         sell_planner_id: null,
       }
 
-      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-      if (error) { setErr(error.message); setSaving(false); return }
-
-      setOk('Buy recorded in ledger only.')
-      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: null })
-      refreshHoldingsTokens()
-      resetAfterSubmit()
-      setSaving(false)
+      await recordTrade(payload)
       return
     }
 
@@ -1192,7 +1242,7 @@ async function submitTrade() {
 
     if (refPx) {
       try {
-        const { allowedUsd, allowedTokens, hasLevels } = await computeBuyAlertAllowance(activeBuy, refPx)
+        const { allowedUsd, allowedTokens, hasLevels } = await withTradeDeadline(() => computeBuyAlertAllowance(activeBuy, refPx))
         if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {
           setConfirmOffPlanCtx({
             tradeSide: 'buy',
@@ -1216,15 +1266,7 @@ async function submitTrade() {
       }
     }
 
-    const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-    if (error) { setErr(error.message); setSaving(false); return }
-    try { await regenerateActiveSellLadder() } catch { /* ignore soft errors */ }
-
-    setOk('Buy recorded.')
-    broadcast()
-    refreshUiAfterTrade({ buyPlannerId: activeBuy.id, sellPlannerId: activeSell?.id ?? null })
-    refreshHoldingsTokens()
-    resetAfterSubmit()
+    await recordTrade(payload)
   } else {
     const chosen = effectiveLedgerOnly ? null : (selectedSellPlannerId || activeSell?.id || null)
     if (!effectiveLedgerOnly && !chosen) { setErr('No Sell Planner selected.'); setSaving(false); return }
@@ -1232,7 +1274,7 @@ async function submitTrade() {
 
     // NEW: client-side precheck (DB trigger is the hard enforcement)
     try {
-      const available = await fetchHoldingsTokensNow(effectiveLedgerOnly ? undefined : { sellPlannerId: chosenPlannerId })
+      const available = await withTradeDeadline(() => fetchHoldingsTokensNow(effectiveLedgerOnly ? undefined : { sellPlannerId: chosenPlannerId }))
       if (quantityTokens > available + 1e-12) {
         setErr(`Insufficient holdings: available ${fmtTokens(available)}, trying to sell ${fmtTokens(quantityTokens)}.`)
         setSaving(false)
@@ -1255,14 +1297,7 @@ async function submitTrade() {
         buy_planner_id: null,
       }
 
-      const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-      if (error) { setErr(error.message); setSaving(false); return }
-
-      setOk('Sell recorded in ledger only.')
-      refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: null })
-      refreshHoldingsTokens()
-      resetAfterSubmit()
-      setSaving(false)
+      await recordTrade(payload)
       return
     }
 
@@ -1280,7 +1315,7 @@ async function submitTrade() {
 
     if (refPx) {
       try {
-        const { allowedTokens, hasLevels } = await computeAlertAllowance(chosenPlannerId as PlannerId, refPx)
+        const { allowedTokens, hasLevels } = await withTradeDeadline(() => computeAlertAllowance(chosenPlannerId as PlannerId, refPx))
         if (hasLevels && quantityTokens > (allowedTokens * 1.05) + 1e-12) {
           setConfirmOffPlanCtx({
             tradeSide: 'sell',
@@ -1300,28 +1335,72 @@ async function submitTrade() {
       }
     }
 
-    const { error } = await supabaseBrowser.from('trades').insert(payload as any)
-    if (error) { setErr(error.message); setSaving(false); return }
-
-    setOk('Sell recorded.')
-    broadcast()
-    refreshUiAfterTrade({ buyPlannerId: null, sellPlannerId: chosenPlannerId })
-    refreshHoldingsTokens()
-    resetAfterSubmit()
+    await recordTrade(payload)
   }
 
-  setSaving(false)
+  } catch (error) {
+    setErr(error instanceof Error ? error.message : 'The trade could not be completed. Your inputs have been kept.')
+  } finally {
+    saveActionRef.current = false
+    setSaving(false)
+  }
+}
+
+async function recordTrade(payload: TradePayload) {
+  // A user/coin change while preflight requests were running cancels submission.
+  if (saveContextRef.current.userId !== payload.user_id || saveContextRef.current.coinId !== payload.coingecko_id) return
+  const saved = await tradeSave.save(payload)
+  if (saved) await finishSavedTrade(saved)
+}
+
+async function finishSavedTrade(saved: TradeAttempt) {
+  if (saveContextRef.current.userId !== saved.user_id || saveContextRef.current.coinId !== id) return
+  if (handledSaveRef.current === saved.id) {
+    if (!finishingSaveRef.current) tradeSave.acknowledge(saved.id)
+    return
+  }
+  handledSaveRef.current = saved.id
+  finishingSaveRef.current = true
+  const sameCoin = saved.coingecko_id === id
+  const message = `${saved.side === 'buy' ? 'Buy' : 'Sell'} recorded${saved.buy_planner_id || saved.sell_planner_id ? '.' : ' in ledger only.'}`
+  setSaving(true)
+  setErr(null)
+  setOk(message)
+  if (sameCoin) resetAfterSubmit()
+  try {
+    // The ledger insert is already confirmed. A failed downstream refresh must
+    // never be reported as a failed save or offer a fresh submission.
+    if (!atomicPlannerWorkflowsEnabled && sameCoin && saved.side === 'buy' && saved.buy_planner_id) {
+      try { await withTradeDeadline(() => regenerateActiveSellLadder()) }
+      catch {
+        if (saveContextRef.current.userId === saved.user_id && saveContextRef.current.coinId === id) {
+          setOk(`${message} Planner refresh could not finish. Reload to check the latest levels.`)
+        }
+      }
+    }
+    if (saveContextRef.current.userId !== saved.user_id || saveContextRef.current.coinId !== id) return
+    if (sameCoin) {
+      // Ledger-only trades must not trigger planner listeners/auto-generation.
+      if (saved.buy_planner_id || saved.sell_planner_id) broadcast()
+      refreshUiAfterTrade({ buyPlannerId: saved.buy_planner_id, sellPlannerId: saved.sell_planner_id })
+      void refreshHoldingsTokens()
+    }
+    void globalMutate(['/dashboard/trades-lite', saved.user_id]).catch(() => {})
+    void globalMutate(['/portfolio/trades', saved.user_id]).catch(() => {})
+  } catch {
+    setOk(`${message} Refresh the page to see the latest data.`)
+  } finally {
+    finishingSaveRef.current = false
+    if (saveContextRef.current.userId === saved.user_id && saveContextRef.current.coinId === id) {
+      tradeSave.acknowledge(saved.id)
+      setSaving(false)
+    }
+  }
 }
 
 function resetAfterSubmit() {
-  setPrice('')
-  setQty('')
-  setFee('')
-  setLedgerOnly(false)
-  // Keep mode aligned with current side and re-lock
-  setQtyMode(side === 'buy' ? 'usd' : 'tokens')
-  setQtyLocked(true)
-  setTime(new Date().toISOString().slice(0, 16))
+  qtyPrefillRequestRef.current += 1
+  draft.reset({ ...draftDefaults, side, qtyMode: side === 'buy' ? 'usd' : 'tokens', time: new Date().toISOString().slice(0, 16) })
 }
   const noActiveBuy = !activeBuy
   const noActiveSell = !activeSell
@@ -1463,9 +1542,12 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
       </div>
 
       <div className="ct-body">
-        {err && <div className="text-[12px] text-rose-400">{err}</div>}
-        {ok && <div className="text-[12px] text-emerald-400">{ok}</div>}
+        {err && <div role="alert" className="text-[12px] text-rose-400">{err}</div>}
+        {ok && <div role="status" className="text-[12px] text-emerald-400">{ok}</div>}
+        <TradeSaveFeedback save={{ ...tradeSave, busy: tradeSave.busy || saving }} onSaved={finishSavedTrade} />
+        <DraftNotice draft={draft} onDiscard={resetAfterSubmit} disabled={saving || !!tradeSave.attempt} />
 
+        <fieldset disabled={!draft.ready || saving || !!tradeSave.attempt} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
         {/* Fields row */}
         <div className="ct-row">
           {/* SIDE */}
@@ -1522,6 +1604,8 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
               inputMode="decimal"
               type="text"
               value={qty}
+              onFocus={onQtyFocus}
+              onBlur={() => { qtyPrefillRequestRef.current += 1 }}
               onChange={onQtyChange}
             />
             <span className="ct-unit" role="group" aria-label="Quantity mode">
@@ -1656,13 +1740,14 @@ To remain on-plan, reduce the {confirmVerb} size to the planned allowance shown 
 
             <button
               onClick={submitTrade}
-              disabled={!canSubmit || saving}
+              disabled={!canSubmit || saving || !!tradeSave.attempt}
               className={`cbtn cbtn-primary${!canSubmit || saving ? ' opacity-50 cursor-not-allowed' : ''}`}
             >
               {saving ? 'Saving…' : 'Add Trade'}
             </button>
           </div>
         </div>
+        </fieldset>
       </div>
       </section>
       <style jsx>{`

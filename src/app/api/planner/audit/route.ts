@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { atomicPlannerWorkflowsEnabled, atomicWorkflowError } from '@/lib/atomicPlannerWorkflows'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -344,8 +345,6 @@ export async function POST(req: Request) {
   if (authError) return jsonError(authError.message, 401)
   if (!user) return jsonError('Not signed in.', 401)
 
-  const db = getPrivilegedSupabase() ?? authClient
-
   let body: DeleteBody | RestoreBody | null = null
   try {
     body = (await req.json()) as DeleteBody | RestoreBody
@@ -355,11 +354,31 @@ export async function POST(req: Request) {
 
   if (!body || typeof body !== 'object') return jsonError('Invalid request body.')
 
+  if (atomicPlannerWorkflowsEnabled) {
+    if (body.op !== 'delete' && body.op !== 'restore') return jsonError('Unsupported operation.')
+    if (body.op === 'delete' && body.entity !== 'buy_planner' && body.entity !== 'sell_planner') return jsonError('Unsupported entity.')
+    const target = body.op === 'delete' ? body.plannerId : body.logId
+    if (typeof target !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target)) {
+      return jsonError('Invalid planner reference.')
+    }
+    // Use the caller's JWT, never the service role. The RPC binds all writes to auth.uid().
+    const { error } = await authClient.rpc('ledgerone_planner_audit_v1', {
+      p_op: body.op, p_entity: body.op === 'delete' ? body.entity : null, p_target: target,
+    })
+    if (error) {
+      const status = error.code === '42501' ? 403 : error.code === 'P0002' ? 404 : error.code === '23505' ? 409 : 500
+      return jsonError(atomicWorkflowError(error), status)
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   if (body.op === 'delete') {
+    const db = getPrivilegedSupabase() ?? authClient
     return handleDelete(db, user.id, body as DeleteBody)
   }
 
   if (body.op === 'restore') {
+    const db = getPrivilegedSupabase() ?? authClient
     return handleRestore(db, user.id, body as RestoreBody)
   }
 
