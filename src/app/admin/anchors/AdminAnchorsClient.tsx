@@ -133,16 +133,28 @@ export default function AdminAnchorsClient() {
 
     setSavingId(row.coingecko_id)
     try {
-      const { error } = await supabaseBrowser
-        .from('coin_anchors')
-        .update({
+      // coin_anchors is RLS-protected with a SELECT-only policy, so a
+      // browser-side update writes nothing and still reports success.
+      // The write has to go through an admin-gated server route.
+      const res = await fetch('/api/admin/anchors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          coingecko_id: row.coingecko_id,
           anchor_top_price: anchorNum,
           pump_threshold_multiple: pumpNum,
           force_manual_anchor: row.force_manual_anchor,
-        })
-        .eq('coingecko_id', row.coingecko_id)
+        }),
+      })
 
-      if (error) throw error
+      const payload = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(
+          payload?.error ?? `Failed to save ${row.coingecko_id} (status ${res.status}).`
+        )
+      }
 
       setRows((prev) =>
         prev.map((r) =>
